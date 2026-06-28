@@ -1,13 +1,14 @@
 <script setup lang="ts">
-// Ресайз-хендл между панелями: вертикальная пилюля, скрыта, проявляется на ховере.
+// Ресайз-хендл МЕЖДУ панелями (отдельный flex-элемент, не внутри overflow-панели):
+// вертикальная пилюля-островок, скрыта, проявляется на ховере.
 defineEmits<{ (e: 'down', ev: PointerEvent): void }>()
 </script>
 
 <template>
   <div
-    class="group/rsz absolute inset-y-0 left-0 z-20 flex w-3 cursor-col-resize items-center justify-center"
+    class="group/rsz relative w-2 shrink-0 cursor-col-resize self-stretch"
     title="Drag to resize"
     @pointerdown="$emit('down', $event)">
-    <div class="h-10 w-1 rounded-full bg-secondary/50 opacity-0 transition-opacity duration-150 group-hover/rsz:opacity-100" />
+    <div class="absolute left-1/2 top-1/2 h-10 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-secondary/60 opacity-0 transition-opacity duration-150 group-hover/rsz:opacity-100" />
   </div>
 </template>

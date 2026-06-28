@@ -1885,8 +1885,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     </main>
 
     <!-- Cycle insights panel (когда выбран цикл и не открыт issue) -->
-    <aside v-if="cycleBurndown && !selectedIssue" :style="{ width: cyclePanel.w.value + 'px' }" class="relative shrink-0 overflow-y-auto rounded-xl border border-subtle bg-surface px-4 py-3 text-sm">
-      <ResizeHandle @down="cyclePanel.onResizeStart" />
+    <ResizeHandle v-if="cycleBurndown && !selectedIssue" @down="cyclePanel.onResizeStart" />
+    <aside v-if="cycleBurndown && !selectedIssue" :style="{ width: cyclePanel.w.value + 'px' }" class="shrink-0 overflow-y-auto rounded-xl border border-subtle bg-surface px-4 py-3 text-sm">
       <!-- header: Current pill + range -->
       <div class="mb-3 flex items-center gap-2 text-sm">
         <span class="rounded-md bg-elevated px-2 py-0.5 text-xs font-medium">Current</span>
@@ -1946,8 +1946,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     </aside>
 
     <!-- Issue detail panel (M4) -->
-    <aside v-if="selectedIssue" :style="{ width: detailPanel.w.value + 'px' }" class="relative flex shrink-0 flex-col overflow-y-auto rounded-xl border border-subtle bg-surface text-sm">
-      <ResizeHandle @down="detailPanel.onResizeStart" />
+    <ResizeHandle v-if="selectedIssue" @down="detailPanel.onResizeStart" />
+    <aside v-if="selectedIssue" :style="{ width: detailPanel.w.value + 'px' }" class="flex shrink-0 flex-col overflow-y-auto rounded-xl border border-subtle bg-surface text-sm">
       <!-- top bar -->
       <div class="flex items-center gap-2 border-b border-subtle px-4 py-2.5">
         <UIcon :name="statusIcon(store.states[selectedIssue.stateId]?.category)" :style="{ color: statusColor(store.states[selectedIssue.stateId]?.category) }" />
@@ -2183,8 +2183,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     </aside>
 
     <!-- Thread panel (плавающая) -->
-    <aside v-if="store.threadParentId && activeSection === 'chats'" :style="{ width: threadPanel.w.value + 'px' }" class="relative flex shrink-0 flex-col overflow-hidden rounded-xl border border-subtle bg-surface text-sm">
-      <ResizeHandle @down="threadPanel.onResizeStart" />
+    <ResizeHandle v-if="store.threadParentId && activeSection === 'chats'" @down="threadPanel.onResizeStart" />
+    <aside v-if="store.threadParentId && activeSection === 'chats'" :style="{ width: threadPanel.w.value + 'px' }" class="flex shrink-0 flex-col overflow-hidden rounded-xl border border-subtle bg-surface text-sm">
       <div class="flex shrink-0 items-center gap-2 border-b border-subtle px-4 py-3">
         <UIcon name="i-heroicons-chat-bubble-left-right" class="text-tertiary" />
         <span class="font-medium">Thread</span>
