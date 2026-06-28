@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/view.proto";
+import "pms/v1/filter.proto";
+
+service QueryService {
+  rpc RunView(RunViewRequest) returns (RunViewResponse);
+  rpc Metric(MetricRequest) returns (MetricResponse);
+  rpc Search(SearchRequest) returns (SearchResponse);
+}
+
+message SearchRequest {
+  string workspace_id = 1;
+  string query = 2;
+}
+
+message SearchResponse {
+  bytes results = 1; // json: [{type,id,title,subtitle,teamId}]
+}
+
+message RunViewRequest {
+  string workspace_id = 1;
+  ViewDefinition def = 2;
+  bytes page_cursor = 3;
+}
+
+message RunViewResponse {
+  bytes grouped_result = 1; // json
+  bytes next_cursor = 2;
+}
+
+message MetricRequest {
+  string workspace_id = 1;
+  MetricSpec spec = 2;
+}
+
+message MetricResponse {
+  double value = 1;
+}
+
+message MetricSpec {
+  string agg = 1;
+  FieldRef field = 2;
+  FilterNode filter = 3;
+}

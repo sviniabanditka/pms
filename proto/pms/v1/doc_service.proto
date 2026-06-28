@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/common.proto";
+
+service DocService {
+  rpc CreateDoc(CreateDocRequest) returns (CommandResult);
+  rpc UpdateDoc(UpdateDocRequest) returns (CommandResult);
+  rpc DeleteDoc(EntityRef) returns (CommandResult);
+}
+
+message CreateDocRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string team_id = 3;
+  string title = 4;
+  string parent_id = 5; // опц.
+}
+
+message UpdateDocRequest {
+  string workspace_id = 1;
+  string id = 2;
+  int64 base_version = 3;
+  optional string title = 4;
+  optional bytes body = 5; // json (LWW по документу, ADR-0004 #9)
+}

@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS labels;
+DROP TABLE IF EXISTS workflow_states;

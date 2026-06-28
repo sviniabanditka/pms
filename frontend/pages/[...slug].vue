@@ -1,0 +1,2590 @@
+<script setup lang="ts">
+import { getToken, clearToken } from '~/lib/token'
+import { fileViewUrl } from '~/lib/upload'
+import { useAppStore } from '~/stores/app'
+
+const store = useAppStore()
+// Разделы левого рейла (расширяется: calendar, chats…)
+const SECTIONS = [
+  { key: 'dashboard', label: 'Dashboard', icon: 'i-heroicons-squares-2x2' },
+  { key: 'inbox', label: 'Inbox', icon: 'i-heroicons-inbox' },
+  { key: 'tasks', label: 'Tasks', icon: 'i-heroicons-queue-list' },
+  { key: 'chats', label: 'Chats', icon: 'i-heroicons-chat-bubble-left-right' },
+  { key: 'meetings', label: 'Meetings', icon: 'i-heroicons-video-camera' },
+]
+const activeSection = ref<'dashboard' | 'tasks' | 'inbox' | 'chats' | 'meetings'>('tasks')
+// видимые разделы по конфигу пользователя (порядок + видимость); новые — в конец
+const railSections = computed(() => {
+  const saved = (store.mySectionsConfig?.sections || []) as { key: string; visible?: boolean }[]
+  const byKey = Object.fromEntries(SECTIONS.map((s) => [s.key, s]))
+  if (!saved.length) return SECTIONS
+  const out = saved.filter((c) => byKey[c.key] && c.visible !== false).map((c) => byKey[c.key])
+  const inCfg = new Set(saved.map((c) => c.key))
+  for (const s of SECTIONS) if (!inCfg.has(s.key)) out.push(s)
+  return out
+})
+// панель настройки рейла
+const showRailCfg = ref(false)
+const cfgList = ref<{ key: string; label: string; icon: string; visible: boolean }[]>([])
+function openRailCfg() {
+  const saved = (store.mySectionsConfig?.sections || []) as { key: string; visible?: boolean }[]
+  const byKey = Object.fromEntries(SECTIONS.map((s) => [s.key, s]))
+  const order = saved.length
+    ? saved.filter((c) => byKey[c.key]).map((c) => ({ ...byKey[c.key], visible: c.visible !== false }))
+    : SECTIONS.map((s) => ({ ...s, visible: true }))
+  const inOrder = new Set(order.map((o) => o.key))
+  for (const s of SECTIONS) if (!inOrder.has(s.key)) order.push({ ...s, visible: true })
+  cfgList.value = order
+  showRailCfg.value = true
+}
+function saveRailCfg() {
+  store.updateSectionsConfig({ sections: cfgList.value.map((c) => ({ key: c.key, visible: c.visible })) })
+}
+function moveSection(i: number, dir: number) {
+  const a = cfgList.value; const j = i + dir
+  if (j < 0 || j >= a.length) return
+  ;[a[i], a[j]] = [a[j], a[i]]
+  saveRailCfg()
+}
+function toggleSection(i: number) { cfgList.value[i].visible = !cfgList.value[i].visible; saveRailCfg() }
+
+function switchSection(key: 'dashboard' | 'tasks' | 'inbox' | 'chats' | 'meetings') {
+  activeSection.value = key
+  if (key === 'dashboard' && !selectedDashboardId.value && store.workspaceDashboards.length) {
+    selectedDashboardId.value = store.workspaceDashboards[0].id
+  }
+}
+
+const slug = ref('')
+const name = ref('')
+const teamKey = ref('')
+const teamName = ref('')
+const teamParent = ref('')
+const selectedTeamId = ref('')
+const newIssue = reactive<Record<string, string>>({}) // stateId -> draft title
+const err = ref('')
+
+const PRIO = ['None', 'Low', 'Med', 'High', 'Urgent']
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' ') : s)
+const labelOpts = (arr: string[]) => arr.map((v) => ({ label: cap(v), value: v }))
+// borderless ghost look for issue-detail property controls
+const propSelUi = { padding: { sm: 'px-2 py-1' }, base: 'cursor-pointer' }
+const { statusColor, statusIcon, prioColor, prioIcon } = useColors()
+const selectedTeam = computed(() => store.teams[selectedTeamId.value])
+const draggedId = ref('')
+
+// --- Issue detail panel (M4) ---
+const selectedIssueId = ref('')
+const selectedIssue = computed(() => store.issues[selectedIssueId.value])
+const newSub = ref('')
+const relType = ref('blocks')
+const relTarget = ref('')
+const REL_TYPES = ['blocks', 'blocked_by', 'related', 'duplicate', 'duplicate_of']
+const showLabelModal = ref(false)
+const showRelModal = ref(false)
+// issue description (markdown, inline edit + md toolbar)
+const descDraft = ref('')
+const descEditing = ref(false)
+const descEl = ref<HTMLTextAreaElement | null>(null)
+function startDescEdit() { descDraft.value = selectedIssue.value?.description?.md || ''; descEditing.value = true; nextTick(() => descEl.value?.focus()) }
+function saveDesc() { descEditing.value = false; if (selectedIssue.value) store.setIssueDescription(selectedIssue.value.id, descDraft.value) }
+function descWrap(pre: string, post = pre) {
+  const el = descEl.value; if (!el) { descDraft.value += pre + post; return }
+  const s = el.selectionStart, e = el.selectionEnd, v = descDraft.value
+  descDraft.value = v.slice(0, s) + pre + v.slice(s, e) + post + v.slice(e)
+  nextTick(() => { el.focus(); el.selectionStart = s + pre.length; el.selectionEnd = e + pre.length })
+}
+function openIssue(id: string) { selectedIssueId.value = id; descEditing.value = false; store.loadComments(id); store.loadActivity(id) }
+// bulk selection (List)
+const selectedIds = ref<Set<string>>(new Set())
+const selCount = computed(() => selectedIds.value.size)
+function toggleSel(id: string) { const s = new Set(selectedIds.value); s.has(id) ? s.delete(id) : s.add(id); selectedIds.value = s }
+function clearSel() { selectedIds.value = new Set() }
+const bulkDo = (fn: (id: string) => Promise<any>) => wrap(async () => { for (const id of Array.from(selectedIds.value)) await fn(id); clearSel() })
+const bulkStatus = (sid: any) => sid && bulkDo((id) => store.setIssueState(id, sid))
+const bulkAssignee = (uid: any) => bulkDo((id) => store.setIssueAssignee(id, uid || ''))
+const bulkLabel = (lid: any) => lid && bulkDo((id) => store.addLabel(id, lid))
+const bulkArchive = () => bulkDo((id) => store.archiveIssue(id))
+
+// milestones
+const selectedMsId = ref('')
+const selectedMs = computed(() => store.milestones[selectedMsId.value])
+function openMilestone(id: string) { selectedMsId.value = id; selectedIssueId.value = '' }
+const todayISO = new Date().toISOString().slice(0, 10)
+function msOverdue(m: any) { return m.targetDate && String(m.targetDate).slice(0, 10) < todayISO && m.status !== 'done' }
+// workflow states manager
+const showStates = ref(false)
+const STATE_CATS = ['backlog', 'unstarted', 'started', 'completed', 'canceled']
+const newStateName = ref('')
+const newStateCat = ref('unstarted')
+const addState = () => wrap(async () => { if (newStateName.value.trim()) { await store.createState(selectedTeamId.value, newStateName.value, newStateCat.value); newStateName.value = '' } })
+const delState = (id: string) => wrap(() => store.deleteState(id))
+// labels
+const newLabelName = ref('')
+const createLabelInIssue = () => wrap(async () => {
+  if (!newLabelName.value.trim() || !selectedIssue.value) return
+  const id = await store.createLabel(selectedIssue.value.teamId, newLabelName.value)
+  newLabelName.value = ''
+  await store.addLabel(selectedIssue.value.id, id)
+})
+const addLabelFromModal = (lid: any) => lid && wrap(async () => { await store.addLabel(selectedIssueId.value, lid) })
+// comments
+const commentDraft = ref('')
+const commentEl = ref<HTMLTextAreaElement | null>(null)
+const commentPending = ref<File[]>([])
+const commentFileEl = ref<HTMLInputElement | null>(null)
+const onCommentFilePick = (e: Event) => {
+  const files = (e.target as HTMLInputElement).files; if (!files?.length) return
+  for (const f of Array.from(files)) commentPending.value = [...commentPending.value, f]
+  if (commentFileEl.value) commentFileEl.value.value = ''
+}
+const onCommentPaste = (e: ClipboardEvent) => {
+  const items = e.clipboardData?.items; if (!items) return
+  for (const it of Array.from(items)) if (it.type.startsWith('image/')) { e.preventDefault(); const f = it.getAsFile(); if (f) commentPending.value = [...commentPending.value, f] }
+}
+const editCommentId = ref('')
+const editCommentDraft = ref('')
+const addComment = () => wrap(async () => {
+  const b = commentDraft.value.trim()
+  if ((!b && !commentPending.value.length) || !selectedIssue.value) return
+  const files = commentPending.value.slice()
+  commentDraft.value = ''; commentPending.value = []
+  await store.addCommentAttached(selectedIssue.value.id, b, files)
+})
+function startEditComment(c: any) { editCommentId.value = c.id; editCommentDraft.value = c.body }
+const saveComment = () => wrap(async () => { if (editCommentDraft.value.trim()) await store.editComment(editCommentId.value, selectedIssue.value.id, editCommentDraft.value); editCommentId.value = '' })
+const addSub = () => wrap(async () => { if (newSub.value.trim()) { await store.createSubIssue(selectedIssueId.value, newSub.value); newSub.value = '' } })
+
+// --- Cycles (M4 ч.2) ---
+const cycleStart = ref('')
+const cycleEnd = ref('')
+const addCycle = () => wrap(async () => { if (cycleStart.value && cycleEnd.value) { await store.createCycle(selectedTeamId.value, cycleStart.value, cycleEnd.value); cycleStart.value = ''; cycleEnd.value = '' } })
+function filterBy(field: string, value: string) {
+  store.setFieldPredicate(field, value ? { type: 'predicate', field, op: 'eq', value } : null)
+}
+// --- Calendar (M5) ---
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const monthOffset = ref(0)
+const calMonth = computed(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth() + monthOffset.value, 1) })
+const calLabel = computed(() => calMonth.value.toLocaleDateString('en', { month: 'long', year: 'numeric' }))
+function fmtDate(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+const todayStr = fmtDate(new Date())
+const calendarCells = computed(() => {
+  const first = calMonth.value
+  const month = first.getMonth()
+  const start = new Date(first)
+  start.setDate(1 - ((first.getDay() + 6) % 7)) // понедельник недели с 1-м числом
+  const cells: { date: string; inMonth: boolean; day: number }[] = []
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start); d.setDate(start.getDate() + i)
+    cells.push({ date: fmtDate(d), inMonth: d.getMonth() === month, day: d.getDate() })
+  }
+  return cells
+})
+function dropOnDay(ds: string) {
+  if (draggedId.value) { wrap(() => store.setIssueSchedule(draggedId.value, ds)); draggedId.value = '' }
+}
+// week-view
+const calMode = ref<'month' | 'week'>('month')
+const weekCells = computed(() => {
+  const n = new Date(); const base = new Date(n.getFullYear(), n.getMonth(), n.getDate() + monthOffset.value * 7)
+  base.setDate(base.getDate() - ((base.getDay() + 6) % 7)) // понедельник
+  const cells: { date: string; inMonth: boolean; day: number }[] = []
+  for (let i = 0; i < 7; i++) { const d = new Date(base); d.setDate(base.getDate() + i); cells.push({ date: fmtDate(d), inMonth: true, day: d.getDate() }) }
+  return cells
+})
+const calCells = computed(() => (calMode.value === 'week' ? weekCells.value : calendarCells.value))
+const calRangeLabel = computed(() => {
+  if (calMode.value === 'month') return calLabel.value
+  const w = weekCells.value
+  return `${w[0].date.slice(5)} – ${w[6].date.slice(5)}`
+})
+
+const selectedCycleId = ref('')
+const activeCycleOf = (tid: string) => store.teamCycles(tid).find((c: any) => c.status === 'active')
+const upcomingCycleOf = (tid: string) => store.teamCycles(tid).find((c: any) => c.status === 'upcoming') || store.teamCycles(tid).find((c: any) => c.status !== 'active' && c.status !== 'completed')
+function openCycle(id: string) { selectedCycleId.value = id; filterBy('cycle', id) }
+function openCycleFor(tid: string, c: any) {
+  if (!c) return
+  selectedTeamId.value = tid; selectedDocId.value = ''; selectedIssueId.value = ''
+  teamSection.value = ''; personalView.value = ''; activeSection.value = 'tasks'
+  openCycle(c.id)
+}
+function closeCycle() { selectedCycleId.value = ''; store.setFieldPredicate('cycle', null) }
+
+// burndown: live-расчёт из completedAt issues цикла (scope константа = текущее число).
+const cycleBurndown = computed(() => {
+  const c = store.cycles[selectedCycleId.value]
+  if (!c) return null
+  const iss = store.issuesInCycle(c.id)
+  const scope = iss.length
+  const start = String(c.startsOn).slice(0, 10)
+  const end = String(c.endsOn).slice(0, 10)
+  const days: string[] = []
+  let d = new Date(start + 'T00:00:00Z')
+  const e = new Date(end + 'T00:00:00Z')
+  while (d <= e && days.length < 120) { days.push(d.toISOString().slice(0, 10)); d = new Date(d.getTime() + 86400000) }
+  const stats = store.cycleStats(c.id)
+  if (days.length < 2) return { ...stats, idealPts: '', actualPts: '' }
+  const completed = iss.filter((i) => i.completedAt).map((i) => String(i.completedAt).slice(0, 10))
+  const W = 280, H = 70
+  const pt = (idx: number, val: number) => `${(idx / (days.length - 1)) * W},${(H - (scope ? (val / scope) * H : 0)).toFixed(1)}`
+  const idealPts = days.map((_, i) => pt(i, scope * (1 - i / (days.length - 1)))).join(' ')
+  const actualPts = days.map((day, i) => pt(i, scope - completed.filter((cd) => cd <= day).length)).join(' ')
+  const areaPts = `0,${H} ${actualPts} ${W},${H}`
+  const fmt = (s: string) => new Date(s + 'T00:00:00Z').toLocaleDateString('en', { month: 'short', day: 'numeric' })
+  return { ...stats, idealPts, actualPts, areaPts, startLabel: fmt(start), midLabel: fmt(days[Math.floor(days.length / 2)]), endLabel: fmt(end) }
+})
+const insightTab = ref<'assignees' | 'priority' | 'labels' | 'projects' | 'teams'>('priority')
+const INSIGHT_TABS = ['Assignees', 'Labels', 'Priority', 'Projects', 'Teams']
+const cycleRange = computed(() => {
+  const c = store.cycles[selectedCycleId.value]
+  if (!c) return ''
+  const f = (d: string) => new Date(d).toLocaleDateString('en', { month: 'short', day: 'numeric' })
+  return `${f(c.startsOn)} → ${f(c.endsOn)}`
+})
+const cycleBreakdown = computed(() => {
+  const iss = store.issuesInCycle(selectedCycleId.value)
+  const total = iss.length || 1
+  if (insightTab.value === 'priority') {
+    return PRIO.map((p, idx) => ({ label: p, color: prioColor(idx), count: iss.filter((i) => i.priority === idx).length }))
+      .filter((r) => r.count).map((r) => ({ ...r, pct: Math.round((r.count / total) * 100) }))
+  }
+  if (insightTab.value === 'assignees') {
+    const assigned = iss.filter((i) => i.assigneeId).length
+    return [
+      { label: 'Assigned', color: '#5e6ad2', count: assigned, pct: Math.round((assigned / total) * 100) },
+      { label: 'No assignee', color: '#7c828c', count: iss.length - assigned, pct: Math.round(((iss.length - assigned) / total) * 100) },
+    ].filter((r) => r.count)
+  }
+  return []
+})
+const addRel = () => wrap(async () => { if (relTarget.value.trim()) { await store.addRelation(selectedIssueId.value, relTarget.value, relType.value); relTarget.value = ''; showRelModal.value = false } })
+
+// --- Dashboards (M6 ч.2) ---
+const selectedDashboardId = ref('')
+const selectedDashboard = computed(() => store.dashboards[selectedDashboardId.value])
+const newDashboard = ref('')
+function openDashboard(id: string) { selectedDashboardId.value = id }
+const createDash = () => wrap(async () => { if (newDashboard.value.trim()) { const id = await store.createDashboard(newDashboard.value); newDashboard.value = ''; openDashboard(id) } })
+// add-widget form
+const showWidget = ref(false)
+const draggedWidget = ref('')
+const wType = ref('note')
+const wTitle = ref('')
+const wNote = ref('')
+const wStatPrio = ref('')
+const wViewId = ref('')
+const addWidget = () => wrap(async () => {
+  let config: any = {}
+  if (wType.value === 'note') config = { text: wNote.value }
+  else if (wType.value === 'stat') config = { priority: wStatPrio.value }
+  else if (wType.value === 'view') config = { viewId: wViewId.value }
+  await store.addWidget(selectedDashboardId.value, wType.value, wTitle.value, config)
+  wTitle.value = ''; wNote.value = ''
+})
+function statValue(w: any) {
+  const p = w.config?.priority
+  const filter = p === '' || p == null ? null : { type: 'predicate' as const, field: 'priority', op: 'eq' as const, value: Number(p) }
+  return store.issueCount(filter as any)
+}
+// --- Custom fields (M6) ---
+const CF_TYPES = ['text', 'number', 'date', 'checkbox', 'select', 'multiselect', 'url', 'people', 'relationship']
+const cfName = ref('')
+const cfType = ref('text')
+const cfOptions = ref('')
+const addField = () => wrap(async () => {
+  if (!cfName.value.trim()) return
+  const opts = cfOptions.value.split(',').map((s) => s.trim()).filter(Boolean)
+  await store.createCustomField(selectedTeamId.value, cfName.value, cfType.value, opts)
+  cfName.value = ''; cfOptions.value = ''
+})
+function cfMultiToggle(fieldId: string, opt: string) {
+  const cur = (store.cfValue(selectedIssueId.value, fieldId) as string[]) || []
+  store.setCustomFieldValue(selectedIssueId.value, fieldId, cur.includes(opt) ? cur.filter((x) => x !== opt) : [...cur, opt])
+}
+
+// --- FilterBar (M3) ---
+const search = computed({
+  get: () => (store.getFieldPredicate('title') as any)?.value ?? '',
+  set: (v: string) =>
+    store.setFieldPredicate('title', v ? { type: 'predicate', field: 'title', op: 'contains', value: v } : null),
+})
+function prioFilter(): number[] {
+  return ((store.getFieldPredicate('priority') as any)?.value as number[]) ?? []
+}
+function togglePrio(p: number) {
+  const cur = new Set(prioFilter())
+  cur.has(p) ? cur.delete(p) : cur.add(p)
+  const arr = [...cur]
+  store.setFieldPredicate('priority', arr.length ? { type: 'predicate', field: 'priority', op: 'in', value: arr } : null)
+}
+const isPrio = (p: number) => prioFilter().includes(p)
+
+async function saveView() {
+  const name = prompt('View name')
+  if (name) await wrap(() => store.createView(name, selectedTeamId.value))
+}
+function openView(id: string) {
+  const v = store.applyView(id)
+  if (v) selectedTeamId.value = v.teamId
+  teamSection.value = ''; selectedDocId.value = ''; selectedCycleId.value = ''; personalView.value = ''
+}
+
+async function addIssue(stateId: string) {
+  const title = (newIssue[stateId] || '').trim()
+  if (!title) return
+  await wrap(() => store.createIssue(selectedTeamId.value, title, stateId))
+  newIssue[stateId] = ''
+}
+
+// DnD: вставить перетащенную карточку перед targetId в колонке stateId.
+function onDropOnCard(stateId: string, targetId: string) {
+  if (!draggedId.value || draggedId.value === targetId) { draggedId.value = ''; return }
+  const list = store.issuesFor(selectedTeamId.value, stateId).filter((x) => x.id !== draggedId.value)
+  const idx = list.findIndex((x) => x.id === targetId)
+  const before = idx > 0 ? list[idx - 1].id : ''
+  wrap(() => store.reorderIssue(draggedId.value, stateId, before, targetId))
+  draggedId.value = ''
+}
+// DnD: бросок в пустую часть колонки → в конец.
+function onDropOnColumn(stateId: string) {
+  if (!draggedId.value) return
+  const list = store.issuesFor(selectedTeamId.value, stateId).filter((x) => x.id !== draggedId.value)
+  const before = list.length ? list[list.length - 1].id : ''
+  wrap(() => store.reorderIssue(draggedId.value, stateId, before, ''))
+  draggedId.value = ''
+}
+
+onMounted(async () => {
+  if (!getToken()) return navigateTo('/login')
+  await store.loadUser()
+  await store.fetchMyWorkspaces()
+  // гидратация подняла кэш → показываем сразу (без скелетона), освежаем в фоне.
+  if (store.activeWorkspaceId && Object.keys(store.teams).length) store.loaded = true
+  if (store.activeWorkspaceId) await store.bootstrap(store.activeWorkspaceId)
+  else if (store.myWorkspaces.length) await store.bootstrap(store.myWorkspaces[0].id)
+  applyRoute(route.path) // deep-link при загрузке
+})
+
+async function wrap(fn: () => Promise<any>) {
+  err.value = ''
+  try { await fn() } catch (e: any) { err.value = e?.message || String(e) }
+}
+const showCreate = ref(false)
+const wsMenu = ref(false)
+const wsInitial = computed(() => (store.activeWorkspace?.name || 'P')[0].toUpperCase())
+const createWs = () => wrap(async () => {
+  await store.createWorkspace(slug.value, name.value)
+  slug.value = ''; name.value = ''; showCreate.value = false
+})
+function switchWorkspace(id: string) {
+  wsMenu.value = false
+  if (id && id !== store.activeWorkspaceId) { selectedTeamId.value = ''; store.bootstrap(id) }
+}
+function newWorkspace() { wsMenu.value = false; showCreate.value = true }
+const addTeam = () => wrap(async () => { await store.createTeam(teamKey.value, teamName.value, teamParent.value); teamKey.value = ''; teamName.value = '' })
+function logout() { clearToken(); navigateTo('/login') }
+
+// --- Маршрутизация: путь ↔ состояние (шаренные ссылки) ---
+const route = useRoute()
+const router = useRouter()
+let routeSyncing = false
+let urlSyncing = false
+
+function applyRoute(path: string) {
+  routeSyncing = true
+  const seg = path.split('/').filter(Boolean)
+  // сброс выбора
+  selectedIssueId.value = ''; selectedDocId.value = ''; selectedCycleId.value = ''
+  teamSection.value = ''; personalView.value = ''
+  switch (seg[0]) {
+    case 'inbox': activeSection.value = 'inbox'; break
+    case 'chats': activeSection.value = 'chats'; break
+    case 'chat': activeSection.value = 'chats'; if (seg[1]) openChannel(seg[1]); break
+    case 'meetings': activeSection.value = 'meetings'; break
+    case 'dashboard': activeSection.value = 'dashboard'; if (seg[1]) selectedDashboardId.value = seg[1]; break
+    case 'my': activeSection.value = 'tasks'; personalView.value = (seg[1] as any) || 'assigned'; break
+    case 'issue': { const i = store.issueByIdentifier(seg[1]); if (i) { activeSection.value = 'tasks'; selectedTeamId.value = i.teamId; openIssue(i.id) } break }
+    case 'doc': { activeSection.value = 'tasks'; const d = store.documents[seg[1]]; if (d) selectedTeamId.value = d.teamId; openDoc(seg[1]); break }
+    case 'cycle': { activeSection.value = 'tasks'; const c = store.cycles[seg[1]]; if (c) { selectedTeamId.value = c.teamId; openCycle(seg[1]) } break }
+    case 'team': { const t = store.teamByKey(seg[1]); if (t) { activeSection.value = 'tasks'; selectedTeamId.value = t.id; if (seg[2]) teamSection.value = seg[2] as any } break }
+    default: activeSection.value = 'tasks'
+  }
+  nextTick(() => { routeSyncing = false })
+}
+
+function currentPath(): string {
+  if (activeSection.value === 'inbox') return '/inbox'
+  if (activeSection.value === 'chats') return store.activeChannelId ? `/chat/${store.activeChannelId}` : '/chats'
+  if (activeSection.value === 'meetings') return '/meetings'
+  if (activeSection.value === 'dashboard') return selectedDashboardId.value ? `/dashboard/${selectedDashboardId.value}` : '/dashboard'
+  if (personalView.value) return `/my/${personalView.value}`
+  if (selectedIssueId.value && store.issues[selectedIssueId.value]) return `/issue/${store.issues[selectedIssueId.value].identifier}`
+  if (selectedDocId.value) return `/doc/${selectedDocId.value}`
+  if (selectedCycleId.value) return `/cycle/${selectedCycleId.value}`
+  if (teamSection.value && selectedTeam.value) return `/team/${selectedTeam.value.key}/${teamSection.value}`
+  if (selectedTeam.value) return `/team/${selectedTeam.value.key}`
+  return '/'
+}
+
+const linkCopied = ref(false)
+function copyLink() {
+  if (!import.meta.client) return
+  navigator.clipboard?.writeText(location.origin + currentPath())
+  linkCopied.value = true; setTimeout(() => (linkCopied.value = false), 1500)
+}
+function copyText(t: string) { if (import.meta.client) navigator.clipboard?.writeText(t) }
+const duplicateIssue = (i: any) => wrap(async () => {
+  const id = await store.createIssue(i.teamId, i.title + ' (copy)', i.stateId)
+  if (i.priority) await store.setIssuePriority(id, i.priority)
+  if (i.assigneeId) await store.setIssueAssignee(id, i.assigneeId)
+  openIssue(id)
+})
+// completed-category state for "Mark complete"
+function completedStateId(teamId: string) {
+  return store.teamStates(teamId).find((s: any) => s.category === 'completed')?.id || ''
+}
+const issueActions = computed(() => {
+  const i = selectedIssue.value
+  if (!i) return []
+  const doneId = completedStateId(i.teamId)
+  return [
+    [
+      { label: 'Copy link', icon: 'i-heroicons-link', click: copyLink },
+      { label: 'Copy ID', icon: 'i-heroicons-hashtag', click: () => copyText(i.identifier) },
+    ],
+    [
+      ...(doneId && i.stateId !== doneId ? [{ label: 'Mark complete', icon: 'i-heroicons-check-circle', click: () => store.setIssueState(i.id, doneId) }] : []),
+      { label: 'Duplicate', icon: 'i-heroicons-document-duplicate', click: () => duplicateIssue(i) },
+    ],
+    [
+      { label: 'Archive', icon: 'i-heroicons-archive-box', click: () => { store.archiveIssue(i.id); selectedIssueId.value = '' } },
+    ],
+  ]
+})
+
+// --- Team tree expand state ---
+const expandTeam = reactive<Record<string, boolean>>({})
+const expandCycles = reactive<Record<string, boolean>>({})
+const expandDocs = reactive<Record<string, boolean>>({})
+const expandViews = reactive<Record<string, boolean>>({})
+const collapsedStatus = reactive<Record<string, boolean>>({}) // свёрнутые группы статусов в списке
+const showFilters = ref(false)
+
+// --- Глобальное создание через модалку (Linear-стиль) ---
+const createOpen = ref(false)
+const createType = ref<'issue' | 'doc' | 'cycle' | 'team' | 'workspace'>('issue')
+const CREATE_TYPES = [
+  { label: 'Issue', value: 'issue' },
+  { label: 'Doc', value: 'doc' },
+  { label: 'Cycle', value: 'cycle' },
+  { label: 'Milestone', value: 'milestone' },
+  { label: 'Meeting', value: 'meeting' },
+  { label: 'Dashboard', value: 'dashboard' },
+  { label: 'Channel', value: 'channel' },
+  { label: 'Team', value: 'team' },
+  { label: 'Workspace', value: 'workspace' },
+]
+const cTeam = ref(''); const cTitle = ref('')
+const cStart = ref(''); const cEnd = ref(''); const cMsDate = ref('')
+const cKey = ref(''); const cName = ref(''); const cParent = ref(''); const cSlug = ref('')
+const cMeetAt = ref(''); const cMeetParts = ref<string[]>([])
+function openCreate(type: any = 'issue') {
+  createType.value = type
+  cTeam.value = selectedTeamId.value || store.teamList[0]?.id || ''
+  createOpen.value = true
+}
+const createTypeLabel = computed(() => CREATE_TYPES.find((c) => c.value === createType.value)?.label || 'Item')
+const CREATE_ICON: Record<string, string> = {
+  issue: 'i-heroicons-pencil-square', doc: 'i-heroicons-document-text', cycle: 'i-heroicons-arrow-path-rounded-square',
+  dashboard: 'i-heroicons-squares-2x2', channel: 'i-heroicons-hashtag', milestone: 'i-heroicons-flag', meeting: 'i-heroicons-video-camera', team: 'i-heroicons-user-group', workspace: 'i-heroicons-building-office-2',
+}
+const createIcon = computed(() => CREATE_ICON[createType.value] || 'i-heroicons-plus')
+const createMenu = [
+  [
+    { label: 'New issue', icon: 'i-heroicons-pencil-square', click: () => openCreate('issue') },
+    { label: 'New doc', icon: 'i-heroicons-document-text', click: () => openCreate('doc') },
+    { label: 'New cycle', icon: 'i-heroicons-arrow-path-rounded-square', click: () => openCreate('cycle') },
+    { label: 'New milestone', icon: 'i-heroicons-flag', click: () => openCreate('milestone') },
+    { label: 'New meeting', icon: 'i-heroicons-video-camera', click: () => openCreate('meeting') },
+    { label: 'New dashboard', icon: 'i-heroicons-squares-2x2', click: () => openCreate('dashboard') },
+    { label: 'New channel', icon: 'i-heroicons-hashtag', click: () => openCreate('channel') },
+  ],
+  [
+    { label: 'New team', icon: 'i-heroicons-user-group', click: () => openCreate('team') },
+    { label: 'New workspace', icon: 'i-heroicons-building-office-2', click: () => openCreate('workspace') },
+  ],
+]
+const submitCreate = () => wrap(async () => {
+  const t = createType.value
+  if (t === 'issue' && cTeam.value && cTitle.value.trim()) await store.createIssue(cTeam.value, cTitle.value)
+  else if (t === 'doc' && cTeam.value && cTitle.value.trim()) { const id = await store.createDoc(cTeam.value, cTitle.value); selectedTeamId.value = cTeam.value; openDoc(id) }
+  else if (t === 'dashboard' && cTitle.value.trim()) { const id = await store.createDashboard(cTitle.value); activeSection.value = 'dashboard'; selectedDashboardId.value = id }
+  else if (t === 'channel' && cTitle.value.trim()) { const id = await store.createChannel(cTitle.value); activeSection.value = 'chats'; store.loadMessages(id) }
+  else if (t === 'cycle' && cTeam.value && cStart.value && cEnd.value) await store.createCycle(cTeam.value, cStart.value, cEnd.value)
+  else if (t === 'milestone' && cTeam.value && cTitle.value.trim()) await store.createMilestone(cTeam.value, cTitle.value, cMsDate.value)
+  else if (t === 'meeting' && cTitle.value.trim()) {
+    const at = cMeetAt.value ? new Date(cMeetAt.value).toISOString() : ''
+    await store.createMeeting(cTitle.value, at, [...cMeetParts.value]); activeSection.value = 'meetings'
+  }
+  else if (t === 'team' && cKey.value && cName.value) await store.createTeam(cKey.value, cName.value, cParent.value)
+  else if (t === 'workspace' && cSlug.value && cName.value) await store.createWorkspace(cSlug.value, cName.value)
+  else return
+  cTitle.value = cStart.value = cEnd.value = cMsDate.value = cKey.value = cName.value = cSlug.value = cMeetAt.value = ''
+  cMeetParts.value = []
+  createOpen.value = false
+})
+function selectTeamIssues(t: any) {
+  selectedTeamId.value = t.id; selectedDocId.value = ''; selectedDashboardId.value = ''
+  selectedCycleId.value = ''; store.setFieldPredicate('cycle', null); personalView.value = ''; teamSection.value = ''
+  activeSection.value = 'tasks'
+}
+
+// персональные срезы (над списком команд)
+const personalView = ref<'' | 'assigned' | 'created' | 'active'>('')
+const PERSONAL = [
+  { key: 'assigned', label: 'My issues', icon: 'i-heroicons-user-circle' },
+  { key: 'active', label: 'Active', icon: 'i-heroicons-bolt' },
+  { key: 'created', label: 'Created by me', icon: 'i-heroicons-pencil' },
+]
+function openPersonal(mode: any) {
+  personalView.value = mode; selectedIssueId.value = ''; selectedDocId.value = ''; selectedCycleId.value = ''
+  teamSection.value = ''; activeSection.value = 'tasks'
+}
+
+// страницы-разделы команды (cycles / docs / views)
+const teamSection = ref<'' | 'cycles' | 'docs' | 'views'>('')
+function openTeamSection(tid: string, section: any) {
+  selectedTeamId.value = tid; teamSection.value = section
+  personalView.value = ''; selectedDocId.value = ''; selectedCycleId.value = ''; selectedIssueId.value = ''; selectedMsId.value = ''
+  store.setFieldPredicate('cycle', null); activeSection.value = 'tasks'
+}
+
+// --- Docs (M7 ч.3) ---
+const selectedDocId = ref('')
+const selectedDoc = computed(() => store.documents[selectedDocId.value])
+const newDoc = ref('')
+function openDoc(id: string) { selectedDocId.value = id; selectedIssueId.value = ''; teamSection.value = '' }
+const addDoc = () => wrap(async () => { if (newDoc.value.trim()) { const id = await store.createDoc(selectedTeamId.value, newDoc.value); newDoc.value = ''; openDoc(id) } })
+// rich doc editor (md тулбар + live preview)
+const docMode = ref<'edit' | 'split' | 'preview'>('split')
+const docEl = ref<HTMLTextAreaElement | null>(null)
+const docDraft = ref('')
+watch(selectedDocId, (id) => { docDraft.value = id ? (store.documents[id]?.body?.md || '') : '' }, { immediate: true })
+let docSaveTimer: any = null
+function onDocInput() {
+  if (!selectedDocId.value) return
+  clearTimeout(docSaveTimer)
+  docSaveTimer = setTimeout(() => store.updateDoc(selectedDocId.value, { md: docDraft.value }), 600)
+}
+function docWrap(pre: string, post = pre) {
+  const el = docEl.value; if (!el) { docDraft.value += pre + post; onDocInput(); return }
+  const s = el.selectionStart, e = el.selectionEnd, v = docDraft.value
+  docDraft.value = v.slice(0, s) + pre + v.slice(s, e) + post + v.slice(e)
+  onDocInput(); nextTick(() => { el.focus(); el.selectionStart = s + pre.length; el.selectionEnd = e + pre.length })
+}
+const addChildDoc = (teamId: string, parentId: string) => wrap(async () => {
+  selectedTeamId.value = teamId; expandDocs[teamId] = true
+  const id = await store.createDoc(teamId, 'Untitled', parentId)
+  openDoc(id)
+})
+
+// --- Notifications (M7 ч.2) ---
+const notifOpen = ref(false)
+function openNotif(n: any) {
+  notifOpen.value = false
+  store.markNotificationRead(n.id)
+  if (n.entityType === 'channel') { openChannel(n.entityId); return }
+  const iss = store.issues[n.entityId]
+  if (iss) { activeSection.value = 'tasks'; personalView.value = ''; teamSection.value = ''; selectedTeamId.value = iss.teamId; openIssue(iss.id) }
+}
+const NOTIF_META: Record<string, { icon: string; verb: string; color: string }> = {
+  assigned: { icon: 'i-heroicons-user-plus', verb: 'Assigned to you', color: '#5e6ad2' },
+  state_changed: { icon: 'i-heroicons-arrow-path', verb: 'Status changed', color: '#d29922' },
+  commented: { icon: 'i-heroicons-chat-bubble-left-ellipsis', verb: 'New comment', color: '#3fb950' },
+  mention: { icon: 'i-heroicons-at-symbol', verb: 'Mentioned you', color: '#5e6ad2' },
+}
+function notifMeta(t: string) { return NOTIF_META[t] || { icon: 'i-heroicons-bell', verb: t, color: '#7c828c' } }
+// Inbox-фильтры (сайдбар)
+const inboxFilter = ref<'all' | 'unread' | 'assigned' | 'state_changed'>('all')
+const INBOX_FILTERS = [
+  { key: 'all', label: 'All', icon: 'i-heroicons-inbox' },
+  { key: 'unread', label: 'Unread', icon: 'i-heroicons-envelope' },
+  { key: 'assigned', label: 'Assigned to me', icon: 'i-heroicons-user-plus' },
+  { key: 'state_changed', label: 'Status changes', icon: 'i-heroicons-arrow-path' },
+  { key: 'commented', label: 'Comments', icon: 'i-heroicons-chat-bubble-left-ellipsis' },
+]
+const inboxList = computed(() => {
+  // скрываем типы, выключенные в настройках уведомлений
+  const all = store.myNotifications.filter((n: any) => notifPrefs.value[n.type] !== false)
+  if (inboxFilter.value === 'all') return all
+  if (inboxFilter.value === 'unread') return all.filter((n: any) => !n.readAt)
+  return all.filter((n: any) => n.type === inboxFilter.value)
+})
+function inboxCount(key: string) {
+  if (key === 'all') return store.myNotifications.length
+  if (key === 'unread') return store.unreadCount
+  return store.myNotifications.filter((n: any) => n.type === key).length
+}
+function notifTime(at: any) {
+  const s = String(at); const d = new Date(s)
+  if (isNaN(+d)) return s.slice(5, 10)
+  return d.toLocaleDateString('en', { month: 'short', day: 'numeric' })
+}
+
+// --- Meetings ---
+const meeting = useMeeting()
+const startOrJoinHuddle = (channelId: string) => wrap(async () => {
+  const existing = store.liveHuddleForChannel(channelId)
+  if (existing && meeting.activeMeetingId.value === existing.id) return // уже в нём
+  const mid = existing ? existing.id : await store.startHuddle(channelId)
+  await meeting.join(mid)
+})
+const joinScheduled = (mid: string) => wrap(() => meeting.join(mid))
+
+// --- Chats ---
+const msgDraft = ref('')
+const composerEl = ref<HTMLTextAreaElement | null>(null)
+const showPreview = ref(false)
+const currentChannel = computed(() => store.channels[store.activeChannelId])
+const threadParent = computed(() => store.channelMessages(store.activeChannelId).find((m: any) => m.id === store.threadParentId))
+function channelTitle(c: any) {
+  if (!c) return ''
+  return c.kind === 'dm' ? store.userName(store.dmOtherId(c.id)) : '# ' + c.name
+}
+// inline @/# пикеры (юзеры + сущности)
+const chatMention = useMention(msgDraft, composerEl)
+const descMention = useMention(descDraft, descEl)
+const docMention = useMention(docDraft, docEl)
+const commentMention = useMention(commentDraft, commentEl)
+function onCommentKeydown(e: KeyboardEvent) {
+  if (commentMention.onKeydown(e)) return
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addComment() }
+}
+function onComposerKeydown(e: KeyboardEvent) {
+  if (chatMention.onKeydown(e)) return
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg() }
+}
+// вложения в описании/доках — chat-модель: paste/пик → attachment (тумба/плашка), не inline md
+const descFileEl = ref<HTMLInputElement | null>(null)
+const docFileEl = ref<HTMLInputElement | null>(null)
+const attachFiles = (entityType: string, entityId: string, files?: FileList | File[] | null) => wrap(async () => {
+  if (!files || !entityId) return
+  for (const f of Array.from(files)) await store.addAttachment(entityType, entityId, f)
+})
+function onAttachPaste(e: ClipboardEvent, entityType: string, entityId: string) {
+  const items = e.clipboardData?.items; if (!items) return
+  const fs: File[] = []
+  for (const it of Array.from(items)) if (it.kind === 'file') { const f = it.getAsFile(); if (f) fs.push(f) }
+  if (fs.length) { e.preventDefault(); attachFiles(entityType, entityId, fs) }
+}
+const onDescFilePick = (e: Event) => { attachFiles('issue', selectedIssueId.value, (e.target as HTMLInputElement).files); (e.target as HTMLInputElement).value = '' }
+// доки: вставка прямо в тело (markdown), рендер как обычно
+function docInsertAtCaret(text: string) {
+  const el = docEl.value
+  const pos = el ? (el.selectionStart ?? docDraft.value.length) : docDraft.value.length
+  docDraft.value = docDraft.value.slice(0, pos) + text + docDraft.value.slice(pos)
+  onDocInput()
+  nextTick(() => { if (el) { el.focus(); const c = pos + text.length; el.selectionStart = el.selectionEnd = c } })
+}
+const docInsertFile = (file: File) => wrap(async () => {
+  const up = await store.uploadAndGetKey(file)
+  const url = fileViewUrl(up.key)
+  docInsertAtCaret(file.type.startsWith('image/') ? `\n![${file.name || 'image'}](${url})\n` : `[📎 ${file.name}](${url})`)
+})
+function onDocPaste(e: ClipboardEvent) {
+  const items = e.clipboardData?.items; if (!items) return
+  const fs: File[] = []
+  for (const it of Array.from(items)) if (it.kind === 'file') { const f = it.getAsFile(); if (f) fs.push(f) }
+  if (fs.length) { e.preventDefault(); fs.forEach(docInsertFile) }
+}
+const onDocFilePick = (e: Event) => { const files = (e.target as HTMLInputElement).files; if (files) Array.from(files).forEach(docInsertFile); (e.target as HTMLInputElement).value = '' }
+function onDescKeydown(e: KeyboardEvent) {
+  if (descMention.onKeydown(e)) return
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') saveDesc()
+}
+function onDocKeydown(e: KeyboardEvent) {
+  if (docMention.onKeydown(e)) return
+}
+const lightbox = useLightbox()
+// клик по картинке/#-чипу в отрендеренном markdown
+function onRefClick(e: MouseEvent) {
+  const t = e.target as HTMLElement
+  if (t.tagName === 'IMG' && t.classList.contains('md-img')) { lightbox.open((t as HTMLImageElement).src, (t as HTMLImageElement).alt); return }
+  const el = t.closest?.('.ref-chip') as HTMLElement | null
+  if (!el) return
+  const iss = el.dataset.issue
+  if (iss) { const i = store.issueByIdentifier(iss); if (i) { activeSection.value = 'tasks'; selectedTeamId.value = i.teamId; openIssue(i.id) } return }
+  const type = el.dataset.type, id = el.dataset.id || ''
+  if (type === 'doc') { const d = store.documents[id]; if (d) { activeSection.value = 'tasks'; selectedTeamId.value = d.teamId; openDoc(id) } }
+  else if (type === 'channel') { openChannel(id) }
+  else if (type === 'meeting') { activeSection.value = 'meetings' }
+}
+const chatFileEl = ref<HTMLInputElement | null>(null)
+const onChatFilePick = (e: Event) => {
+  const files = (e.target as HTMLInputElement).files
+  if (!files?.length) return
+  for (const f of Array.from(files)) pendingFiles.value = [...pendingFiles.value, f] // всё (картинки+файлы) → превью в композере, шлём прикреплённым
+  if (chatFileEl.value) chatFileEl.value.value = ''
+}
+const msgScrollEl = ref<HTMLElement | null>(null)
+function scrollMessagesBottom() { nextTick(() => { const el = msgScrollEl.value; if (el) el.scrollTop = el.scrollHeight }) }
+// разделитель «new messages»: метка времени, до которой прочитано (зафиксирована при открытии)
+const unreadDividerTs = ref('')
+const firstUnreadMsgId = computed(() => {
+  if (!unreadDividerTs.value || !currentChannel.value) return ''
+  const m = store.channelMessages(currentChannel.value.id).find((x: any) => x.authorId !== store.currentUserId && String(x.createdAt) > unreadDividerTs.value)
+  return m?.id || ''
+})
+async function openChannel(id: string) {
+  activeSection.value = 'chats'; store.closeThread(); editingId.value = ''
+  unreadDividerTs.value = store.channelUnreadCount(id) > 0 ? (store.channelLastReadAt(id) || '1970-01-01') : ''
+  await store.loadMessages(id)
+  await nextTick()
+  if (firstUnreadMsgId.value && msgScrollEl.value) {
+    const el = msgScrollEl.value.querySelector('[data-unread-divider]') as HTMLElement | null
+    if (el) el.scrollIntoView({ block: 'center' }); else scrollMessagesBottom()
+  } else scrollMessagesBottom()
+  store.markChannelRead(id)
+}
+const openDM = (userId: string) => wrap(async () => { activeSection.value = 'chats'; store.closeThread(); await store.createDM(userId); scrollMessagesBottom() })
+const pendingFiles = ref<File[]>([])
+const sendMsg = () => wrap(async () => {
+  const b = msgDraft.value.trim()
+  if ((!b && !pendingFiles.value.length) || !store.activeChannelId) return
+  const files = pendingFiles.value.slice()
+  msgDraft.value = ''; pendingFiles.value = []; showPreview.value = false
+  await store.sendMessageAttached(store.activeChannelId, b, files)
+  scrollMessagesBottom()
+})
+const onChatPaste = (e: ClipboardEvent) => {
+  const items = e.clipboardData?.items; if (!items) return
+  for (const it of Array.from(items)) {
+    if (it.type.startsWith('image/')) { e.preventDefault(); const f = it.getAsFile(); if (f) pendingFiles.value = [...pendingFiles.value, f] }
+  }
+}
+function wrapSel(pre: string, post = pre) {
+  const el = composerEl.value
+  if (!el) { msgDraft.value += pre + post; return }
+  const s = el.selectionStart, e = el.selectionEnd, v = msgDraft.value
+  msgDraft.value = v.slice(0, s) + pre + v.slice(s, e) + post + v.slice(e)
+  nextTick(() => { el.focus(); el.selectionStart = s + pre.length; el.selectionEnd = e + pre.length })
+}
+// edit / delete / reactions / threads
+const EMOJIS = ['👍', '❤️', '😄', '🎉', '👀', '🚀', '✅', '🔥']
+const editingId = ref('')
+const editDraft = ref('')
+const reactPickerId = ref('')
+const threadDraft = ref('')
+function reactionGroups(m: any) {
+  const g: Record<string, { emoji: string; count: number; mine: boolean }> = {}
+  for (const r of m.reactions || []) {
+    ;(g[r.emoji] ||= { emoji: r.emoji, count: 0, mine: false }).count++
+    if (r.userId === store.currentUserId) g[r.emoji].mine = true
+  }
+  return Object.values(g)
+}
+function startEdit(m: any) { editingId.value = m.id; editDraft.value = m.body }
+const saveEdit = () => wrap(async () => { if (editDraft.value.trim()) await store.editMessage(editingId.value, editDraft.value); editingId.value = '' })
+const react = (m: any, emoji: string) => { reactPickerId.value = ''; wrap(() => store.toggleReaction(m.id, emoji)) }
+const sendThread = () => wrap(async () => {
+  const b = threadDraft.value.trim()
+  if (!b || !store.threadParentId) return
+  threadDraft.value = ''
+  await store.sendMessage(store.activeChannelId, b, store.threadParentId)
+})
+// mentions
+function insertToken(text: string) {
+  const el = composerEl.value
+  if (!el) { msgDraft.value += text; return }
+  const s = el.selectionStart, v = msgDraft.value
+  msgDraft.value = v.slice(0, s) + text + v.slice(s)
+  nextTick(() => { el.focus(); el.selectionStart = el.selectionEnd = s + text.length })
+}
+const mentionItems = computed(() => [[...store.wsUsers, store.users[store.currentUserId]].filter(Boolean).map((u: any) => ({
+  label: u.name || u.email, avatar: undefined, click: () => insertToken(`@[${u.name || u.email}](${u.id}) `),
+}))])
+// members
+const showMembers = ref(false)
+const inviteEmail = ref('')
+const inviteRole = ref('member')
+const ROLES = ['member', 'admin', 'guest']
+const doInvite = () => wrap(async () => { if (!inviteEmail.value.trim()) return; await store.inviteMember(inviteEmail.value.trim(), inviteRole.value); inviteEmail.value = '' })
+
+// --- Settings-модалка (workspace) ---
+const showSettings = ref(false)
+const settingsTab = ref<'general' | 'members' | 'teams' | 'labels' | 'sections'>('general')
+const SETTINGS_TABS = [
+  { key: 'general', label: 'General', icon: 'i-heroicons-cog-6-tooth', group: 'Workspace' },
+  { key: 'members', label: 'Members', icon: 'i-heroicons-user-group', group: 'Workspace' },
+  { key: 'teams', label: 'Teams', icon: 'i-heroicons-rectangle-stack', group: 'Workspace' },
+  { key: 'labels', label: 'Labels', icon: 'i-heroicons-tag', group: 'Workspace' },
+  { key: 'account', label: 'Account', icon: 'i-heroicons-user-circle', group: 'Personal' },
+  { key: 'appearance', label: 'Appearance', icon: 'i-heroicons-swatch', group: 'Personal' },
+  { key: 'notifications', label: 'Notifications', icon: 'i-heroicons-bell', group: 'Personal' },
+  { key: 'sections', label: 'Sidebar', icon: 'i-heroicons-bars-3', group: 'Personal' },
+]
+const settingsGroups = computed(() => {
+  const g: Record<string, any[]> = {}
+  for (const t of SETTINGS_TABS) (g[t.group] ||= []).push(t)
+  return g
+})
+// appearance (клиентское, localStorage)
+const density = ref('default')
+const DENSITY_PX: Record<string, string> = { compact: '15px', default: '16px', comfortable: '18px' }
+function applyDensity(d: string) {
+  density.value = d
+  if (import.meta.client) { document.documentElement.style.fontSize = DENSITY_PX[d] || '16px'; localStorage.setItem('pms-density', d) }
+}
+// notifications prefs (клиентский фильтр типов в Inbox)
+const notifPrefs = ref<Record<string, boolean>>({ assigned: true, state_changed: true, commented: true, mention: true })
+function toggleNotifPref(k: string) {
+  notifPrefs.value[k] = !notifPrefs.value[k]
+  if (import.meta.client) localStorage.setItem('pms-notif-prefs', JSON.stringify(notifPrefs.value))
+}
+const NOTIF_PREF_LIST = [
+  { key: 'assigned', label: 'Assigned to me' },
+  { key: 'state_changed', label: 'Status changes' },
+  { key: 'commented', label: 'New comments' },
+  { key: 'mention', label: 'Mentions' },
+]
+const wsNameDraft = ref('')
+function openSettings() {
+  wsNameDraft.value = store.activeWorkspace?.name || ''
+  openRailCfg() // подготовить cfgList для вкладки Sidebar
+  settingsTab.value = 'general'; showSettings.value = true
+}
+const saveWsName = () => wrap(() => store.renameWorkspace(wsNameDraft.value.trim()))
+// avatar / logo upload
+const avatarEl = ref<HTMLInputElement | null>(null)
+const logoEl = ref<HTMLInputElement | null>(null)
+const onAvatarPick = (e: Event) => wrap(async () => {
+  const f = (e.target as HTMLInputElement).files?.[0]; if (!f) return
+  const up = await store.uploadAndGetKey(f); await store.setAvatar(up.key)
+  if (avatarEl.value) avatarEl.value.value = ''
+})
+const onLogoPick = (e: Event) => wrap(async () => {
+  const f = (e.target as HTMLInputElement).files?.[0]; if (!f) return
+  const up = await store.uploadAndGetKey(f); await store.setLogo(up.key)
+  if (logoEl.value) logoEl.value.value = ''
+})
+function confirmDeleteTeam(t: any) {
+  if (!import.meta.client || !confirm(`Delete team "${t.name}"? Sub-teams included. Must have no active issues.`)) return
+  wrap(async () => { await store.deleteTeam(t.id); if (selectedTeamId.value === t.id) { selectedTeamId.value = ''; teamSection.value = '' } })
+}
+function confirmDeleteWs() {
+  if (!import.meta.client || !confirm(`Delete workspace "${store.activeWorkspace?.name}"? This hides it and all its data.`)) return
+  wrap(async () => { await store.deleteWorkspace(); showSettings.value = false })
+}
+// labels (workspace-wide管理)
+const allLabels = computed(() => Object.values(store.labels))
+const newWsLabelName = ref('')
+const newWsLabelColor = ref('#5e6ad2')
+const LABEL_COLORS = ['#5e6ad2', '#e5484d', '#d29922', '#3fb950', '#1f9cf0', '#a371f7', '#6b747e']
+const addWsLabel = () => wrap(async () => {
+  const tid = selectedTeamId.value || store.teamList[0]?.id
+  if (!newWsLabelName.value.trim() || !tid) return
+  await store.createLabel(tid, newWsLabelName.value, newWsLabelColor.value); newWsLabelName.value = ''
+})
+
+// typing throttle
+let typingTs = 0
+function onComposerInput() {
+  const now = Date.now()
+  if (store.activeChannelId && now - typingTs > 2500) { typingTs = now; store.sendTyping(store.activeChannelId) }
+}
+function onMessagesScroll(e: Event) {
+  const el = e.target as HTMLElement
+  if (el.scrollTop < 40 && currentChannel.value) {
+    const prevH = el.scrollHeight
+    store.loadOlder(currentChannel.value.id).then(() => nextTick(() => { el.scrollTop = el.scrollHeight - prevH }))
+  }
+}
+
+// --- Command palette / поиск (M7) ---
+const paletteOpen = ref(false)
+const paletteQ = ref('')
+const paletteIdx = ref(0)
+const paletteInput = ref<HTMLInputElement | null>(null)
+const paletteResults = computed(() => store.searchAll(paletteQ.value))
+function openPalette() {
+  paletteOpen.value = true; paletteQ.value = ''; paletteIdx.value = 0
+  nextTick(() => paletteInput.value?.focus())
+}
+function paletteMove(d: number) {
+  const n = paletteResults.value.length
+  if (n) paletteIdx.value = (paletteIdx.value + d + n) % n
+}
+function runResult(r: any) {
+  paletteOpen.value = false
+  if (!r) return
+  if (r.type === 'issue') { activeSection.value = 'tasks'; selectedTeamId.value = r.teamId; openIssue(r.id) }
+  else if (r.type === 'team') { activeSection.value = 'tasks'; selectTeamIssues({ id: r.id }) }
+  else if (r.type === 'dashboard') { activeSection.value = 'dashboard'; selectedDashboardId.value = r.id }
+  else if (r.type === 'view') { activeSection.value = 'tasks'; openView(r.id) }
+  else if (r.type === 'doc') { selectedTeamId.value = r.teamId; openDoc(r.id) }
+  else if (r.type === 'channel') { openChannel(r.id) }
+}
+onMounted(() => {
+  window.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette() }
+    else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') { e.preventDefault(); openCreate('issue') }
+    else if (e.key === 'Escape') { paletteOpen.value = false; createOpen.value = false }
+  })
+  window.addEventListener('popstate', onPop)
+  // appearance + notif prefs
+  const d = localStorage.getItem('pms-density'); if (d) applyDensity(d)
+  try { const np = JSON.parse(localStorage.getItem('pms-notif-prefs') || 'null'); if (np) notifPrefs.value = np } catch {}
+  // персист развёрнутости дерева
+  try {
+    const s = JSON.parse(localStorage.getItem('pms-expand') || '{}')
+    Object.assign(expandTeam, s.team || {}); Object.assign(expandCycles, s.cycles || {}); Object.assign(expandDocs, s.docs || {}); Object.assign(expandViews, s.views || {})
+  } catch {}
+  watch([expandTeam, expandCycles, expandDocs, expandViews], () => {
+    localStorage.setItem('pms-expand', JSON.stringify({ team: expandTeam, cycles: expandCycles, docs: expandDocs, views: expandViews }))
+  }, { deep: true })
+})
+
+// глубина отступа дерева по числу сегментов ltree-path
+const depth = (p: string) => Math.max(0, String(p || '').split('.').length - 1)
+
+// роут-синк (в конце — после объявления всех ref, иначе TDZ)
+// состояние → URL (history.replace, без перерендера и без эха в applyRoute)
+watch(() => [activeSection.value, selectedTeamId.value, selectedIssueId.value, selectedDocId.value, selectedCycleId.value, teamSection.value, personalView.value, store.activeChannelId, selectedDashboardId.value],
+  () => { if (routeSyncing) return; const p = currentPath(); if (import.meta.client && p !== location.pathname) history.replaceState(history.state, '', p) })
+// URL → состояние только на back/forward (popstate) и при старте; наш replaceState popstate не вызывает
+function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
+</script>
+
+<template>
+  <div class="flex h-screen flex-col">
+    <!-- ⓪ Top bar -->
+    <header class="flex h-14 shrink-0 items-center gap-3 bg-base px-3 text-sm">
+      <!-- workspace switcher -->
+      <div class="relative">
+        <UButton color="gray" variant="ghost" trailing-icon="i-heroicons-chevron-down" @click="wsMenu = !wsMenu">
+          <Avatar :name="store.activeWorkspace?.name" :avatar-key="(store.activeWorkspace as any)?.logoKey" :size="20" />
+          <span class="font-medium">{{ store.activeWorkspace?.name || 'Workspace' }}</span>
+        </UButton>
+        <div v-if="wsMenu" class="absolute left-0 top-10 z-50 w-56 rounded-md border border-subtle bg-elevated p-1 shadow-lg">
+          <div class="px-2 py-1 text-xs uppercase text-tertiary">Workspaces</div>
+          <button v-for="w in store.myWorkspaces" :key="w.id"
+            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-hover"
+            :class="{ 'text-accent': w.id === store.activeWorkspaceId }" @click="switchWorkspace(w.id)">
+            <span class="flex h-5 w-5 items-center justify-center rounded bg-surface text-xs">{{ (w.name||'?')[0].toUpperCase() }}</span>{{ w.name }}
+          </button>
+          <div class="my-1 border-t border-subtle" />
+          <button class="w-full rounded-sm px-2 py-1.5 text-left text-tertiary hover:bg-hover" @click="wsMenu = false; openSettings(); settingsTab = 'members'">Manage members</button>
+          <button class="w-full rounded-sm px-2 py-1.5 text-left text-tertiary hover:bg-hover" @click="openCreate('workspace')">＋ New workspace</button>
+        </div>
+      </div>
+
+      <!-- глобальное создание -->
+      <UDropdown :items="createMenu" :popper="{ placement: 'bottom-start' }">
+        <UButton icon="i-heroicons-plus" color="gray" variant="ghost" square title="Create… (⌘N)" />
+      </UDropdown>
+
+      <!-- search -->
+      <UButton color="gray" variant="outline" icon="i-heroicons-magnifying-glass" class="mx-auto w-96" @click="openPalette">
+        <span class="flex-1 text-left text-tertiary">Search</span>
+        <template #trailing><UKbd>⌘K</UKbd></template>
+      </UButton>
+
+      <!-- notifications -->
+      <div class="relative">
+        <UButton icon="i-heroicons-bell" color="gray" variant="ghost" square @click="notifOpen = !notifOpen" />
+        <UBadge v-if="store.unreadCount" color="primary" size="xs" class="pointer-events-none absolute -right-1 -top-1 rounded-full">{{ store.unreadCount }}</UBadge>
+        <div v-if="notifOpen" class="absolute right-0 top-10 z-50 w-80 rounded-md border border-subtle bg-elevated shadow-lg">
+          <div class="flex items-center justify-between border-b border-subtle px-3 py-2 text-xs uppercase text-tertiary">
+            Notifications
+            <UButton v-if="store.unreadCount" size="2xs" color="gray" variant="ghost" @click="store.markAllNotificationsRead()">Mark all read</UButton>
+          </div>
+          <div class="max-h-96 overflow-y-auto">
+            <div v-for="n in store.myNotifications.slice(0, 15)" :key="n.id"
+              class="cursor-pointer border-b border-subtle px-3 py-2 text-xs hover:bg-hover"
+              :class="{ 'opacity-50': n.readAt }" @click="openNotif(n)">
+              <span class="text-tertiary">{{ n.type }}</span> · {{ store.issueById(n.entityId)?.identifier || n.entityType }}
+              <span v-if="!n.readAt" class="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-accent align-middle" />
+            </div>
+            <div v-if="!store.myNotifications.length" class="px-3 py-3 text-xs text-tertiary">No notifications</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden bg-base" @click="onRefClick">
+    <!-- ② Left rail -->
+    <aside class="flex w-16 flex-col items-center gap-2 bg-base py-3">
+      <div v-for="s in railSections" :key="s.key" class="relative">
+        <UButton :icon="s.icon" :title="s.label" square
+          :color="activeSection === s.key ? 'primary' : 'gray'"
+          :variant="activeSection === s.key ? 'soft' : 'ghost'"
+          @click="switchSection(s.key as any)" />
+        <span v-if="s.key === 'chats' && store.totalUnread" class="absolute -right-0.5 -top-0.5 flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-white">{{ store.totalUnread }}</span>
+      </div>
+
+      <!-- настройки воркспейса -->
+      <UButton class="mt-auto" icon="i-heroicons-cog-6-tooth" color="gray" variant="ghost" square title="Workspace settings" @click="openSettings" />
+      <UButton icon="i-heroicons-arrow-right-on-rectangle" color="gray" variant="ghost" square title="Logout" @click="logout" />
+    </aside>
+
+    <!-- ③ Contextual sidebar -->
+    <aside class="w-60 overflow-y-auto bg-base px-2 py-3 text-sm">
+      <!-- скелетон сайдбара -->
+      <div v-if="!store.loaded" class="space-y-2 px-1 pt-1">
+        <div class="skeleton h-3 w-20" />
+        <div v-for="n in 6" :key="n" class="skeleton h-7" :style="{ width: 55 + (n * 7) % 40 + '%' }" />
+      </div>
+
+      <!-- create workspace (по кнопке ＋ или когда воркспейсов нет) -->
+      <div v-if="showCreate || (store.loaded && !store.activeWorkspaceId && !store.myWorkspaces.length)"
+        class="mb-3 space-y-1.5 rounded-md border border-subtle p-2">
+        <div class="text-xs text-tertiary">New workspace</div>
+        <UInput v-model="slug" placeholder="slug" size="xs" />
+        <UInput v-model="name" placeholder="name" size="xs" />
+        <UButton block size="xs" @click="createWs">Create</UButton>
+      </div>
+
+      <!-- DASHBOARD section: список дашбордов -->
+      <template v-if="store.activeWorkspaceId && activeSection === 'dashboard'">
+        <div class="mb-1 flex items-center px-2 text-xs font-medium uppercase tracking-wider text-tertiary">
+          Dashboards
+          <UButton class="ml-auto" icon="i-heroicons-plus" color="gray" variant="ghost" size="2xs" square @click="openCreate('dashboard')" />
+        </div>
+        <div v-for="d in store.workspaceDashboards" :key="d.id"
+          class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 hover:bg-hover"
+          :class="selectedDashboardId === d.id ? 'bg-active text-white' : 'text-secondary'"
+          @click="selectedDashboardId = d.id"><UIcon name="i-heroicons-squares-2x2" class="text-tertiary" /> {{ d.name }}</div>
+        <div v-if="!store.workspaceDashboards.length" class="px-2 py-1 text-xs text-tertiary/60">No dashboards yet</div>
+      </template>
+
+      <!-- INBOX section: фильтры -->
+      <template v-if="store.activeWorkspaceId && activeSection === 'inbox'">
+        <div class="mb-1 px-2 text-xs font-medium uppercase tracking-wider text-tertiary">Filters</div>
+        <div v-for="f in INBOX_FILTERS" :key="f.key"
+          class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 hover:bg-hover"
+          :class="inboxFilter === f.key ? 'bg-active text-white' : 'text-secondary'"
+          @click="inboxFilter = f.key as any">
+          <UIcon :name="f.icon" class="text-tertiary" />
+          <span class="flex-1">{{ f.label }}</span>
+          <span class="text-xs text-tertiary">{{ inboxCount(f.key) }}</span>
+        </div>
+      </template>
+
+      <!-- CHATS section: каналы + личные -->
+      <template v-if="store.activeWorkspaceId && activeSection === 'chats'">
+        <div class="mb-1 flex items-center px-2 text-xs font-medium uppercase tracking-wider text-tertiary">
+          Channels
+          <UButton class="ml-auto" icon="i-heroicons-plus" color="gray" variant="ghost" size="2xs" square @click="openCreate('channel')" />
+        </div>
+        <div v-for="c in store.channelList" :key="c.id"
+          class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 hover:bg-hover"
+          :class="store.activeChannelId === c.id ? 'bg-active text-white' : store.channelUnreadCount(c.id) ? 'font-semibold text-white' : 'text-secondary'"
+          @click="openChannel(c.id)"><UIcon name="i-heroicons-hashtag" class="text-tertiary" /> <span class="truncate">{{ c.name }}</span>
+          <span v-if="store.channelUnreadCount(c.id) && store.activeChannelId !== c.id" class="ml-auto rounded-full bg-accent px-1.5 text-[11px] font-medium text-white">{{ store.channelUnreadCount(c.id) }}</span></div>
+        <div v-if="!store.channelList.length" class="px-2 py-1 text-xs text-tertiary/60">No channels</div>
+
+        <div class="mb-1 mt-4 px-2 text-xs font-medium uppercase tracking-wider text-tertiary">Direct messages</div>
+        <div v-for="u in store.wsUsers" :key="u.id"
+          class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 hover:bg-hover"
+          :class="currentChannel?.kind === 'dm' && store.dmOtherId(currentChannel.id) === u.id ? 'bg-active text-white' : store.channelUnreadCount(store.dmChannelWith(u.id)) ? 'font-semibold text-white' : 'text-secondary'"
+          @click="openDM(u.id)">
+          <Avatar :name="u.name || u.email" :avatar-key="u.avatarKey" :size="20" />
+          <span class="truncate">{{ u.name || u.email }}</span>
+          <span v-if="store.channelUnreadCount(store.dmChannelWith(u.id))" class="ml-auto rounded-full bg-accent px-1.5 text-[11px] font-medium text-white">{{ store.channelUnreadCount(store.dmChannelWith(u.id)) }}</span>
+        </div>
+        <div v-if="!store.wsUsers.length" class="px-2 py-1 text-xs text-tertiary/60">No other users</div>
+      </template>
+
+      <!-- MEETINGS section -->
+      <template v-if="store.activeWorkspaceId && activeSection === 'meetings'">
+        <UButton block icon="i-heroicons-plus" color="gray" variant="soft" size="sm" class="mb-4" @click="openCreate('meeting')">New meeting</UButton>
+        <div v-if="store.liveMeetings.length" class="mb-1 px-2 text-xs font-medium uppercase tracking-wider text-tertiary">Live now</div>
+        <div v-for="m in store.liveMeetings" :key="m.id"
+          class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 text-secondary hover:bg-hover" @click="joinScheduled(m.id)">
+          <span class="flex h-2 w-2 shrink-0 rounded-full bg-red-500" />
+          <span class="truncate">{{ m.kind === 'huddle' ? 'Huddle' : m.title }}</span>
+          <span class="ml-auto text-xs text-tertiary">{{ store.meetingJoined(m.id).length }}</span>
+        </div>
+        <div class="mb-1 mt-4 px-2 text-xs font-medium uppercase tracking-wider text-tertiary">Upcoming</div>
+        <div v-for="m in store.scheduledMeetings" :key="m.id"
+          class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 text-secondary hover:bg-hover" @click="joinScheduled(m.id)">
+          <UIcon name="i-heroicons-calendar" class="shrink-0 text-tertiary" />
+          <span class="truncate">{{ m.title || 'Meeting' }}</span>
+        </div>
+        <div v-if="!store.scheduledMeetings.length && !store.liveMeetings.length" class="px-2 py-1 text-xs text-tertiary/60">No meetings</div>
+      </template>
+
+      <!-- TASKS section: команды/проекты/циклы/поля -->
+      <template v-if="store.activeWorkspaceId && activeSection === 'tasks'">
+        <!-- персональные срезы -->
+        <div class="mb-5">
+          <div v-for="p in PERSONAL" :key="p.key"
+            class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 hover:bg-hover"
+            :class="personalView === p.key ? 'bg-active text-white' : 'text-secondary'"
+            @click="openPersonal(p.key)"><UIcon :name="p.icon" class="text-tertiary" /> {{ p.label }}</div>
+        </div>
+
+        <div class="mb-0.5 px-2 text-xs font-medium uppercase tracking-wider text-tertiary">Your teams</div>
+        <template v-for="t in store.teamList" :key="t.id">
+          <div class="group flex h-8 cursor-pointer items-center gap-1.5 rounded px-1.5 hover:bg-hover"
+            :style="{ paddingLeft: 6 + depth(t.path) * 12 + 'px' }" @click="expandTeam[t.id] = !expandTeam[t.id]">
+            <UIcon :name="expandTeam[t.id] ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'" class="shrink-0 text-sm text-tertiary" />
+            <UIcon name="i-heroicons-cube" class="shrink-0 text-tertiary" />
+            <span class="truncate font-medium text-secondary">{{ t.name }}</span>
+            <span class="text-xs text-tertiary">{{ t.key }}</span>
+          </div>
+          <div v-if="expandTeam[t.id]" :style="{ paddingLeft: 12 + depth(t.path) * 12 + 'px' }">
+            <!-- Issues -->
+            <div class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 text-sm hover:bg-hover"
+              :class="selectedTeamId === t.id && !selectedDocId && !selectedCycleId && !teamSection && !personalView ? 'bg-active text-white' : 'text-tertiary'"
+              @click="selectTeamIssues(t)"><UIcon name="i-heroicons-queue-list" /> Issues</div>
+            <!-- Cycles -->
+            <div class="flex h-8 cursor-pointer items-center gap-1 rounded px-2 text-sm hover:bg-hover"
+              :class="selectedTeamId === t.id && teamSection === 'cycles' ? 'bg-active text-white' : 'text-tertiary'"
+              @click="openTeamSection(t.id, 'cycles')">
+              <UIcon :name="expandCycles[t.id] ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'" class="rounded text-sm hover:bg-active" @click.stop="expandCycles[t.id] = !expandCycles[t.id]" /><UIcon name="i-heroicons-arrow-path-rounded-square" /> Cycles
+            </div>
+            <div v-if="expandCycles[t.id]" class="pl-6">
+              <div class="flex h-8 cursor-pointer items-center rounded px-2 text-sm hover:bg-hover"
+                :class="selectedCycleId && selectedCycleId === activeCycleOf(t.id)?.id ? 'bg-active text-white' : 'text-tertiary'"
+                @click="openCycleFor(t.id, activeCycleOf(t.id))">Current</div>
+              <div class="flex h-8 cursor-pointer items-center rounded px-2 text-sm hover:bg-hover"
+                :class="selectedCycleId && selectedCycleId === upcomingCycleOf(t.id)?.id ? 'bg-active text-white' : 'text-tertiary'"
+                @click="openCycleFor(t.id, upcomingCycleOf(t.id))">Upcoming</div>
+            </div>
+            <!-- Milestones -->
+            <div class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 text-sm hover:bg-hover"
+              :class="selectedTeamId === t.id && teamSection === 'milestones' ? 'bg-active text-white' : 'text-tertiary'"
+              @click="openTeamSection(t.id, 'milestones')"><span class="w-3.5" /><UIcon name="i-heroicons-flag" /> Milestones</div>
+            <!-- Docs (дерево) -->
+            <div class="flex h-8 cursor-pointer items-center gap-1 rounded px-2 text-sm hover:bg-hover"
+              :class="selectedTeamId === t.id && teamSection === 'docs' ? 'bg-active text-white' : 'text-tertiary'"
+              @click="openTeamSection(t.id, 'docs')">
+              <UIcon :name="expandDocs[t.id] ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'" class="rounded text-sm hover:bg-active" @click.stop="expandDocs[t.id] = !expandDocs[t.id]" /><UIcon name="i-heroicons-document-text" /> Docs
+            </div>
+            <div v-if="expandDocs[t.id]" class="pl-6">
+              <div v-for="nd in store.teamDocTree(t.id)" :key="nd.doc.id"
+                class="flex h-8 cursor-pointer items-center gap-1.5 rounded px-2 text-sm hover:bg-hover"
+                :class="selectedDocId === nd.doc.id ? 'bg-active text-white' : 'text-tertiary'" :style="{ paddingLeft: 8 + nd.depth * 12 + 'px' }"
+                @click="selectedTeamId = t.id; openDoc(nd.doc.id)"><UIcon name="i-heroicons-document" class="shrink-0" /> <span class="truncate">{{ nd.doc.title }}</span></div>
+            </div>
+            <!-- Views -->
+            <div class="flex h-8 cursor-pointer items-center gap-1 rounded px-2 text-sm hover:bg-hover"
+              :class="selectedTeamId === t.id && teamSection === 'views' ? 'bg-active text-white' : 'text-tertiary'"
+              @click="openTeamSection(t.id, 'views')">
+              <UIcon :name="expandViews[t.id] ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'" class="rounded text-sm hover:bg-active" @click.stop="expandViews[t.id] = !expandViews[t.id]" /><UIcon name="i-heroicons-square-3-stack-3d" /> Views
+            </div>
+            <div v-if="expandViews[t.id]" class="pl-6">
+              <div v-for="v in store.teamViews(t.id)" :key="v.id"
+                class="flex h-8 cursor-pointer items-center gap-1.5 rounded px-2 text-sm text-tertiary hover:bg-hover"
+                @click="selectedTeamId = t.id; selectedDocId = ''; openView(v.id)"><UIcon name="i-heroicons-star" /> {{ v.name }}</div>
+              <div v-if="!store.teamViews(t.id).length" class="px-2 py-0.5 text-xs text-tertiary/50">no views</div>
+            </div>
+          </div>
+        </template>
+      </template>
+
+      <p v-if="err" class="mt-3 text-xs text-red-400">{{ err }}</p>
+    </aside>
+
+    <!-- Контент-область: отдельные плавающие панели -->
+    <div class="flex flex-1 gap-2 overflow-hidden p-2">
+    <!-- ④ Main content -->
+    <main class="flex-1 overflow-y-auto rounded-xl border border-subtle bg-surface">
+      <!-- скелетон main (холодный старт) -->
+      <template v-if="!store.loaded">
+        <div class="border-b border-subtle px-4 py-3"><div class="skeleton h-4 w-40" /></div>
+        <div class="space-y-2 px-4 py-3">
+          <div v-for="n in 8" :key="n" class="flex items-center gap-3">
+            <div class="skeleton h-4 w-4 rounded-full" /><div class="skeleton h-3 w-12" /><div class="skeleton h-3 flex-1" :style="{ maxWidth: 40 + (n * 11) % 45 + '%' }" />
+          </div>
+        </div>
+      </template>
+
+      <!-- DASHBOARD section -->
+      <template v-else-if="activeSection === 'dashboard'">
+      <template v-if="selectedDashboard">
+        <div class="sticky top-0 z-10 flex items-center gap-2 border-b border-subtle bg-surface px-4 py-3 text-sm">
+          <UIcon name="i-heroicons-squares-2x2" class="text-tertiary" />
+          <span class="font-medium">{{ selectedDashboard.name }}</span>
+          <UButton class="ml-auto" icon="i-heroicons-plus" size="xs" color="gray" variant="ghost" @click="showWidget = true">Add widget</UButton>
+        </div>
+        <div class="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div v-for="w in store.widgetsOf(selectedDashboardId)" :key="w.id"
+            class="group relative rounded-lg border border-subtle bg-elevated p-4 transition-shadow"
+            :class="[(w.w || 1) >= 2 ? 'sm:col-span-2' : '', draggedWidget === w.id ? 'opacity-40' : '', 'cursor-grab']"
+            draggable="true" @dragstart="draggedWidget = w.id" @dragend="draggedWidget = ''"
+            @dragover.prevent @drop="draggedWidget && draggedWidget !== w.id && store.moveWidget(selectedDashboardId, draggedWidget, w.id)">
+            <div class="absolute right-2 top-2 flex gap-0.5 opacity-0 group-hover:opacity-100">
+              <UButton :icon="(w.w || 1) >= 2 ? 'i-heroicons-arrows-pointing-in' : 'i-heroicons-arrows-pointing-out'" color="gray" variant="ghost" size="2xs" square :title="(w.w||1)>=2 ? 'Shrink' : 'Widen'" @click="store.resizeWidget(w.id, (w.w||1) >= 2 ? 1 : 2, w.h || 1)" />
+              <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="store.removeWidget(w.id)" />
+            </div>
+            <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary">{{ w.title || w.type }}</div>
+            <div v-if="w.type==='note'" class="whitespace-pre-wrap text-sm">{{ w.config?.text }}</div>
+            <div v-else-if="w.type==='stat'" class="text-4xl font-semibold">{{ statValue(w) }}</div>
+            <div v-else-if="w.type==='view'" class="space-y-1 text-sm">
+              <div v-for="i in store.viewIssues(w.config?.viewId)" :key="i.id" class="flex gap-2">
+                <span class="text-tertiary">{{ i.identifier }}</span><span class="truncate">{{ i.title }}</span>
+              </div>
+              <div v-if="!store.viewIssues(w.config?.viewId).length" class="text-tertiary">empty / pick a view</div>
+            </div>
+            <div v-else class="flex h-28 items-end gap-2 pt-2">
+              <div v-for="c in store.issuesByCategory" :key="c.cat" class="flex flex-1 flex-col items-center gap-1">
+                <div class="flex w-full flex-1 items-end">
+                  <div class="w-full rounded-t" :style="{ height: Math.max(4, (c.count / Math.max(1, Math.max(...store.issuesByCategory.map((x) => x.count)))) * 80) + 'px', background: c.color }" />
+                </div>
+                <span class="text-[10px] text-tertiary">{{ c.count }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-if="!store.widgetsOf(selectedDashboardId).length"
+            class="flex h-32 cursor-pointer items-center justify-center rounded-lg border border-dashed border-subtle text-sm text-tertiary hover:bg-hover"
+            @click="showWidget = true">+ Add your first widget</div>
+        </div>
+      </template>
+      <div v-else class="p-8 text-sm text-tertiary">Pick or create a dashboard →</div>
+      </template>
+
+      <!-- INBOX section -->
+      <template v-else-if="activeSection === 'inbox'">
+        <div class="sticky top-0 z-10 flex items-center gap-2 border-b border-subtle bg-surface px-4 py-3 text-sm">
+          <UIcon name="i-heroicons-inbox" class="text-tertiary" />
+          <span class="font-medium">Inbox</span>
+          <span v-if="store.unreadCount" class="rounded bg-accent/20 px-1.5 text-xs text-accent">{{ store.unreadCount }}</span>
+          <UButton v-if="store.unreadCount" class="ml-auto" icon="i-heroicons-check" size="xs" color="gray" variant="ghost" @click="store.markAllNotificationsRead()">Mark all read</UButton>
+        </div>
+        <div v-for="n in inboxList" :key="n.id"
+          class="group flex cursor-pointer items-start gap-3 border-b border-subtle/40 px-4 py-3 hover:bg-hover"
+          @click="openNotif(n)">
+          <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full" :class="n.readAt ? 'bg-transparent' : 'bg-accent'" />
+          <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-elevated">
+            <UIcon :name="notifMeta(n.type).icon" :style="{ color: notifMeta(n.type).color }" />
+          </span>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span :class="n.readAt ? 'text-secondary' : 'font-medium'">{{ notifMeta(n.type).verb }}</span>
+              <span class="text-xs text-tertiary">{{ store.issueById(n.entityId)?.identifier }}</span>
+              <span class="ml-auto shrink-0 text-xs text-tertiary">{{ notifTime(n.at) }}</span>
+            </div>
+            <div class="truncate text-sm text-tertiary">{{ store.issueById(n.entityId)?.title || n.entityType }}</div>
+          </div>
+          <UButton v-if="!n.readAt" class="mt-0.5 opacity-0 group-hover:opacity-100" icon="i-heroicons-check" color="gray" variant="ghost" size="2xs" square title="Mark read" @click.stop="store.markNotificationRead(n.id)" />
+        </div>
+        <div v-if="!inboxList.length" class="flex flex-col items-center justify-center gap-2 py-20 text-tertiary">
+          <UIcon name="i-heroicons-inbox" class="text-3xl" />
+          <span class="text-sm">{{ inboxFilter === 'all' ? "No notifications — you're all caught up" : 'Nothing here' }}</span>
+        </div>
+      </template>
+
+      <!-- CHATS section -->
+      <template v-else-if="activeSection === 'chats'">
+        <div v-if="currentChannel" class="flex h-full flex-col">
+          <div class="flex shrink-0 items-center gap-2 border-b border-subtle px-4 py-3">
+            <UIcon :name="currentChannel.kind === 'dm' ? 'i-heroicons-user' : 'i-heroicons-hashtag'" class="text-tertiary" />
+            <span class="font-medium">{{ channelTitle(currentChannel) }}</span>
+            <template v-if="store.liveHuddleForChannel(currentChannel.id)">
+              <UButton class="ml-auto" :color="meeting.activeMeetingId.value === store.liveHuddleForChannel(currentChannel.id)?.id ? 'gray' : 'green'" variant="soft" size="xs" icon="i-heroicons-signal"
+                @click="startOrJoinHuddle(currentChannel.id)">
+                {{ meeting.activeMeetingId.value === store.liveHuddleForChannel(currentChannel.id)?.id ? 'In huddle' : 'Join huddle' }}
+                · {{ store.meetingJoined(store.liveHuddleForChannel(currentChannel.id)!.id).length }}
+              </UButton>
+            </template>
+            <UButton v-else class="ml-auto" color="gray" variant="ghost" size="xs" icon="i-heroicons-signal" title="Start huddle" @click="startOrJoinHuddle(currentChannel.id)">Huddle</UButton>
+            <UButton :icon="linkCopied ? 'i-heroicons-check' : 'i-heroicons-link'" color="gray" variant="ghost" size="xs" square :title="linkCopied ? 'Copied!' : 'Copy link'" @click="copyLink" />
+          </div>
+          <!-- messages -->
+          <div ref="msgScrollEl" class="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-3" @scroll="onMessagesScroll">
+            <div v-if="store.hasMoreMessages[currentChannel.id]" class="py-1 text-center text-xs text-tertiary">loading older…</div>
+            <template v-for="m in store.channelMessages(currentChannel.id)" :key="m.id">
+            <div v-if="m.id === firstUnreadMsgId" data-unread-divider class="my-1 flex items-center gap-2 px-2 text-xs font-medium text-red-400">
+              <span class="h-px flex-1 bg-red-400/40" /> New messages <span class="h-px flex-1 bg-red-400/40" />
+            </div>
+            <div
+              class="group relative flex gap-3 rounded-md px-2 py-1.5 hover:bg-hover">
+              <Avatar class="mt-0.5" :name="store.userName(m.authorId)" :avatar-key="store.users[m.authorId]?.avatarKey" :size="32" />
+              <div class="min-w-0 flex-1">
+                <div class="flex items-baseline gap-2">
+                  <span class="text-sm font-medium">{{ store.userName(m.authorId) }}</span>
+                  <span class="text-xs text-tertiary">{{ notifTime(m.createdAt) }}</span>
+                  <span v-if="m.editedAt" class="text-xs text-tertiary/60">(edited)</span>
+                </div>
+                <!-- edit mode -->
+                <div v-if="editingId === m.id" class="mt-1">
+                  <textarea v-model="editDraft" rows="2" class="w-full rounded-md border border-subtle bg-elevated px-2 py-1 text-sm outline-none" @keydown.enter.exact.prevent="saveEdit" @keydown.esc="editingId = ''" />
+                  <div class="mt-1 flex gap-2"><UButton size="2xs" @click="saveEdit">Save</UButton><UButton size="2xs" color="gray" variant="ghost" @click="editingId = ''">Cancel</UButton></div>
+                </div>
+                <template v-else>
+                  <div v-if="m.deletedAt" class="text-sm italic text-tertiary">(message deleted)</div>
+                  <div v-else class="prose-chat text-sm leading-relaxed" v-html="renderMarkdown(m.body)" />
+                  <Attachments v-if="store.attachmentsFor('message', m.id).length" class="mt-1.5" entity-type="message" :entity-id="m.id" readonly />
+                  <!-- reactions -->
+                  <div v-if="reactionGroups(m).length" class="mt-1 flex flex-wrap gap-1">
+                    <button v-for="g in reactionGroups(m)" :key="g.emoji"
+                      class="flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs"
+                      :class="g.mine ? 'border-accent bg-accent/15 text-white' : 'border-subtle hover:bg-hover'"
+                      @click="react(m, g.emoji)">{{ g.emoji }} {{ g.count }}</button>
+                  </div>
+                  <!-- reply count -->
+                  <button v-if="m.replyCount && !m.parentId" class="mt-1 flex items-center gap-1 text-xs text-accent hover:underline" @click="store.loadThread(m.id)">
+                    <UIcon name="i-heroicons-chat-bubble-left-right" /> {{ m.replyCount }} {{ m.replyCount === 1 ? 'reply' : 'replies' }}
+                  </button>
+                </template>
+              </div>
+              <!-- hover actions -->
+              <div v-if="!m.deletedAt && editingId !== m.id" class="absolute -top-3 right-2 hidden items-center gap-0.5 rounded-md border border-subtle bg-elevated px-1 py-0.5 shadow group-hover:flex">
+                <div class="relative">
+                  <UButton icon="i-heroicons-face-smile" color="gray" variant="ghost" size="2xs" square title="React" @click="reactPickerId = reactPickerId === m.id ? '' : m.id" />
+                  <div v-if="reactPickerId === m.id" class="absolute bottom-7 right-0 z-20 flex gap-1 rounded-md border border-subtle bg-elevated p-1 shadow-lg">
+                    <button v-for="e in EMOJIS" :key="e" class="rounded p-1 text-base hover:bg-hover" @click="react(m, e)">{{ e }}</button>
+                  </div>
+                </div>
+                <UButton v-if="!m.parentId" icon="i-heroicons-chat-bubble-oval-left" color="gray" variant="ghost" size="2xs" square title="Reply in thread" @click="store.loadThread(m.id)" />
+                <UButton v-if="m.authorId === store.currentUserId" icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square title="Edit" @click="startEdit(m)" />
+                <UButton v-if="m.authorId === store.currentUserId" icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square title="Delete" @click="store.deleteMessage(m.id)" />
+              </div>
+            </div>
+            </template>
+            <div v-if="store.messages[currentChannel.id] === undefined" class="space-y-3 py-2">
+              <div v-for="n in 6" :key="n" class="flex gap-3"><div class="skeleton h-8 w-8 rounded-full" /><div class="flex-1 space-y-1"><div class="skeleton h-3 w-24" /><div class="skeleton h-3" :style="{ width: 30 + (n * 13) % 55 + '%' }" /></div></div>
+            </div>
+            <div v-else-if="!store.channelMessages(currentChannel.id).length" class="py-16 text-center text-sm text-tertiary">No messages yet — say hi 👋</div>
+          </div>
+          <!-- typing -->
+          <div class="h-5 px-4 text-xs text-tertiary">
+            <span v-if="store.typingNames(currentChannel.id).length">{{ store.typingNames(currentChannel.id).join(', ') }} typing…</span>
+          </div>
+          <!-- composer -->
+          <div class="shrink-0 px-3 pb-3">
+            <PendingAttachments v-if="pendingFiles.length" class="mb-1.5" :files="pendingFiles" @remove="(i) => pendingFiles = pendingFiles.filter((_, j) => j !== i)" />
+            <div class="rounded-lg border border-subtle bg-elevated">
+              <div class="flex items-center gap-1 border-b border-subtle px-2 py-1">
+                <UButton color="gray" variant="ghost" size="2xs" square title="Bold" class="font-bold" @click="wrapSel('**')">B</UButton>
+                <UButton color="gray" variant="ghost" size="2xs" square title="Italic" class="italic" @click="wrapSel('_')">I</UButton>
+                <UButton icon="i-heroicons-code-bracket" color="gray" variant="ghost" size="2xs" square title="Code" @click="wrapSel('`')" />
+                <UButton icon="i-heroicons-link" color="gray" variant="ghost" size="2xs" square title="Link" @click="wrapSel('[', '](url)')" />
+                <UButton icon="i-heroicons-list-bullet" color="gray" variant="ghost" size="2xs" square title="List" @click="wrapSel('\n- ', '')" />
+                <UDropdown :items="mentionItems" :popper="{ placement: 'top-start' }">
+                  <UButton icon="i-heroicons-at-symbol" color="gray" variant="ghost" size="2xs" square title="Mention" />
+                </UDropdown>
+                <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="2xs" square title="Attach file" @click="chatFileEl?.click()" />
+                <input ref="chatFileEl" type="file" multiple class="hidden" @change="onChatFilePick" />
+                <UButton class="ml-auto" :icon="showPreview ? 'i-heroicons-pencil' : 'i-heroicons-eye'" color="gray" variant="ghost" size="2xs" square @click="showPreview = !showPreview" />
+              </div>
+              <div v-if="showPreview" class="prose-chat min-h-[60px] px-3 py-2 text-sm" v-html="renderMarkdown(msgDraft) || '<span class=&quot;text-tertiary&quot;>Nothing to preview</span>'" />
+              <div v-else class="relative">
+                <MentionMenu :m="chatMention" />
+                <textarea ref="composerEl" v-model="msgDraft" rows="3" placeholder="Message… (markdown, @mention, #ref, Enter to send)"
+                  class="w-full resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-tertiary"
+                  @paste="onChatPaste" @input="onComposerInput(); chatMention.detect()" @keydown="onComposerKeydown" />
+              </div>
+              <div class="flex items-center justify-between px-3 py-1.5">
+                <span class="text-xs text-tertiary">**bold** _italic_ `code` — Enter send, Shift+Enter newline</span>
+                <UButton icon="i-heroicons-paper-airplane" size="xs" :disabled="!msgDraft.trim() && !pendingFiles.length" @click="sendMsg">Send</UButton>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="flex h-full flex-col items-center justify-center gap-2 text-tertiary">
+          <UIcon name="i-heroicons-chat-bubble-left-right" class="text-3xl" />
+          <span class="text-sm">Select a channel or person →</span>
+        </div>
+      </template>
+
+      <!-- MEETINGS section -->
+      <template v-else-if="activeSection === 'meetings'">
+        <div class="mx-auto max-w-3xl px-6 py-6">
+          <div class="mb-5 flex items-center gap-2">
+            <h1 class="text-lg font-semibold text-white">Meetings</h1>
+            <UButton class="ml-auto" icon="i-heroicons-plus" size="sm" @click="openCreate('meeting')">New meeting</UButton>
+          </div>
+
+          <div v-if="store.liveMeetings.length" class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary">Live now</div>
+          <div v-for="m in store.liveMeetings" :key="m.id" class="mb-2 flex items-center gap-3 rounded-lg border border-subtle bg-elevated p-3">
+            <span class="flex h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" />
+            <div class="min-w-0 flex-1">
+              <div class="truncate font-medium text-white">{{ m.kind === 'huddle' ? 'Huddle' : (m.title || 'Meeting') }}</div>
+              <div class="text-xs text-tertiary">{{ store.meetingJoined(m.id).length }} in call · {{ store.meetingParts(m.id).length }} invited</div>
+            </div>
+            <div class="flex -space-x-1.5">
+              <span v-for="p in store.meetingJoined(m.id).slice(0, 4)" :key="p.userId"
+                class="flex h-6 w-6 items-center justify-center rounded-full border border-surface bg-active text-[10px] text-white" :title="store.userName(p.userId)">
+                {{ store.userName(p.userId).charAt(0).toUpperCase() }}
+              </span>
+            </div>
+            <UButton v-if="meeting.activeMeetingId.value !== m.id" color="green" size="sm" icon="i-heroicons-signal" @click="joinScheduled(m.id)">Join</UButton>
+            <UButton v-else color="gray" size="sm" variant="soft" disabled>In call</UButton>
+          </div>
+
+          <div class="mb-2 mt-6 text-xs font-medium uppercase tracking-wider text-tertiary">Upcoming</div>
+          <div v-for="m in store.scheduledMeetings" :key="m.id" class="group mb-2 flex items-center gap-3 rounded-lg border border-subtle bg-elevated p-3">
+            <UIcon name="i-heroicons-calendar" class="shrink-0 text-tertiary" />
+            <div class="min-w-0 flex-1">
+              <div class="truncate font-medium text-white">{{ m.title || 'Meeting' }}</div>
+              <div class="text-xs text-tertiary">
+                <span v-if="m.scheduledAt">{{ new Date(m.scheduledAt).toLocaleString() }} · </span>{{ store.meetingParts(m.id).length }} invited
+              </div>
+            </div>
+            <div class="flex -space-x-1.5">
+              <span v-for="p in store.meetingParts(m.id).slice(0, 4)" :key="p.userId"
+                class="flex h-6 w-6 items-center justify-center rounded-full border border-surface bg-elevated text-[10px] text-tertiary" :title="store.userName(p.userId)">
+                {{ store.userName(p.userId).charAt(0).toUpperCase() }}
+              </span>
+            </div>
+            <UButton size="sm" icon="i-heroicons-video-camera" @click="joinScheduled(m.id)">Start</UButton>
+            <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="xs" square @click="store.endMeeting(m.id)" />
+          </div>
+          <div v-if="!store.scheduledMeetings.length && !store.liveMeetings.length" class="py-16 text-center text-sm text-tertiary">
+            No meetings yet. Create one or start a huddle from any chat.
+          </div>
+        </div>
+      </template>
+
+      <!-- TASKS section -->
+      <template v-else>
+      <!-- Personal view (My issues / Active / Created) -->
+      <template v-if="personalView">
+        <div class="sticky top-0 z-10 flex items-center gap-2 border-b border-subtle bg-surface px-4 py-3 text-sm">
+          <UIcon :name="PERSONAL.find((p) => p.key === personalView)?.icon" class="text-tertiary" />
+          <span class="font-medium">{{ PERSONAL.find((p) => p.key === personalView)?.label }}</span>
+          <span class="text-tertiary">{{ store.personalIssues(personalView).length }}</span>
+        </div>
+        <div v-for="i in store.personalIssues(personalView)" :key="i.id"
+          class="flex cursor-pointer items-center gap-3 border-b border-subtle/40 px-4 py-2.5 hover:bg-hover"
+          :class="{ 'bg-active': selectedIssueId === i.id }" @click="openIssue(i.id)">
+          <UIcon v-if="i.priority" :name="prioIcon(i.priority)" :style="{ color: prioColor(i.priority) }" class="shrink-0" />
+          <UIcon v-else name="i-heroicons-minus" class="shrink-0 text-tertiary/50" />
+          <span class="w-16 shrink-0 text-sm text-tertiary">{{ i.identifier }}</span>
+          <UIcon :name="statusIcon(store.states[i.stateId]?.category)" :style="{ color: statusColor(store.states[i.stateId]?.category) }" class="shrink-0" />
+          <span class="flex-1 truncate">{{ i.title }}</span>
+          <span class="shrink-0 text-xs text-tertiary">{{ store.teams[i.teamId]?.key }}</span>
+        </div>
+        <div v-if="!store.personalIssues(personalView).length" class="px-4 py-8 text-center text-sm text-tertiary">No issues</div>
+      </template>
+
+      <!-- CYCLES page -->
+      <template v-else-if="teamSection === 'cycles' && selectedTeam">
+        <div class="sticky top-0 z-10 flex items-center gap-1.5 border-b border-subtle bg-surface px-4 py-3 text-sm">
+          <span class="text-tertiary">{{ store.activeWorkspace?.name }}</span>
+          <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+          <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
+          <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+          <UIcon name="i-heroicons-arrow-path-rounded-square" class="text-tertiary" />
+          <span class="font-medium">Cycles</span>
+          <span class="text-tertiary">{{ store.teamCycles(selectedTeamId).length }}</span>
+          <UButton class="ml-auto" icon="i-heroicons-plus" size="xs" color="gray" variant="ghost" @click="openCreate('cycle')">New cycle</UButton>
+        </div>
+        <div class="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div v-for="c in store.teamCycles(selectedTeamId)" :key="c.id"
+            class="cursor-pointer rounded-lg border border-subtle bg-elevated p-4 hover:bg-hover"
+            @click="openCycleFor(selectedTeamId, c)">
+            <div class="mb-1 flex items-center gap-2">
+              <UIcon name="i-heroicons-play-circle" :class="c.status === 'active' ? 'text-accent' : 'text-tertiary'" />
+              <span class="font-medium">Cycle {{ c.number }}</span>
+              <span class="ml-auto rounded bg-surface px-1.5 text-xs text-tertiary">{{ c.status }}</span>
+            </div>
+            <div class="text-xs text-tertiary">{{ String(c.startsOn).slice(0,10) }} → {{ String(c.endsOn).slice(0,10) }}</div>
+            <div class="mt-2 text-xs text-tertiary">{{ store.cycleStats(c.id).completed }}/{{ store.cycleStats(c.id).scope }} done</div>
+          </div>
+          <div v-if="!store.teamCycles(selectedTeamId).length"
+            class="flex h-28 cursor-pointer items-center justify-center rounded-lg border border-dashed border-subtle text-sm text-tertiary hover:bg-hover"
+            @click="openCreate('cycle')">+ Create first cycle</div>
+        </div>
+      </template>
+
+      <!-- MILESTONES page -->
+      <template v-else-if="teamSection === 'milestones' && selectedTeam">
+        <!-- детали выбранной вехи -->
+        <template v-if="selectedMs">
+          <div class="sticky top-0 z-10 border-b border-subtle bg-surface px-4 py-3">
+            <div class="flex items-center gap-1.5 text-sm">
+              <span class="text-tertiary">{{ store.activeWorkspace?.name }}</span>
+              <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+              <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
+              <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+              <button class="text-tertiary hover:text-secondary" @click="selectedMsId = ''">Milestones</button>
+              <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+              <UIcon name="i-heroicons-flag" :class="selectedMs.status === 'done' ? 'text-accent' : selectedMs.status === 'active' ? 'text-amber-400' : 'text-tertiary'" />
+              <span class="font-medium">{{ selectedMs.name }}</span>
+              <USelectMenu :model-value="selectedMs.status" :options="labelOpts(['planned', 'active', 'done'])" value-attribute="value" option-attribute="label" size="xs" class="w-28" @update:model-value="(st) => store.updateMilestone(selectedMs.id, { status: st })" />
+              <span v-if="selectedMs.targetDate" class="text-xs" :class="msOverdue(selectedMs) ? 'text-red-400' : 'text-tertiary'">{{ String(selectedMs.targetDate).slice(0,10) }}{{ msOverdue(selectedMs) ? ' · overdue' : '' }}</span>
+              <span class="ml-auto text-xs text-tertiary">{{ store.milestoneProgress(selectedMs.id).done }}/{{ store.milestoneProgress(selectedMs.id).total }}</span>
+            </div>
+            <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-elevated">
+              <div class="h-full rounded-full bg-accent" :style="{ width: (store.milestoneProgress(selectedMs.id).total ? store.milestoneProgress(selectedMs.id).done / store.milestoneProgress(selectedMs.id).total * 100 : 0) + '%' }" />
+            </div>
+          </div>
+          <div v-for="i in store.milestoneIssues(selectedMs.id)" :key="i.id"
+            class="flex cursor-pointer items-center gap-3 border-b border-subtle/40 px-4 py-2.5 hover:bg-hover" @click="openIssue(i.id)">
+            <UIcon :name="statusIcon(store.states[i.stateId]?.category)" :style="{ color: statusColor(store.states[i.stateId]?.category) }" class="shrink-0" />
+            <span class="w-14 shrink-0 text-sm text-tertiary">{{ i.identifier }}</span>
+            <span class="flex-1 truncate">{{ i.title }}</span>
+            <span v-if="i.assigneeId" class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-elevated text-[10px]">{{ (store.userName(i.assigneeId) || '?')[0].toUpperCase() }}</span>
+          </div>
+          <div v-if="!store.milestoneIssues(selectedMs.id).length" class="py-10 text-center text-sm text-tertiary">No issues — assign via issue's Milestone field</div>
+        </template>
+
+        <!-- список вех -->
+        <template v-else>
+          <div class="sticky top-0 z-10 flex items-center gap-1.5 border-b border-subtle bg-surface px-4 py-3 text-sm">
+            <span class="text-tertiary">{{ store.activeWorkspace?.name }}</span>
+            <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+            <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
+            <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+            <UIcon name="i-heroicons-flag" class="text-tertiary" />
+            <span class="font-medium">Milestones</span>
+            <span class="text-tertiary">{{ store.teamMilestones(selectedTeamId).length }}</span>
+            <UButton class="ml-auto" icon="i-heroicons-plus" size="xs" color="gray" variant="ghost" @click="openCreate('milestone')">New milestone</UButton>
+          </div>
+          <div class="p-4">
+            <div class="space-y-2">
+              <div v-for="m in store.teamMilestones(selectedTeamId)" :key="m.id"
+                class="group cursor-pointer rounded-lg border border-subtle bg-elevated p-3 hover:border-strong" @click="openMilestone(m.id)">
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-heroicons-flag" :class="m.status === 'done' ? 'text-accent' : m.status === 'active' ? 'text-amber-400' : 'text-tertiary'" />
+                  <span class="flex-1 truncate font-medium">{{ m.name }}</span>
+                  <span class="rounded bg-surface px-1.5 text-xs text-tertiary">{{ m.status }}</span>
+                  <span v-if="m.targetDate" class="text-xs" :class="msOverdue(m) ? 'text-red-400' : 'text-tertiary'">{{ String(m.targetDate).slice(5,10) }}</span>
+                  <UButton icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" @click.stop="store.deleteMilestone(m.id)" />
+                </div>
+                <div class="mt-2 flex items-center gap-2 text-xs text-tertiary">
+                  <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-surface">
+                    <div class="h-full rounded-full bg-accent" :style="{ width: (store.milestoneProgress(m.id).total ? store.milestoneProgress(m.id).done / store.milestoneProgress(m.id).total * 100 : 0) + '%' }" />
+                  </div>
+                  <span>{{ store.milestoneProgress(m.id).done }}/{{ store.milestoneProgress(m.id).total }}</span>
+                </div>
+              </div>
+              <div v-if="!store.teamMilestones(selectedTeamId).length" class="py-10 text-center text-sm text-tertiary">No milestones yet</div>
+            </div>
+          </div>
+        </template>
+      </template>
+
+      <!-- DOCS home -->
+      <template v-else-if="teamSection === 'docs' && selectedTeam">
+        <div class="sticky top-0 z-10 flex items-center gap-1.5 border-b border-subtle bg-surface px-4 py-3 text-sm">
+          <span class="text-tertiary">{{ store.activeWorkspace?.name }}</span>
+          <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+          <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
+          <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+          <UIcon name="i-heroicons-document-text" class="text-tertiary" />
+          <span class="font-medium">Docs</span>
+          <span class="text-tertiary">{{ store.teamDocs(selectedTeamId).length }}</span>
+          <UButton class="ml-auto" icon="i-heroicons-plus" size="xs" color="gray" variant="ghost" @click="openCreate('doc')">New doc</UButton>
+        </div>
+        <div class="p-4">
+          <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary">Recent</div>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <div v-for="d in store.teamDocs(selectedTeamId)" :key="d.id"
+              class="cursor-pointer rounded-lg border border-subtle bg-elevated p-4 hover:bg-hover"
+              @click="openDoc(d.id)">
+              <div class="flex items-center gap-2"><UIcon name="i-heroicons-document" class="text-tertiary" /><span class="truncate font-medium">{{ d.title }}</span></div>
+              <div class="mt-1 line-clamp-2 text-xs text-tertiary">{{ d.body?.md || 'Empty document' }}</div>
+            </div>
+            <div v-if="!store.teamDocs(selectedTeamId).length"
+              class="flex h-28 cursor-pointer items-center justify-center rounded-lg border border-dashed border-subtle text-sm text-tertiary hover:bg-hover"
+              @click="openCreate('doc')">+ Create first doc</div>
+          </div>
+        </div>
+      </template>
+
+      <!-- VIEWS page -->
+      <template v-else-if="teamSection === 'views' && selectedTeam">
+        <div class="sticky top-0 z-10 flex items-center gap-1.5 border-b border-subtle bg-surface px-4 py-3 text-sm">
+          <span class="text-tertiary">{{ store.activeWorkspace?.name }}</span>
+          <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+          <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
+          <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+          <UIcon name="i-heroicons-square-3-stack-3d" class="text-tertiary" />
+          <span class="font-medium">Views</span>
+          <span class="text-tertiary">{{ store.teamViews(selectedTeamId).length }}</span>
+        </div>
+        <div class="p-4">
+          <div class="divide-y divide-subtle/40 overflow-hidden rounded-lg border border-subtle">
+            <div v-for="v in store.teamViews(selectedTeamId)" :key="v.id"
+              class="group flex cursor-pointer items-center gap-2 bg-elevated px-4 py-2.5 hover:bg-hover"
+              @click="openView(v.id)">
+              <UIcon name="i-heroicons-star" class="text-tertiary" />
+              <span class="flex-1 truncate">{{ v.name }}</span>
+              <UIcon name="i-heroicons-chevron-right" class="text-tertiary" />
+            </div>
+            <div v-if="!store.teamViews(selectedTeamId).length" class="bg-elevated px-4 py-8 text-center text-sm text-tertiary">No views — save one from a filtered Issues list</div>
+          </div>
+        </div>
+      </template>
+
+      <!-- DOC editor -->
+      <template v-else-if="selectedDoc">
+        <div class="sticky top-0 z-10 flex items-center gap-1.5 border-b border-subtle bg-surface px-4 py-3 text-sm">
+          <template v-if="store.teams[selectedDoc.teamId]">
+            <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(store.teams[selectedDoc.teamId])">{{ store.teams[selectedDoc.teamId].name }}</button>
+            <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+            <button class="text-tertiary hover:text-secondary" @click="openTeamSection(selectedDoc.teamId, 'docs')">Docs</button>
+            <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+          </template>
+          <UIcon name="i-heroicons-document-text" class="text-tertiary" />
+          <UInput :model-value="selectedDoc.title" variant="none" :padded="false" class="flex-1 font-medium"
+            @change="(v:any) => store.updateDoc(selectedDoc.id, { title: v })" />
+          <div class="flex gap-0.5">
+            <UButton size="2xs" square icon="i-heroicons-pencil" :color="docMode==='edit'?'primary':'gray'" :variant="docMode==='edit'?'soft':'ghost'" title="Edit" @click="docMode='edit'" />
+            <UButton size="2xs" square icon="i-heroicons-view-columns" :color="docMode==='split'?'primary':'gray'" :variant="docMode==='split'?'soft':'ghost'" title="Split" @click="docMode='split'" />
+            <UButton size="2xs" square icon="i-heroicons-eye" :color="docMode==='preview'?'primary':'gray'" :variant="docMode==='preview'?'soft':'ghost'" title="Preview" @click="docMode='preview'" />
+          </div>
+          <UButton class="ml-1" :icon="linkCopied ? 'i-heroicons-check' : 'i-heroicons-link'" size="xs" color="gray" variant="ghost" square :title="linkCopied?'Copied!':'Copy link'" @click="copyLink" />
+          <UButton size="xs" color="red" variant="ghost" square icon="i-heroicons-trash" @click="store.deleteDoc(selectedDoc.id); selectedDocId = ''" />
+          <UButton size="xs" color="gray" variant="ghost" square icon="i-heroicons-x-mark" @click="selectedDocId = ''" />
+        </div>
+        <!-- toolbar -->
+        <div v-if="docMode !== 'preview'" class="flex items-center gap-1 border-b border-subtle px-3 py-1">
+          <UButton size="2xs" square color="gray" variant="ghost" class="font-bold" title="Bold" @click="docWrap('**')">B</UButton>
+          <UButton size="2xs" square color="gray" variant="ghost" class="italic" title="Italic" @click="docWrap('_')">I</UButton>
+          <UButton size="2xs" square color="gray" variant="ghost" class="font-bold" title="Heading" @click="docWrap('\n# ', '')">H</UButton>
+          <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-list-bullet" title="List" @click="docWrap('\n- ', '')" />
+          <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-code-bracket" title="Code" @click="docWrap('`')" />
+          <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-link" title="Link" @click="docWrap('[', '](url)')" />
+          <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-paper-clip" title="Attach file/image" @click="docFileEl?.click()" />
+          <input ref="docFileEl" type="file" multiple class="hidden" @change="onDocFilePick" />
+        </div>
+        <div class="flex h-[calc(100vh-150px)]">
+          <div v-if="docMode !== 'preview'" class="relative" :class="docMode === 'split' ? 'w-1/2 border-r border-subtle' : 'w-full'">
+            <MentionMenu :m="docMention" />
+            <textarea ref="docEl" v-model="docDraft" placeholder="Write… (markdown, @mention, #ref, вставляй картинки/файлы)"
+              class="h-full w-full resize-none bg-transparent p-4 text-sm leading-relaxed outline-none"
+              @paste="onDocPaste" @input="onDocInput(); docMention.detect()" @keydown="onDocKeydown" />
+          </div>
+          <div v-if="docMode !== 'edit'" :class="docMode === 'split' ? 'w-1/2' : 'w-full'" class="prose-chat overflow-y-auto p-4 text-sm leading-relaxed" v-html="renderMarkdown(docDraft) || '<span class=&quot;text-tertiary&quot;>Nothing to preview</span>'" />
+        </div>
+      </template>
+
+      <template v-else-if="selectedTeam">
+        <div class="sticky top-0 z-10 border-b border-subtle bg-surface">
+          <div class="flex items-center gap-1.5 px-4 py-2.5 text-sm">
+            <!-- breadcrumbs -->
+            <span class="text-tertiary">{{ store.activeWorkspace?.name }}</span>
+            <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+            <button class="font-medium hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
+            <template v-if="selectedCycleId">
+              <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+              <span>Cycle {{ store.cycles[selectedCycleId]?.number }}</span>
+            </template>
+            <div class="ml-auto flex items-center gap-1">
+              <USelectMenu v-if="store.layout === 'list'" v-model="store.groupBy" :options="labelOpts(['status', 'priority', 'assignee', 'milestone'])" value-attribute="value" option-attribute="label" size="xs" class="w-32" />
+              <UButton size="xs" color="gray" variant="ghost" icon="i-heroicons-adjustments-horizontal" title="Manage statuses" @click="showStates = true" />
+              <UButton size="xs" :color="showFilters || store.activeFilter ? 'primary' : 'gray'" variant="ghost" icon="i-heroicons-funnel" @click="showFilters = !showFilters" />
+              <span class="mx-1 h-4 w-px bg-subtle" />
+              <UButton size="xs" square icon="i-heroicons-list-bullet" :color="store.layout==='list' ? 'primary' : 'gray'" :variant="store.layout==='list' ? 'soft' : 'ghost'" @click="store.layout='list'" />
+              <UButton size="xs" square icon="i-heroicons-view-columns" :color="store.layout==='board' ? 'primary' : 'gray'" :variant="store.layout==='board' ? 'soft' : 'ghost'" @click="store.layout='board'" />
+              <UButton size="xs" square icon="i-heroicons-calendar-days" :color="store.layout==='calendar' ? 'primary' : 'gray'" :variant="store.layout==='calendar' ? 'soft' : 'ghost'" @click="store.layout='calendar'" />
+            </div>
+          </div>
+          <!-- FilterBar (скрыт по умолчанию) -->
+          <div v-if="showFilters" class="flex flex-wrap items-center gap-2 px-4 pb-2.5">
+            <UInput v-model="search" placeholder="Search…" icon="i-heroicons-magnifying-glass" size="xs" class="w-48" />
+            <UIcon name="i-heroicons-flag" class="text-tertiary" />
+            <button v-for="(p, idx) in PRIO" :key="idx"
+              class="rounded-md border px-2 py-1 text-xs"
+              :class="isPrio(idx) ? 'border-subtle bg-active text-white' : 'border-subtle bg-elevated text-tertiary hover:bg-hover'"
+              @click="togglePrio(idx)">{{ p }}</button>
+            <button v-if="store.activeFilter" class="px-1 text-xs text-tertiary hover:text-secondary" @click="store.clearFilter()">clear</button>
+            <template v-if="store.teamLabels(selectedTeamId).length">
+              <span class="mx-1 text-subtle">|</span>
+              <button v-for="l in store.teamLabels(selectedTeamId)" :key="l.id"
+                class="flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
+                :class="store.labelFilter.includes(l.id) ? 'border-subtle bg-active text-white' : 'border-subtle bg-elevated text-tertiary hover:bg-hover'"
+                @click="store.labelFilter.includes(l.id) ? store.labelFilter = store.labelFilter.filter((x) => x !== l.id) : store.labelFilter.push(l.id)">
+                <span class="h-2 w-2 rounded-full" :style="{ background: l.colorToken }" />{{ l.name }}
+              </button>
+            </template>
+            <span class="mx-1 text-subtle">|</span>
+            <button v-for="v in store.teamViews(selectedTeamId)" :key="v.id"
+              class="flex items-center gap-1 rounded-md border border-subtle bg-elevated px-2 py-1 text-xs text-tertiary hover:bg-hover" @click="openView(v.id)">
+              <UIcon name="i-heroicons-star" />{{ v.name }}
+            </button>
+            <button class="ml-auto flex items-center gap-1 rounded-md border border-subtle bg-elevated px-2 py-1 text-xs text-tertiary hover:bg-hover" @click="saveView">
+              <UIcon name="i-heroicons-bookmark" />Save view
+            </button>
+          </div>
+        </div>
+
+        <!-- BOARD -->
+        <div v-if="store.layout==='board'" class="flex h-[calc(100%-56px)] gap-4 overflow-x-auto px-4 py-3">
+          <div v-for="st in store.teamStates(selectedTeamId)" :key="st.id"
+            class="group/col flex w-72 shrink-0 flex-col rounded-xl bg-[#0d0d0f] p-2"
+            @dragover.prevent @drop="onDropOnColumn(st.id)">
+            <!-- column header -->
+            <div class="mb-2 flex items-center gap-2 px-1.5 py-1 text-sm">
+              <UIcon :name="statusIcon(st.category)" :style="{ color: statusColor(st.category) }" />
+              <span class="font-medium">{{ st.name }}</span>
+              <span class="text-tertiary">{{ store.issuesFor(selectedTeamId, st.id).length }}</span>
+              <UButton class="ml-auto opacity-0 group-hover/col:opacity-100" icon="i-heroicons-plus" color="gray" variant="ghost" size="2xs" square @click="openCreate('issue')" />
+            </div>
+            <div class="flex-1 space-y-2 overflow-y-auto">
+              <div v-for="i in store.issuesFor(selectedTeamId, st.id)" :key="i.id"
+                draggable="true" @dragstart="draggedId = i.id"
+                @dragover.prevent @drop.stop="onDropOnCard(st.id, i.id)"
+                @click="openIssue(i.id)"
+                class="cursor-pointer rounded-lg border border-subtle bg-elevated p-3 hover:bg-hover"
+                :class="{ '!border-accent': selectedIssueId === i.id }">
+                <div class="mb-1.5 text-xs text-tertiary">{{ i.identifier }}</div>
+                <div class="line-clamp-3 text-sm font-medium leading-snug">{{ i.title }}</div>
+                <div v-if="store.labelsForIssue(i.id).length" class="mt-1.5 flex flex-wrap gap-1">
+                  <span v-for="l in store.labelsForIssue(i.id)" :key="l.id" class="flex items-center gap-1 rounded-full border border-subtle px-1.5 py-0.5 text-xs text-tertiary">
+                    <span class="h-2 w-2 rounded-full" :style="{ background: l.colorToken }" />{{ l.name }}
+                  </span>
+                </div>
+                <div class="mt-2.5 flex items-center gap-2 text-xs text-tertiary">
+                  <UIcon v-if="i.priority" :name="prioIcon(i.priority)" :style="{ color: prioColor(i.priority) }" />
+                  <span v-if="store.childProgress(i.id).total" class="flex items-center gap-1"><UIcon name="i-heroicons-queue-list" /> {{ store.childProgress(i.id).done }}/{{ store.childProgress(i.id).total }}</span>
+                  <span v-if="i.assigneeId" class="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-surface text-[10px]" :title="store.userName(i.assigneeId)">{{ (store.userName(i.assigneeId) || '?')[0].toUpperCase() }}</span>
+                  <span v-if="i.createdAt" :class="i.assigneeId ? '' : 'ml-auto'">{{ new Date(i.createdAt).toLocaleDateString('en', { month: 'short', day: 'numeric' }) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CALENDAR -->
+        <div v-else-if="store.layout==='calendar'" class="p-4">
+          <div class="mb-2 flex items-center gap-2 text-sm">
+            <UButton icon="i-heroicons-chevron-left" color="gray" variant="ghost" size="xs" square @click="monthOffset--" />
+            <span class="font-medium">{{ calRangeLabel }}</span>
+            <UButton icon="i-heroicons-chevron-right" color="gray" variant="ghost" size="xs" square @click="monthOffset++" />
+            <UButton class="ml-2" color="gray" variant="ghost" size="xs" @click="monthOffset = 0">today</UButton>
+            <div class="ml-auto flex gap-1">
+              <UButton size="2xs" :color="calMode === 'month' ? 'primary' : 'gray'" :variant="calMode === 'month' ? 'soft' : 'ghost'" @click="calMode = 'month'; monthOffset = 0">Month</UButton>
+              <UButton size="2xs" :color="calMode === 'week' ? 'primary' : 'gray'" :variant="calMode === 'week' ? 'soft' : 'ghost'" @click="calMode = 'week'; monthOffset = 0">Week</UButton>
+            </div>
+          </div>
+          <div class="grid grid-cols-7 gap-px text-xs">
+            <div v-for="w in WEEKDAYS" :key="w" class="px-1 py-1 text-tertiary">{{ w }}</div>
+            <div v-for="c in calCells" :key="c.date"
+              :class="[calMode === 'week' ? 'min-h-[360px]' : 'min-h-[88px]', 'rounded-sm border p-1', c.inMonth ? 'border-subtle bg-surface' : 'border-transparent bg-base opacity-40', c.date === todayStr ? '!border-accent' : '']"
+              @dragover.prevent @drop="dropOnDay(c.date)">
+              <div class="mb-1 text-tertiary">{{ c.day }}</div>
+              <div v-for="i in store.calendarIssues(selectedTeamId, c.date)" :key="i.id"
+                draggable="true" @dragstart="draggedId = i.id" @click="openIssue(i.id)"
+                class="mb-0.5 cursor-pointer truncate rounded-sm bg-elevated px-1 py-0.5 hover:bg-hover"
+                :title="i.identifier + ' ' + i.title">
+                <span class="text-tertiary">{{ i.identifier }}</span> {{ i.title }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LIST (Linear-стиль: плотные строки, edit в detail) -->
+        <template v-else>
+        <div v-for="g in store.issueGroups(selectedTeamId)" :key="g.key" class="group/sec">
+          <!-- group header bar -->
+          <div class="flex cursor-pointer items-center gap-2 bg-elevated/50 px-4 py-2.5 text-sm font-semibold hover:bg-elevated"
+            @click="collapsedStatus[g.key] = !collapsedStatus[g.key]">
+            <UIcon :name="collapsedStatus[g.key] ? 'i-heroicons-chevron-right' : 'i-heroicons-chevron-down'" class="text-tertiary" />
+            <UIcon v-if="g.kind === 'status'" :name="statusIcon(g.category)" :style="{ color: statusColor(g.category) }" />
+            <UIcon v-else-if="g.kind === 'priority'" :name="prioIcon(g.prio)" :style="{ color: prioColor(g.prio) }" />
+            <UIcon v-else-if="g.kind === 'milestone'" name="i-heroicons-flag" class="text-tertiary" />
+            <span v-else class="flex h-4 w-4 items-center justify-center rounded-full bg-elevated text-[9px]">{{ (g.label || '?')[0].toUpperCase() }}</span>
+            <span>{{ g.label }}</span>
+            <span class="font-normal text-tertiary">{{ g.items.length }}</span>
+          </div>
+
+          <template v-if="!collapsedStatus[g.key]">
+            <div v-for="i in g.items" :key="i.id"
+              class="group flex cursor-pointer items-center gap-3 border-b border-subtle/40 px-4 py-2.5 hover:bg-hover"
+              :class="{ 'bg-active': selectedIssueId === i.id || selectedIds.has(i.id) }"
+              @click="openIssue(i.id)">
+              <UCheckbox :model-value="selectedIds.has(i.id)" class="shrink-0 transition-opacity" :class="selCount || selectedIds.has(i.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'" @click.stop @update:model-value="toggleSel(i.id)" />
+              <UIcon v-if="i.priority" :name="prioIcon(i.priority)" :style="{ color: prioColor(i.priority) }" class="shrink-0" />
+              <UIcon v-else name="i-heroicons-minus" class="shrink-0 text-tertiary/50" />
+              <span class="w-14 shrink-0 text-sm text-tertiary">{{ i.identifier }}</span>
+              <UIcon :name="statusIcon(store.states[i.stateId]?.category)" :style="{ color: statusColor(store.states[i.stateId]?.category) }" class="shrink-0" />
+              <span class="truncate">{{ i.title }}</span>
+              <span class="flex flex-1 flex-wrap items-center gap-1">
+                <span v-for="l in store.labelsForIssue(i.id)" :key="l.id" class="flex items-center gap-1 rounded-full border border-subtle px-1.5 py-0.5 text-xs text-tertiary">
+                  <span class="h-2 w-2 rounded-full" :style="{ background: l.colorToken }" />{{ l.name }}
+                </span>
+              </span>
+              <span v-if="i.dueDate || i.scheduledDate" class="shrink-0 text-sm tabular-nums text-tertiary">{{ String(i.scheduledDate || i.dueDate).slice(5, 10) }}</span>
+              <span v-if="i.assigneeId" class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-elevated text-[10px]" :title="store.userName(i.assigneeId)">{{ (store.userName(i.assigneeId) || '?')[0].toUpperCase() }}</span>
+              <UButton icon="i-heroicons-trash" color="gray" variant="ghost" size="xs" square
+                class="shrink-0 opacity-0 hover:opacity-100" title="Archive" @click.stop="store.archiveIssue(i.id)" />
+            </div>
+          </template>
+        </div>
+        </template>
+      </template>
+
+      <div v-else class="p-6 text-sm text-tertiary">
+        {{ store.activeWorkspace ? `${store.teamList.length} teams · select a team →` : 'Pick or create a workspace →' }}
+      </div>
+      </template>
+    </main>
+
+    <!-- Cycle insights panel (когда выбран цикл и не открыт issue) -->
+    <aside v-if="cycleBurndown && !selectedIssue" class="w-80 shrink-0 overflow-y-auto rounded-xl border border-subtle bg-surface px-4 py-3 text-sm">
+      <!-- header: Current pill + range -->
+      <div class="mb-3 flex items-center gap-2 text-sm">
+        <span class="rounded-md bg-elevated px-2 py-0.5 text-xs font-medium">Current</span>
+        <span class="text-tertiary">{{ cycleRange }}</span>
+        <UButton class="ml-auto" size="2xs" color="gray" variant="ghost" square icon="i-heroicons-x-mark" @click="closeCycle" />
+      </div>
+      <!-- title -->
+      <div class="mb-3 flex items-center gap-2">
+        <UIcon name="i-heroicons-play-circle" class="text-accent" />
+        <span class="text-base font-semibold">Cycle {{ store.cycles[selectedCycleId]?.number }}</span>
+        <UIcon name="i-heroicons-star" class="ml-auto text-tertiary" />
+        <UIcon name="i-heroicons-ellipsis-horizontal" class="text-tertiary" />
+      </div>
+      <div class="mb-4 rounded-md px-2 py-1.5 text-tertiary hover:bg-hover">+ Add document or link…</div>
+
+      <!-- Progress -->
+      <div class="mb-2 text-sm font-medium">Progress</div>
+      <div class="mb-3 grid grid-cols-3 gap-2 text-xs">
+        <div>
+          <div class="flex items-center gap-1.5 text-tertiary"><span class="h-2 w-2 rounded-sm bg-tertiary" />Scope</div>
+          <div class="mt-1 font-medium">{{ cycleBurndown.scope }}</div>
+        </div>
+        <div>
+          <div class="flex items-center gap-1.5 text-tertiary"><span class="h-2 w-2 rounded-sm" style="background:#d29922" />Started</div>
+          <div class="mt-1 font-medium">{{ cycleBurndown.started }} <span class="text-tertiary">· {{ cycleBurndown.scope ? Math.round(cycleBurndown.started / cycleBurndown.scope * 100) : 0 }}%</span></div>
+        </div>
+        <div>
+          <div class="flex items-center gap-1.5 text-tertiary"><span class="h-2 w-2 rounded-sm bg-accent" />Completed</div>
+          <div class="mt-1 font-medium">{{ cycleBurndown.completed }} <span class="text-tertiary">· {{ cycleBurndown.scope ? Math.round(cycleBurndown.completed / cycleBurndown.scope * 100) : 0 }}%</span></div>
+        </div>
+      </div>
+      <div class="mb-3 flex items-center gap-4 text-xs">
+        <span class="text-tertiary">Points <span class="text-secondary">{{ cycleBurndown.donePoints }}/{{ cycleBurndown.scopePoints }}</span></span>
+        <span class="text-tertiary">Velocity <span class="text-secondary">{{ store.teamVelocity(store.cycles[selectedCycleId]?.teamId) }}</span> pts/cycle</span>
+      </div>
+
+      <!-- burndown chart (реальные ежедневные слепки, River) -->
+      <div class="mb-1 text-xs font-medium uppercase tracking-wider text-tertiary">Burndown</div>
+      <Burndown :cycle-id="selectedCycleId" class="mb-4" />
+
+      <!-- tabs -->
+      <div class="mb-3 flex gap-1 text-xs">
+        <button v-for="t in INSIGHT_TABS" :key="t"
+          class="rounded-md px-2 py-1"
+          :class="insightTab === t.toLowerCase() ? 'bg-elevated font-medium' : 'text-tertiary hover:bg-hover'"
+          @click="insightTab = t.toLowerCase() as any">{{ t }}</button>
+      </div>
+      <!-- breakdown -->
+      <div class="space-y-1">
+        <div v-for="r in cycleBreakdown" :key="r.label" class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
+          <span class="h-2.5 w-2.5 rounded-full" :style="{ background: r.color }" />
+          <span class="flex-1 truncate">{{ r.label }}</span>
+          <span class="text-tertiary">{{ r.pct }}% of {{ r.count }}</span>
+        </div>
+        <div v-if="!cycleBreakdown.length" class="px-2 py-3 text-xs text-tertiary">No data for {{ insightTab }}</div>
+      </div>
+    </aside>
+
+    <!-- Issue detail panel (M4) -->
+    <aside v-if="selectedIssue" class="flex w-96 shrink-0 flex-col overflow-y-auto rounded-xl border border-subtle bg-surface text-sm">
+      <!-- top bar -->
+      <div class="flex items-center gap-2 border-b border-subtle px-4 py-2.5">
+        <UIcon :name="statusIcon(store.states[selectedIssue.stateId]?.category)" :style="{ color: statusColor(store.states[selectedIssue.stateId]?.category) }" />
+        <span class="text-xs text-tertiary">{{ selectedIssue.identifier }}</span>
+        <UButton class="ml-auto" :icon="linkCopied ? 'i-heroicons-check' : 'i-heroicons-link'" color="gray" variant="ghost" size="xs" square :title="linkCopied ? 'Copied!' : 'Copy link'" @click="copyLink" />
+        <UDropdown :items="issueActions" :popper="{ placement: 'bottom-end' }">
+          <UButton icon="i-heroicons-ellipsis-horizontal" color="gray" variant="ghost" size="xs" square />
+        </UDropdown>
+        <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="selectedIssueId = ''" />
+      </div>
+
+      <div class="px-4 py-4">
+        <!-- title -->
+        <UInput :model-value="selectedIssue.title" variant="none" size="xl" class="mb-3 w-full font-semibold" :padded="false"
+          :ui="{ base: 'text-white' }"
+          @change="(v:any) => store.setIssueTitle(selectedIssue.id, v)" />
+
+        <!-- description -->
+        <div class="mb-6">
+          <div v-if="descEditing" class="rounded-lg border border-subtle bg-elevated">
+            <div class="flex items-center gap-0.5 border-b border-subtle px-1.5 py-1">
+              <UButton size="2xs" square color="gray" variant="ghost" class="font-bold" title="Bold" @click="descWrap('**')">B</UButton>
+              <UButton size="2xs" square color="gray" variant="ghost" class="italic" title="Italic" @click="descWrap('_')">I</UButton>
+              <UButton size="2xs" square color="gray" variant="ghost" class="font-bold" title="Heading" @click="descWrap('\n# ', '')">H</UButton>
+              <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-list-bullet" title="List" @click="descWrap('\n- ', '')" />
+              <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-code-bracket" title="Code" @click="descWrap('`')" />
+              <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-link" title="Link" @click="descWrap('[', '](url)')" />
+              <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-paper-clip" title="Attach file/image" @click="descFileEl?.click()" />
+              <input ref="descFileEl" type="file" multiple class="hidden" @change="onDescFilePick" />
+              <UButton class="ml-auto" size="2xs" color="gray" variant="ghost" title="Save (⌘↵)" @click="saveDesc">Done</UButton>
+            </div>
+            <div class="relative">
+              <MentionMenu :m="descMention" />
+              <textarea ref="descEl" v-model="descDraft" rows="5"
+                class="block w-full resize-y bg-transparent px-3 py-2 text-sm leading-relaxed text-secondary outline-none placeholder:text-tertiary"
+                placeholder="Add description… (markdown, @mention, #ref)" @paste="onAttachPaste($event, 'issue', selectedIssue.id)" @input="descMention.detect()" @keydown="onDescKeydown"></textarea>
+            </div>
+          </div>
+          <div v-else-if="selectedIssue.description?.md"
+            class="prose-invert -mx-2 cursor-text rounded-md px-2 py-1.5 text-sm leading-relaxed text-secondary hover:bg-elevated [&_a]:text-accent [&_code]:rounded [&_code]:bg-elevated [&_code]:px-1 [&_h1]:mb-1 [&_h1]:mt-2 [&_h1]:text-base [&_h1]:font-semibold [&_h1]:text-white [&_h2]:mb-1 [&_h2]:mt-2 [&_h2]:font-semibold [&_h2]:text-white [&_li]:ml-4 [&_li]:list-disc [&_p]:mb-1.5 [&_strong]:text-white"
+            @click="startDescEdit" v-html="renderMarkdown(selectedIssue.description.md)" />
+          <button v-else class="-mx-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-tertiary hover:bg-elevated" @click="startDescEdit">
+            <UIcon name="i-heroicons-bars-3-bottom-left" /> Add description…
+          </button>
+        </div>
+
+        <!-- Properties -->
+        <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary">Properties</div>
+        <div class="mb-6 space-y-1">
+          <div class="flex min-h-8 items-center gap-3">
+            <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon :name="statusIcon(store.states[selectedIssue.stateId]?.category)" :style="{ color: statusColor(store.states[selectedIssue.stateId]?.category) }" /> Status</span>
+            <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" :model-value="selectedIssue.stateId" value-attribute="value" option-attribute="label"
+              :options="store.teamStates(selectedIssue.teamId).map((s2) => ({ label: s2.name, value: s2.id }))"
+              @update:model-value="store.setIssueState(selectedIssue.id, $event)" />
+          </div>
+          <div class="flex min-h-8 items-center gap-3">
+            <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon :name="prioIcon(selectedIssue.priority)" :style="{ color: prioColor(selectedIssue.priority) }" /> Priority</span>
+            <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" :model-value="selectedIssue.priority" value-attribute="value" option-attribute="label"
+              :options="PRIO.map((p, idx) => ({ label: p, value: idx }))"
+              @update:model-value="store.setIssuePriority(selectedIssue.id, Number($event))" />
+          </div>
+          <div class="flex min-h-8 items-center gap-3">
+            <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-user-circle" /> Assignee</span>
+            <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="Unassigned" :model-value="selectedIssue.assigneeId || undefined" value-attribute="value" option-attribute="label"
+              :options="[{ label: 'Unassigned', value: '' }, ...store.wsUsers.map((u) => ({ label: u.name || u.email, value: u.id })), ...(store.users[store.currentUserId] ? [{ label: (store.users[store.currentUserId].name || store.users[store.currentUserId].email) + ' (me)', value: store.currentUserId }] : [])]"
+              @update:model-value="store.setIssueAssignee(selectedIssue.id, $event)" />
+          </div>
+          <div class="flex min-h-8 items-center gap-3">
+            <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-arrow-path-rounded-square" /> Cycle</span>
+            <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="No cycle" :model-value="selectedIssue.cycleId || undefined" value-attribute="value" option-attribute="label"
+              :options="[{ label: 'No cycle', value: '' }, ...store.teamCycles(selectedIssue.teamId).map((c) => ({ label: `Cycle ${c.number} (${c.status})`, value: c.id }))]"
+              @update:model-value="store.setIssueCycle(selectedIssue.id, $event)" />
+          </div>
+          <div class="flex min-h-8 items-center gap-3">
+            <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-flag" /> Milestone</span>
+            <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="No milestone" :model-value="selectedIssue.milestoneId || undefined" value-attribute="value" option-attribute="label"
+              :options="[{ label: 'No milestone', value: '' }, ...store.teamMilestones(selectedIssue.teamId).map((m) => ({ label: m.name, value: m.id }))]"
+              @update:model-value="store.setIssueMilestone(selectedIssue.id, $event)" />
+          </div>
+          <div class="flex min-h-8 items-center gap-3">
+            <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-calendar" /> Due date</span>
+            <UInput class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" type="date" :model-value="selectedIssue.scheduledDate ? String(selectedIssue.scheduledDate).slice(0,10) : ''"
+              @change="(v:any) => store.setIssueSchedule(selectedIssue.id, v)" />
+          </div>
+          <div class="flex min-h-8 items-center gap-3">
+            <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-scale" /> Estimate</span>
+            <UInput class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" type="number" min="0" :model-value="selectedIssue.estimate ?? ''" placeholder="No estimate"
+              @change="(v:any) => store.setIssueEstimate(selectedIssue.id, Number(v))" />
+          </div>
+          <!-- Custom fields -->
+          <div v-for="f in store.fieldsForTeam(selectedIssue.teamId)" :key="f.id" class="flex min-h-8 items-center gap-3">
+            <span class="w-24 shrink-0 truncate text-tertiary">{{ f.name }}</span>
+            <div v-if="f.type==='checkbox'" class="flex-1 pl-2"><UCheckbox :model-value="!!store.cfValue(selectedIssue.id, f.id)"
+              @update:model-value="store.setCustomFieldValue(selectedIssue.id, f.id, $event)" /></div>
+            <USelectMenu v-else-if="f.type==='select'" class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="—" value-attribute="value" option-attribute="label"
+              :model-value="store.cfValue(selectedIssue.id, f.id) || undefined" :options="[{ label: '—', value: '' }, ...(f.config?.options || []).map((o) => ({ label: o, value: o }))]"
+              @update:model-value="store.setCustomFieldValue(selectedIssue.id, f.id, $event)" />
+            <div v-else-if="f.type==='multiselect'" class="flex flex-1 flex-wrap gap-1 py-1">
+              <button v-for="o in (f.config?.options || [])" :key="o"
+                class="rounded-md px-2 py-0.5 text-xs"
+                :class="(store.cfValue(selectedIssue.id, f.id) || []).includes(o) ? 'bg-active text-white' : 'bg-elevated text-tertiary hover:bg-hover'"
+                @click="cfMultiToggle(f.id, o)">{{ o }}</button>
+            </div>
+            <USelectMenu v-else-if="f.type==='people'" class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="—"
+              :model-value="store.cfValue(selectedIssue.id, f.id) || undefined" value-attribute="value" option-attribute="label"
+              :options="[{ label: '—', value: '' }, ...store.wsUsers.map((u) => ({ label: u.name || u.email, value: u.id }))]"
+              @update:model-value="store.setCustomFieldValue(selectedIssue.id, f.id, $event)" />
+            <USelectMenu v-else-if="f.type==='relationship'" class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="—"
+              :model-value="store.cfValue(selectedIssue.id, f.id) || undefined" value-attribute="value" option-attribute="label"
+              :options="[{ label: '—', value: '' }, ...store.issuesForTeamAll(selectedIssue.teamId).map((i) => ({ label: `${i.identifier} ${i.title}`, value: i.id }))]"
+              @update:model-value="store.setCustomFieldValue(selectedIssue.id, f.id, $event)" />
+            <UInput v-else class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" :type="f.type==='number' ? 'number' : f.type==='date' ? 'date' : 'text'"
+              :model-value="store.cfValue(selectedIssue.id, f.id) ?? ''" placeholder="—"
+              @change="(v:any) => store.setCustomFieldValue(selectedIssue.id, f.id, f.type==='number' ? Number(v) : v)" />
+          </div>
+        </div>
+
+        <!-- Labels -->
+        <div class="mb-5">
+          <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary">Labels</div>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span v-for="l in store.labelsForIssue(selectedIssue.id)" :key="l.id" class="group/lbl flex items-center gap-1 rounded-full border border-subtle px-2 py-0.5 text-xs">
+              <span class="h-2 w-2 rounded-full" :style="{ background: l.colorToken }" />{{ l.name }}
+              <UIcon name="i-heroicons-x-mark" class="cursor-pointer text-tertiary hover:text-red-400" @click="store.removeLabel(selectedIssue.id, l.id)" />
+            </span>
+            <button class="flex items-center gap-1 rounded-full border border-dashed border-subtle px-2 py-0.5 text-xs text-tertiary hover:border-strong hover:text-secondary" @click="showLabelModal = true">
+              <UIcon name="i-heroicons-plus" /> Add label
+            </button>
+          </div>
+        </div>
+
+        <!-- Sub-issues -->
+        <div class="mb-5">
+          <div class="mb-1.5 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-tertiary">
+            Sub-issues
+            <span v-if="store.childProgress(selectedIssue.id).total" class="rounded bg-elevated px-1.5 text-tertiary">{{ store.childProgress(selectedIssue.id).done }}/{{ store.childProgress(selectedIssue.id).total }}</span>
+          </div>
+          <div v-for="c in store.subIssuesOf(selectedIssue.id)" :key="c.id"
+            class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover" @click="openIssue(c.id)">
+            <UIcon :name="statusIcon(store.states[c.stateId]?.category)" :style="{ color: statusColor(store.states[c.stateId]?.category) }" class="shrink-0" />
+            <span class="text-xs text-tertiary">{{ c.identifier }}</span>
+            <span class="truncate" :class="{ 'text-tertiary line-through': c.completedAt }">{{ c.title }}</span>
+          </div>
+          <UInput v-model="newSub" placeholder="+ Add sub-issue" size="xs" variant="none" class="w-full" @keyup.enter="addSub" />
+        </div>
+
+        <!-- Relations -->
+        <div class="mb-4">
+          <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary">Relations</div>
+          <div v-for="r in store.relationsForIssue(selectedIssue.id)" :key="r.id"
+            class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
+            <span class="text-tertiary">{{ r.label }}</span>
+            <span class="cursor-pointer hover:text-accent" @click="openIssue(r.otherId)">{{ store.issueById(r.otherId)?.identifier || '—' }}</span>
+            <UButton class="ml-auto opacity-0 group-hover:opacity-100" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="store.removeRelation(r.id)" />
+          </div>
+          <button class="mt-1 flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-tertiary hover:bg-hover hover:text-secondary" @click="showRelModal = true">
+            <UIcon name="i-heroicons-plus" /> Add relation
+          </button>
+        </div>
+
+        <!-- Attachments -->
+        <div class="mb-5">
+          <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary">Attachments</div>
+          <Attachments entity-type="issue" :entity-id="selectedIssue.id" />
+        </div>
+
+        <!-- Comments -->
+        <div class="mb-4">
+          <div class="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-tertiary">
+            Comments <span class="text-tertiary">{{ store.issueComments(selectedIssue.id).length }}</span>
+          </div>
+          <div v-for="c in store.issueComments(selectedIssue.id)" :key="c.id" class="group mb-2 flex gap-2">
+            <Avatar class="mt-0.5" :name="store.userName(c.authorId)" :avatar-key="store.users[c.authorId]?.avatarKey" :size="28" />
+            <div class="min-w-0 flex-1">
+              <div class="flex items-baseline gap-2">
+                <span class="text-sm font-medium">{{ store.userName(c.authorId) }}</span>
+                <span class="text-xs text-tertiary">{{ notifTime(c.createdAt) }}</span>
+                <span v-if="c.editedAt" class="text-xs text-tertiary/60">(edited)</span>
+                <template v-if="c.authorId === store.currentUserId && !c.deletedAt && editCommentId !== c.id">
+                  <UButton class="ml-auto opacity-0 group-hover:opacity-100" icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square @click="startEditComment(c)" />
+                  <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square @click="store.deleteComment(c.id, selectedIssue.id)" />
+                </template>
+              </div>
+              <div v-if="editCommentId === c.id" class="mt-1">
+                <textarea v-model="editCommentDraft" rows="2" class="w-full rounded-md border border-subtle bg-elevated px-2 py-1 text-sm outline-none" @keydown.enter.exact.prevent="saveComment" @keydown.esc="editCommentId = ''" />
+                <div class="mt-1 flex gap-2"><UButton size="2xs" @click="saveComment">Save</UButton><UButton size="2xs" color="gray" variant="ghost" @click="editCommentId = ''">Cancel</UButton></div>
+              </div>
+              <div v-else-if="c.deletedAt" class="text-sm italic text-tertiary">(deleted)</div>
+              <div v-else class="prose-chat text-sm leading-relaxed" v-html="renderMarkdown(c.body)" />
+              <Attachments v-if="store.attachmentsFor('comment', c.id).length" class="mt-1.5" entity-type="comment" :entity-id="c.id" readonly />
+            </div>
+          </div>
+          <PendingAttachments v-if="commentPending.length" class="mt-2" :files="commentPending" @remove="(i) => commentPending = commentPending.filter((_, j) => j !== i)" />
+          <div class="mt-2 flex items-end gap-2">
+            <div class="relative flex-1">
+              <MentionMenu :m="commentMention" />
+              <textarea ref="commentEl" v-model="commentDraft" rows="1" placeholder="Add a comment… (markdown, @mention, #ref)"
+                class="block w-full resize-none rounded-md border border-subtle bg-elevated px-2.5 py-1.5 text-sm outline-none placeholder:text-tertiary"
+                @paste="onCommentPaste" @input="commentMention.detect()" @keydown="onCommentKeydown" />
+            </div>
+            <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="sm" square title="Attach" @click="commentFileEl?.click()" />
+            <input ref="commentFileEl" type="file" multiple class="hidden" @change="onCommentFilePick" />
+            <UButton icon="i-heroicons-paper-airplane" size="sm" :disabled="!commentDraft.trim() && !commentPending.length" @click="addComment" />
+          </div>
+        </div>
+
+        <!-- Activity -->
+        <div class="mb-4">
+          <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary">Activity</div>
+          <div v-for="(a, idx) in store.issueActivity(selectedIssue.id)" :key="idx" class="flex items-center gap-2 py-1 text-xs text-tertiary">
+            <UIcon :name="a.op === 'create' ? 'i-heroicons-plus-circle' : a.op === 'delete' ? 'i-heroicons-trash' : 'i-heroicons-pencil'" />
+            <span class="text-secondary">{{ a.actorId ? store.userName(a.actorId) : 'Someone' }}</span>
+            <span>{{ a.op === 'create' ? 'created' : a.op === 'delete' ? 'deleted' : 'updated' }}</span>
+            <span class="ml-auto">{{ notifTime(a.at) }}</span>
+          </div>
+          <div v-if="!store.issueActivity(selectedIssue.id).length" class="text-xs text-tertiary/60">No activity</div>
+        </div>
+
+        <p v-if="err" class="text-xs text-red-400">{{ err }}</p>
+      </div>
+    </aside>
+
+    <!-- Thread panel (плавающая) -->
+    <aside v-if="store.threadParentId && activeSection === 'chats'" class="flex w-96 shrink-0 flex-col overflow-hidden rounded-xl border border-subtle bg-surface text-sm">
+      <div class="flex shrink-0 items-center gap-2 border-b border-subtle px-4 py-3">
+        <UIcon name="i-heroicons-chat-bubble-left-right" class="text-tertiary" />
+        <span class="font-medium">Thread</span>
+        <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="store.closeThread()" />
+      </div>
+      <div class="flex-1 overflow-y-auto px-3 py-3">
+        <!-- parent -->
+        <div v-if="threadParent" class="mb-2 border-b border-subtle pb-2">
+          <div class="flex items-baseline gap-2">
+            <span class="text-sm font-medium">{{ store.userName(threadParent.authorId) }}</span>
+            <span class="text-xs text-tertiary">{{ notifTime(threadParent.createdAt) }}</span>
+          </div>
+          <div class="prose-chat text-sm" v-html="renderMarkdown(threadParent.body)" />
+        </div>
+        <div class="mb-1 text-xs text-tertiary">{{ store.threadMessages.length }} {{ store.threadMessages.length === 1 ? 'reply' : 'replies' }}</div>
+        <div v-for="m in store.threadMessages" :key="m.id" class="group flex gap-2 rounded-md px-1 py-1.5 hover:bg-hover">
+          <span class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-elevated text-[10px]">{{ (store.userName(m.authorId) || '?')[0].toUpperCase() }}</span>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-baseline gap-2">
+              <span class="text-xs font-medium">{{ store.userName(m.authorId) }}</span>
+              <span class="text-xs text-tertiary">{{ notifTime(m.createdAt) }}</span>
+            </div>
+            <div v-if="m.deletedAt" class="text-sm italic text-tertiary">(deleted)</div>
+            <div v-else class="prose-chat text-sm" v-html="renderMarkdown(m.body)" />
+          </div>
+          <UButton v-if="m.authorId === store.currentUserId && !m.deletedAt" class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square @click="store.deleteMessage(m.id)" />
+        </div>
+      </div>
+      <div class="shrink-0 border-t border-subtle p-2">
+        <textarea v-model="threadDraft" rows="2" placeholder="Reply…" class="w-full resize-none rounded-md border border-subtle bg-elevated px-2 py-1.5 text-sm outline-none" @keydown.enter.exact.prevent="sendThread" />
+        <div class="mt-1 flex justify-end"><UButton size="2xs" icon="i-heroicons-paper-airplane" :disabled="!threadDraft.trim()" @click="sendThread">Reply</UButton></div>
+      </div>
+    </aside>
+    </div><!-- /content panel -->
+    </div><!-- /flex flex-1 -->
+
+    <!-- Bulk-бар (мультивыбор в List) -->
+    <div v-if="selCount && selectedTeam" class="fixed bottom-6 left-1/2 z-[90] flex -translate-x-1/2 items-center gap-2 rounded-xl border border-subtle bg-elevated px-3 py-2 text-sm shadow-xl">
+      <span class="px-1 font-medium">{{ selCount }} selected</span>
+      <span class="h-4 w-px bg-subtle" />
+      <USelectMenu placeholder="Status" size="xs" class="w-28" value-attribute="value" option-attribute="label"
+        :options="store.teamStates(selectedTeamId).map((s2) => ({ label: s2.name, value: s2.id }))" @update:model-value="bulkStatus" />
+      <USelectMenu placeholder="Assignee" size="xs" class="w-32" value-attribute="value" option-attribute="label"
+        :options="[{ label: 'No assignee', value: '' }, ...store.wsUsers.map((u) => ({ label: u.name || u.email, value: u.id }))]" @update:model-value="bulkAssignee" />
+      <USelectMenu v-if="store.teamLabels(selectedTeamId).length" placeholder="+ Label" size="xs" class="w-28" value-attribute="value" option-attribute="label"
+        :options="store.teamLabels(selectedTeamId).map((l) => ({ label: l.name, value: l.id }))" @update:model-value="bulkLabel" />
+      <UButton size="xs" color="gray" variant="soft" icon="i-heroicons-archive-box" @click="bulkArchive">Archive</UButton>
+      <UButton size="xs" color="gray" variant="ghost" icon="i-heroicons-x-mark" square @click="clearSel" />
+    </div>
+
+    <!-- Create-модалка (поля под выбранную сущность) -->
+    <UModal v-model="createOpen">
+      <div class="p-4">
+        <div class="mb-4 flex items-center gap-2">
+          <span class="flex h-7 w-7 items-center justify-center rounded-md bg-elevated"><UIcon :name="createIcon" class="text-secondary" /></span>
+          <span class="text-base font-semibold text-white">New {{ createTypeLabel.toLowerCase() }}</span>
+          <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="createOpen = false" />
+        </div>
+
+        <!-- ISSUE -->
+        <div v-if="createType === 'issue'" class="space-y-3">
+          <div><label class="mb-1 block text-xs text-tertiary">Team</label>
+            <USelectMenu v-model="cTeam" class="w-full" value-attribute="value" option-attribute="label"
+              :options="store.teamList.map((t) => ({ label: `${t.key} · ${t.name}`, value: t.id }))" /></div>
+          <div><label class="mb-1 block text-xs text-tertiary">Title</label>
+            <UInput v-model="cTitle" placeholder="Issue title" autofocus @keyup.enter="submitCreate" /></div>
+        </div>
+
+        <!-- DOC -->
+        <div v-else-if="createType === 'doc'" class="space-y-3">
+          <div><label class="mb-1 block text-xs text-tertiary">Team</label>
+            <USelectMenu v-model="cTeam" class="w-full" value-attribute="value" option-attribute="label"
+              :options="store.teamList.map((t) => ({ label: `${t.key} · ${t.name}`, value: t.id }))" /></div>
+          <div><label class="mb-1 block text-xs text-tertiary">Title</label>
+            <UInput v-model="cTitle" placeholder="Document title" autofocus @keyup.enter="submitCreate" /></div>
+        </div>
+
+        <!-- CYCLE -->
+        <div v-else-if="createType === 'cycle'" class="space-y-3">
+          <div><label class="mb-1 block text-xs text-tertiary">Team</label>
+            <USelectMenu v-model="cTeam" class="w-full" value-attribute="value" option-attribute="label"
+              :options="store.teamList.map((t) => ({ label: `${t.key} · ${t.name}`, value: t.id }))" /></div>
+          <div class="flex gap-2">
+            <div class="flex-1"><label class="mb-1 block text-xs text-tertiary">Start</label><UInput v-model="cStart" type="date" class="w-full" /></div>
+            <div class="flex-1"><label class="mb-1 block text-xs text-tertiary">End</label><UInput v-model="cEnd" type="date" class="w-full" /></div>
+          </div>
+        </div>
+
+        <!-- MILESTONE -->
+        <div v-else-if="createType === 'milestone'" class="space-y-3">
+          <div><label class="mb-1 block text-xs text-tertiary">Team</label>
+            <USelectMenu v-model="cTeam" class="w-full" value-attribute="value" option-attribute="label"
+              :options="store.teamList.map((t) => ({ label: `${t.key} · ${t.name}`, value: t.id }))" /></div>
+          <div><label class="mb-1 block text-xs text-tertiary">Name</label>
+            <UInput v-model="cTitle" placeholder="Milestone name" autofocus @keyup.enter="submitCreate" /></div>
+          <div><label class="mb-1 block text-xs text-tertiary">Target date</label>
+            <UInput v-model="cMsDate" type="date" class="w-full" /></div>
+        </div>
+
+        <!-- MEETING -->
+        <div v-else-if="createType === 'meeting'" class="space-y-3">
+          <div><label class="mb-1 block text-xs text-tertiary">Title</label>
+            <UInput v-model="cTitle" placeholder="Meeting title" autofocus @keyup.enter="submitCreate" /></div>
+          <div><label class="mb-1 block text-xs text-tertiary">When (optional)</label>
+            <UInput v-model="cMeetAt" type="datetime-local" class="w-full" /></div>
+          <div><label class="mb-1 block text-xs text-tertiary">Participants</label>
+            <USelectMenu v-model="cMeetParts" multiple searchable searchable-placeholder="Search people…" placeholder="Select participants" class="w-full"
+              value-attribute="value" option-attribute="label"
+              :options="store.wsUsers.map((u) => ({ label: u.name || u.email, value: u.id }))" />
+            <div class="mt-1 text-xs text-tertiary">Вы — организатор; остальные приглашаются. Можно стартовать сразу.</div>
+          </div>
+        </div>
+
+        <!-- DASHBOARD -->
+        <div v-else-if="createType === 'dashboard'" class="space-y-3">
+          <div><label class="mb-1 block text-xs text-tertiary">Name</label>
+            <UInput v-model="cTitle" placeholder="Dashboard name" autofocus @keyup.enter="submitCreate" /></div>
+        </div>
+
+        <!-- CHANNEL -->
+        <div v-else-if="createType === 'channel'" class="space-y-3">
+          <div><label class="mb-1 block text-xs text-tertiary">Channel name</label>
+            <UInput v-model="cTitle" placeholder="general" autofocus @keyup.enter="submitCreate" /></div>
+        </div>
+
+        <!-- TEAM -->
+        <div v-else-if="createType === 'team'" class="space-y-3">
+          <div><label class="mb-1 block text-xs text-tertiary">Parent</label>
+            <USelectMenu v-model="cParent" class="w-full" value-attribute="value" option-attribute="label"
+              :options="[{ label: '— root team —', value: '' }, ...store.teamList.map((t) => ({ label: `under ${t.key}`, value: t.id }))]" /></div>
+          <div class="flex gap-2">
+            <div class="w-24"><label class="mb-1 block text-xs text-tertiary">Key</label><UInput v-model="cKey" placeholder="KEY" class="w-full" /></div>
+            <div class="flex-1"><label class="mb-1 block text-xs text-tertiary">Name</label><UInput v-model="cName" placeholder="Team name" class="w-full" /></div>
+          </div>
+        </div>
+
+        <!-- WORKSPACE -->
+        <div v-else-if="createType === 'workspace'" class="space-y-3">
+          <div><label class="mb-1 block text-xs text-tertiary">Slug</label><UInput v-model="cSlug" placeholder="acme" /></div>
+          <div><label class="mb-1 block text-xs text-tertiary">Name</label><UInput v-model="cName" placeholder="Acme Inc." /></div>
+        </div>
+
+        <div class="mt-4 flex justify-end gap-2">
+          <UButton color="gray" variant="ghost" @click="createOpen = false">Cancel</UButton>
+          <UButton @click="submitCreate">Create {{ createTypeLabel.toLowerCase() }}</UButton>
+        </div>
+      </div>
+    </UModal>
+
+    <!-- Add-widget модалка -->
+    <UModal v-model="showWidget">
+      <div class="space-y-3 p-4">
+        <span class="text-sm font-semibold text-white">Add widget</span>
+        <USelectMenu v-model="wType" :options="labelOpts(['note', 'stat', 'view', 'chart'])" value-attribute="value" option-attribute="label" />
+        <UInput v-model="wTitle" placeholder="Title (optional)" />
+        <UTextarea v-if="wType==='note'" v-model="wNote" placeholder="Text…" :rows="3" />
+        <USelectMenu v-else-if="wType==='stat'" v-model="wStatPrio" value-attribute="value" option-attribute="label"
+          :options="[{ label: 'all issues', value: '' }, ...PRIO.map((p, idx) => ({ label: `priority: ${p}`, value: String(idx) }))]" />
+        <USelectMenu v-else-if="wType==='view'" v-model="wViewId" value-attribute="value" option-attribute="label"
+          :options="[{ label: 'pick a view…', value: '' }, ...Object.values(store.views).filter((x) => !x.deletedAt).map((v) => ({ label: v.name, value: v.id }))]" />
+        <div class="flex justify-end gap-2 pt-1">
+          <UButton color="gray" variant="ghost" @click="showWidget = false">Cancel</UButton>
+          <UButton icon="i-heroicons-plus" @click="addWidget(); showWidget = false">Add</UButton>
+        </div>
+      </div>
+    </UModal>
+
+    <!-- Add label модалка -->
+    <UModal v-model="showLabelModal">
+      <div v-if="selectedIssue" class="space-y-4 p-4">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-heroicons-tag" class="text-tertiary" />
+          <span class="text-base font-semibold text-white">Add label</span>
+          <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showLabelModal = false" />
+        </div>
+        <div>
+          <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary">Existing</div>
+          <div class="flex flex-wrap gap-1.5">
+            <button v-for="l in store.teamLabels(selectedIssue.teamId).filter((l) => !store.labelsForIssue(selectedIssue.id).some((x) => x.id === l.id))" :key="l.id"
+              class="flex items-center gap-1 rounded-full border border-subtle px-2.5 py-1 text-sm hover:border-strong hover:bg-hover"
+              @click="addLabelFromModal(l.id); showLabelModal = false">
+              <span class="h-2 w-2 rounded-full" :style="{ background: l.colorToken }" />{{ l.name }}
+            </button>
+            <span v-if="!store.teamLabels(selectedIssue.teamId).filter((l) => !store.labelsForIssue(selectedIssue.id).some((x) => x.id === l.id)).length" class="text-sm text-tertiary">All labels added</span>
+          </div>
+        </div>
+        <div class="border-t border-subtle pt-3">
+          <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary">Create new</div>
+          <div class="flex gap-2">
+            <UInput v-model="newLabelName" size="sm" placeholder="Label name" class="flex-1" @keyup.enter="createLabelInIssue(); showLabelModal = false" />
+            <UButton icon="i-heroicons-plus" @click="createLabelInIssue(); showLabelModal = false">Create</UButton>
+          </div>
+        </div>
+      </div>
+    </UModal>
+
+    <!-- Add relation модалка -->
+    <UModal v-model="showRelModal">
+      <div v-if="selectedIssue" class="space-y-4 p-4">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-heroicons-link" class="text-tertiary" />
+          <span class="text-base font-semibold text-white">Add relation</span>
+          <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showRelModal = false" />
+        </div>
+        <div>
+          <label class="mb-1 block text-xs text-tertiary">Type</label>
+          <USelectMenu v-model="relType" :options="labelOpts(REL_TYPES)" value-attribute="value" option-attribute="label" class="w-full" />
+        </div>
+        <div>
+          <label class="mb-1 block text-xs text-tertiary">Target issue</label>
+          <USelectMenu v-model="relTarget" searchable searchable-placeholder="Search issue…" placeholder="Select issue" value-attribute="value" option-attribute="label"
+            :options="store.issuesForTeamAll(selectedIssue.teamId).filter((i) => i.id !== selectedIssue.id).map((i) => ({ label: `${i.identifier} · ${i.title}`, value: i.identifier }))" class="w-full" />
+        </div>
+        <div class="flex justify-end gap-2 pt-1">
+          <UButton color="gray" variant="ghost" @click="showRelModal = false">Cancel</UButton>
+          <UButton icon="i-heroicons-plus" :disabled="!relTarget" @click="addRel">Add</UButton>
+        </div>
+      </div>
+    </UModal>
+
+    <!-- Statuses модалка -->
+    <UModal v-model="showStates">
+      <div class="space-y-3 p-4">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-heroicons-adjustments-horizontal" class="text-tertiary" />
+          <span class="text-base font-semibold text-white">Workflow statuses · {{ selectedTeam?.key }}</span>
+          <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showStates = false" />
+        </div>
+        <div v-for="st in store.teamStates(selectedTeamId)" :key="st.id" class="flex items-center gap-2">
+          <UIcon :name="statusIcon(st.category)" :style="{ color: statusColor(st.category) }" class="shrink-0" />
+          <UInput :model-value="st.name" size="sm" class="flex-1" @change="(v:any) => store.updateState(st.id, { name: v })" />
+          <USelectMenu :model-value="st.category" :options="labelOpts(STATE_CATS)" value-attribute="value" option-attribute="label" size="sm" class="w-36" @update:model-value="(c) => store.updateState(st.id, { category: c })" />
+          <UButton icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square title="Delete (must be empty)" @click="delState(st.id)" />
+        </div>
+        <div class="flex items-center gap-2 border-t border-subtle pt-3">
+          <UInput v-model="newStateName" placeholder="New status name" size="sm" class="flex-1" @keyup.enter="addState" />
+          <USelectMenu v-model="newStateCat" :options="labelOpts(STATE_CATS)" value-attribute="value" option-attribute="label" size="sm" class="w-36" />
+          <UButton icon="i-heroicons-plus" size="xs" square @click="addState" />
+        </div>
+        <p v-if="err" class="text-xs text-red-400">{{ err }}</p>
+      </div>
+    </UModal>
+
+    <!-- Workspace Settings (большая модалка с сайдбаром) -->
+    <UModal v-model="showSettings" :ui="{ width: 'sm:max-w-3xl' }">
+      <div class="flex h-[34rem]">
+        <!-- сайдбар табов -->
+        <div class="w-48 shrink-0 overflow-y-auto border-r border-subtle bg-base p-2">
+          <template v-for="(tabs, grp) in settingsGroups" :key="grp">
+            <div class="mb-1 mt-2 px-2 text-xs font-medium uppercase tracking-wider text-tertiary">{{ grp }}</div>
+            <div v-for="t in tabs" :key="t.key"
+              class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 text-sm hover:bg-hover"
+              :class="settingsTab === t.key ? 'bg-active text-white' : 'text-secondary'"
+              @click="settingsTab = t.key as any"><UIcon :name="t.icon" class="text-tertiary" /> {{ t.label }}</div>
+          </template>
+        </div>
+        <!-- контент -->
+        <div class="flex-1 overflow-y-auto p-5">
+          <!-- GENERAL -->
+          <template v-if="settingsTab === 'general'">
+            <div class="mb-4 flex items-center justify-between">
+              <h2 class="text-base font-semibold text-white">General</h2>
+              <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
+            </div>
+            <div class="space-y-4 text-sm">
+              <div>
+                <label class="mb-1 block text-xs text-tertiary">Logo</label>
+                <div class="flex items-center gap-3">
+                  <Avatar :name="store.activeWorkspace?.name" :avatar-key="(store.activeWorkspace as any)?.logoKey" :size="48" />
+                  <UButton color="gray" variant="soft" size="xs" icon="i-heroicons-arrow-up-tray" @click="logoEl?.click()">Upload</UButton>
+                  <UButton v-if="(store.activeWorkspace as any)?.logoKey" color="gray" variant="ghost" size="xs" @click="store.setLogo('')">Remove</UButton>
+                  <input ref="logoEl" type="file" accept="image/*" class="hidden" @change="onLogoPick" />
+                </div>
+              </div>
+              <div>
+                <label class="mb-1 block text-xs text-tertiary">Workspace name</label>
+                <div class="flex gap-2"><UInput v-model="wsNameDraft" class="flex-1" /><UButton :disabled="!wsNameDraft.trim() || wsNameDraft === store.activeWorkspace?.name" @click="saveWsName">Save</UButton></div>
+              </div>
+              <div>
+                <label class="mb-1 block text-xs text-tertiary">Slug</label>
+                <UInput :model-value="store.activeWorkspace?.slug" disabled />
+              </div>
+              <div class="text-xs text-tertiary">ID: {{ store.activeWorkspaceId }}</div>
+              <div class="mt-6 rounded-lg border border-red-500/30 p-3">
+                <div class="mb-1 text-sm font-medium text-red-400">Danger zone</div>
+                <p class="mb-2 text-xs text-tertiary">Удаление воркспейса скроет его и все данные. Действие необратимо.</p>
+                <UButton color="red" variant="soft" icon="i-heroicons-trash" @click="confirmDeleteWs">Delete workspace</UButton>
+              </div>
+            </div>
+          </template>
+
+          <!-- MEMBERS -->
+          <template v-else-if="settingsTab === 'members'">
+            <div class="mb-4 flex items-center justify-between">
+              <h2 class="text-base font-semibold text-white">Members</h2>
+              <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
+            </div>
+            <div class="mb-4 flex gap-2">
+              <UInput v-model="inviteEmail" placeholder="email to invite" class="flex-1" @keyup.enter="doInvite" />
+              <USelectMenu v-model="inviteRole" :options="labelOpts(ROLES)" value-attribute="value" option-attribute="label" class="w-32" />
+              <UButton icon="i-heroicons-paper-airplane" :disabled="!inviteEmail.trim()" @click="doInvite">Invite</UButton>
+            </div>
+            <div v-for="m in store.workspaceMembers" :key="m.id" class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
+              <span class="flex h-7 w-7 items-center justify-center rounded-full bg-elevated text-xs">{{ (m.name || '?')[0].toUpperCase() }}</span>
+              <span class="flex-1 truncate text-sm">{{ m.name }}<span v-if="m.userId === store.currentUserId" class="ml-1 text-xs text-tertiary">(you)</span></span>
+              <USelectMenu :model-value="m.role" :options="labelOpts(ROLES)" value-attribute="value" option-attribute="label" size="xs" class="w-28" @update:model-value="(r) => store.updateMemberRole(m.userId, r)" />
+              <UButton v-if="m.userId !== store.currentUserId" icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Remove" @click="store.removeMember(m.userId)" />
+            </div>
+            <template v-if="store.pendingInvites.length">
+              <div class="mb-1 mt-3 text-xs font-medium uppercase tracking-wider text-tertiary">Pending</div>
+              <div v-for="iv in store.pendingInvites" :key="iv.id" class="flex items-center gap-2 px-2 py-1.5 text-sm text-tertiary">
+                <UIcon name="i-heroicons-envelope" /> <span class="flex-1 truncate">{{ iv.email }}</span><span class="text-xs">{{ iv.role }}</span>
+              </div>
+            </template>
+          </template>
+
+          <!-- TEAMS -->
+          <template v-else-if="settingsTab === 'teams'">
+            <div class="mb-4 flex items-center justify-between">
+              <h2 class="text-base font-semibold text-white">Teams</h2>
+              <UButton icon="i-heroicons-plus" size="xs" @click="showSettings = false; openCreate('team')">New team</UButton>
+            </div>
+            <div v-for="t in store.teamList" :key="t.id" class="group flex items-center gap-2 rounded-md px-2 py-2 hover:bg-hover">
+              <UIcon name="i-heroicons-cube" class="text-tertiary" />
+              <UInput :model-value="t.name" variant="none" :padded="false" class="flex-1 font-medium" @change="(v:any) => store.updateTeam(t.id, { name: v })" />
+              <span class="text-xs text-tertiary">{{ t.key }}</span>
+              <USelectMenu :model-value="t.parentId || ''" size="2xs" class="w-32" value-attribute="value" option-attribute="label"
+                :options="[{ label: '— root —', value: '' }, ...store.teamList.filter((x) => x.id !== t.id).map((x) => ({ label: x.key, value: x.id }))]"
+                @update:model-value="(p) => store.moveTeam(t.id, p)" />
+              <UButton icon="i-heroicons-adjustments-horizontal" color="gray" variant="ghost" size="2xs" square title="Statuses" @click="selectedTeamId = t.id; showSettings = false; showStates = true" />
+              <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Delete team" @click="confirmDeleteTeam(t)" />
+            </div>
+          </template>
+
+          <!-- LABELS -->
+          <template v-else-if="settingsTab === 'labels'">
+            <div class="mb-4 flex items-center justify-between">
+              <h2 class="text-base font-semibold text-white">Labels</h2>
+              <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
+            </div>
+            <div class="mb-4 flex items-center gap-2">
+              <div class="flex gap-1">
+                <button v-for="c in LABEL_COLORS" :key="c" class="h-5 w-5 rounded-full ring-offset-1 ring-offset-base" :class="newWsLabelColor === c ? 'ring-2 ring-white' : ''" :style="{ background: c }" @click="newWsLabelColor = c" />
+              </div>
+              <UInput v-model="newWsLabelName" placeholder="Label name" class="flex-1" @keyup.enter="addWsLabel" />
+              <UButton icon="i-heroicons-plus" :disabled="!newWsLabelName.trim()" @click="addWsLabel">Add</UButton>
+            </div>
+            <div v-for="l in allLabels" :key="l.id" class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
+              <div class="flex gap-0.5">
+                <button v-for="c in LABEL_COLORS" :key="c" class="h-3.5 w-3.5 rounded-full" :class="l.colorToken === c ? 'ring-1 ring-white ring-offset-1 ring-offset-base' : ''" :style="{ background: c }" @click="store.updateLabel(l.id, { colorToken: c })" />
+              </div>
+              <UInput :model-value="l.name" variant="none" :padded="false" class="flex-1 text-sm" @change="(v:any) => store.updateLabel(l.id, { name: v })" />
+              <span class="text-xs text-tertiary">{{ store.teams[l.teamId]?.key || 'workspace' }}</span>
+              <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" @click="store.deleteLabel(l.id)" />
+            </div>
+            <div v-if="!allLabels.length" class="py-6 text-center text-sm text-tertiary">No labels yet</div>
+          </template>
+
+          <!-- ACCOUNT -->
+          <template v-else-if="settingsTab === 'account'">
+            <div class="mb-4 flex items-center justify-between">
+              <h2 class="text-base font-semibold text-white">Account</h2>
+              <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
+            </div>
+            <div class="mb-4 flex items-center gap-3">
+              <Avatar :name="store.userName(store.currentUserId)" :avatar-key="store.users[store.currentUserId]?.avatarKey" :size="48" />
+              <div class="flex-1">
+                <div class="font-medium">{{ store.users[store.currentUserId]?.name || '—' }}</div>
+                <div class="text-xs text-tertiary">{{ store.users[store.currentUserId]?.email }}</div>
+              </div>
+              <UButton color="gray" variant="soft" size="xs" icon="i-heroicons-arrow-up-tray" @click="avatarEl?.click()">Upload</UButton>
+              <UButton v-if="store.users[store.currentUserId]?.avatarKey" color="gray" variant="ghost" size="xs" @click="store.setAvatar('')">Remove</UButton>
+              <input ref="avatarEl" type="file" accept="image/*" class="hidden" @change="onAvatarPick" />
+            </div>
+            <UButton color="red" variant="soft" icon="i-heroicons-arrow-right-on-rectangle" @click="logout">Log out</UButton>
+          </template>
+
+          <!-- APPEARANCE -->
+          <template v-else-if="settingsTab === 'appearance'">
+            <div class="mb-4 flex items-center justify-between">
+              <h2 class="text-base font-semibold text-white">Appearance</h2>
+              <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
+            </div>
+            <div class="mb-1 text-xs text-tertiary">Density</div>
+            <div class="flex gap-2">
+              <button v-for="d in ['compact', 'default', 'comfortable']" :key="d"
+                class="rounded-md border px-3 py-2 text-sm capitalize"
+                :class="density === d ? 'border-accent bg-active text-white' : 'border-subtle bg-elevated text-tertiary hover:bg-hover'"
+                @click="applyDensity(d)">{{ d }}</button>
+            </div>
+            <p class="mt-2 text-xs text-tertiary">Меняет масштаб всего интерфейса.</p>
+          </template>
+
+          <!-- NOTIFICATIONS -->
+          <template v-else-if="settingsTab === 'notifications'">
+            <div class="mb-4 flex items-center justify-between">
+              <h2 class="text-base font-semibold text-white">Notifications</h2>
+              <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
+            </div>
+            <p class="mb-3 text-xs text-tertiary">Какие уведомления показывать в Inbox.</p>
+            <div v-for="p in NOTIF_PREF_LIST" :key="p.key" class="flex items-center gap-2 rounded-md px-2 py-2 hover:bg-hover">
+              <UCheckbox :model-value="notifPrefs[p.key] !== false" @update:model-value="toggleNotifPref(p.key)" />
+              <span class="text-sm">{{ p.label }}</span>
+            </div>
+          </template>
+
+          <!-- SECTIONS (sidebar) -->
+          <template v-else-if="settingsTab === 'sections'">
+            <div class="mb-4 flex items-center justify-between">
+              <h2 class="text-base font-semibold text-white">Sidebar sections</h2>
+              <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
+            </div>
+            <p class="mb-3 text-xs text-tertiary">Включить/выключить разделы рейла и задать порядок.</p>
+            <div v-for="(s, i) in cfgList" :key="s.key" class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
+              <UCheckbox :model-value="s.visible" @update:model-value="toggleSection(i)" />
+              <UIcon :name="s.icon" class="text-tertiary" />
+              <span class="flex-1 text-sm">{{ s.label }}</span>
+              <UButton icon="i-heroicons-chevron-up" color="gray" variant="ghost" size="2xs" square :disabled="i === 0" @click="moveSection(i, -1)" />
+              <UButton icon="i-heroicons-chevron-down" color="gray" variant="ghost" size="2xs" square :disabled="i === cfgList.length - 1" @click="moveSection(i, 1)" />
+            </div>
+          </template>
+        </div>
+      </div>
+    </UModal>
+
+    <!-- Members модалка -->
+    <UModal v-model="showMembers">
+      <div class="space-y-3 p-4">
+        <div class="flex items-center gap-2">
+          <UIcon name="i-heroicons-user-group" class="text-tertiary" />
+          <span class="text-base font-semibold text-white">Members</span>
+          <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showMembers = false" />
+        </div>
+        <!-- invite -->
+        <div class="flex gap-2">
+          <UInput v-model="inviteEmail" placeholder="email to invite" class="flex-1" @keyup.enter="doInvite" />
+          <USelectMenu v-model="inviteRole" :options="labelOpts(ROLES)" value-attribute="value" option-attribute="label" class="w-32" />
+          <UButton icon="i-heroicons-paper-airplane" :disabled="!inviteEmail.trim()" @click="doInvite">Invite</UButton>
+        </div>
+        <!-- members list -->
+        <div class="max-h-72 overflow-y-auto">
+          <div class="mb-1 text-xs font-medium uppercase tracking-wider text-tertiary">Members ({{ store.workspaceMembers.length }})</div>
+          <div v-for="m in store.workspaceMembers" :key="m.id" class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
+            <span class="flex h-7 w-7 items-center justify-center rounded-full bg-elevated text-xs">{{ (m.name || '?')[0].toUpperCase() }}</span>
+            <span class="flex-1 truncate text-sm">{{ m.name }}</span>
+            <USelectMenu :model-value="m.role" :options="labelOpts(ROLES)" value-attribute="value" option-attribute="label" size="xs" class="w-28" @update:model-value="(r) => store.updateMemberRole(m.userId, r)" />
+          </div>
+          <template v-if="store.pendingInvites.length">
+            <div class="mb-1 mt-3 text-xs font-medium uppercase tracking-wider text-tertiary">Pending invites</div>
+            <div v-for="iv in store.pendingInvites" :key="iv.id" class="flex items-center gap-2 px-2 py-1.5 text-sm text-tertiary">
+              <UIcon name="i-heroicons-envelope" /> <span class="flex-1 truncate">{{ iv.email }}</span><span class="text-xs">{{ iv.role }}</span>
+            </div>
+          </template>
+        </div>
+      </div>
+    </UModal>
+
+    <!-- Command palette (Cmd/Ctrl+K) -->
+    <div v-if="paletteOpen" class="fixed inset-0 z-[100] flex items-start justify-center bg-black/40 pt-32" @click.self="paletteOpen = false">
+      <div class="w-[32rem] rounded-md border border-subtle bg-elevated shadow-xl">
+        <input ref="paletteInput" v-model="paletteQ" placeholder="Search issues, teams, projects, dashboards, views…"
+          class="w-full border-b border-subtle bg-transparent px-4 py-3 text-sm outline-none"
+          @keydown.down.prevent="paletteMove(1)" @keydown.up.prevent="paletteMove(-1)"
+          @keydown.enter.prevent="runResult(paletteResults[paletteIdx])" />
+        <div class="max-h-80 overflow-y-auto p-1">
+          <div v-for="(r, i) in paletteResults" :key="r.type + r.id"
+            class="flex cursor-pointer items-center gap-2 rounded-sm px-3 py-2 text-sm"
+            :class="i === paletteIdx ? 'bg-active' : 'hover:bg-hover'"
+            @mouseenter="paletteIdx = i" @click="runResult(r)">
+            <span class="text-xs uppercase text-tertiary">{{ r.type }}</span>{{ r.label }}
+          </div>
+          <div v-if="paletteQ && !paletteResults.length" class="px-3 py-2 text-sm text-tertiary">No results</div>
+          <div v-if="!paletteQ" class="px-3 py-2 text-xs text-tertiary">Type to search · ⌘K / Ctrl+K</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- активный звонок (плавающая панель, сама прячется) -->
+    <MeetingCall />
+    <!-- лайтбокс картинок -->
+    <ImageLightbox />
+  </div>
+</template>

@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/common.proto";
+
+service CycleService {
+  rpc CreateCycle(CreateCycleRequest) returns (CommandResult);
+  rpc UpdateCycle(UpdateCycleRequest) returns (CommandResult);
+}
+
+message CreateCycleRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string team_id = 3;
+  string name = 4;       // опц.
+  string starts_on = 5;  // ISO date
+  string ends_on = 6;    // ISO date
+}
+
+message UpdateCycleRequest {
+  string workspace_id = 1;
+  string id = 2;
+  int64 base_version = 3;
+  optional string name = 4;
+  optional string starts_on = 5;
+  optional string ends_on = 6;
+}

@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/common.proto";
+
+service CommentService {
+  rpc AddComment(AddCommentRequest) returns (CommandResult);
+  rpc EditComment(EditCommentRequest) returns (CommandResult);
+  rpc DeleteComment(EntityRef) returns (CommandResult);
+  rpc GetComments(GetCommentsRequest) returns (GetCommentsResponse);
+}
+
+message AddCommentRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string issue_id = 3;
+  string body = 4; // markdown
+}
+
+message EditCommentRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string body = 3;
+}
+
+message GetCommentsRequest {
+  string workspace_id = 1;
+  string issue_id = 2;
+}
+
+message GetCommentsResponse {
+  bytes comments = 1; // json-массив
+}

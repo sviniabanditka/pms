@@ -1,0 +1,3 @@
+ALTER TABLE workspaces DROP COLUMN IF EXISTS logo_key;
+ALTER TABLE users DROP COLUMN IF EXISTS avatar_key;
+DROP TABLE IF EXISTS attachments;

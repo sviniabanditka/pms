@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/common.proto";
+
+service TeamService {
+  rpc CreateTeam(CreateTeamRequest) returns (CommandResult);
+  rpc UpdateTeam(UpdateTeamRequest) returns (CommandResult);
+  rpc MoveTeam(MoveTeamRequest) returns (CommandResult);
+  rpc CreateWorkflowState(CreateWorkflowStateRequest) returns (CommandResult);
+  rpc UpdateWorkflowState(UpdateWorkflowStateRequest) returns (CommandResult);
+  rpc DeleteWorkflowState(EntityRef) returns (CommandResult);
+  rpc CreateLabel(CreateLabelRequest) returns (CommandResult);
+  rpc UpdateLabel(UpdateLabelRequest) returns (CommandResult);
+  rpc DeleteLabel(EntityRef) returns (CommandResult);
+  rpc DeleteTeam(EntityRef) returns (CommandResult);
+}
+
+message UpdateWorkflowStateRequest {
+  string workspace_id = 1;
+  string id = 2;
+  optional string name = 3;
+  optional string color_token = 4;
+  optional string category = 5;
+}
+
+message CreateTeamRequest {
+  string workspace_id = 1;
+  string id = 2; // client-generated UUIDv7
+  string parent_id = 3; // опционально (вложенность)
+  string key = 4;
+  string name = 5;
+  bool private = 6;
+}
+
+message UpdateTeamRequest {
+  string workspace_id = 1;
+  string id = 2;
+  int64 base_version = 3;
+  optional string name = 4;
+  optional bool private = 5;
+}
+
+message MoveTeamRequest {
+  string workspace_id = 1;
+  string id = 2;
+  int64 base_version = 3;
+  string new_parent_id = 4; // пусто = корень
+}
+
+message CreateWorkflowStateRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string team_id = 3;
+  string category = 4;
+  string name = 5;
+  string color_token = 6;
+}
+
+message UpdateLabelRequest {
+  string workspace_id = 1;
+  string id = 2;
+  optional string name = 3;
+  optional string color_token = 4;
+}
+
+message CreateLabelRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string team_id = 3; // пусто = workspace-scope
+  string name = 4;
+  string color_token = 5;
+}

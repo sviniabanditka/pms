@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/common.proto";
+
+// Файл уже залит через HTTP POST /files/upload (multipart) → получили s3_key.
+// Эти RPC привязывают объект к сущности / аватарке / лого.
+service AttachmentService {
+  rpc CreateAttachment(CreateAttachmentRequest) returns (CommandResult);
+  rpc DeleteAttachment(EntityRef) returns (CommandResult);
+  rpc GetAttachmentURL(GetAttachmentURLRequest) returns (URLResponse);
+  rpc SetUserAvatar(SetKeyRequest) returns (CommandResult);
+  rpc SetWorkspaceLogo(SetKeyRequest) returns (CommandResult);
+}
+
+message CreateAttachmentRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string entity_type = 3; // issue | message | comment | doc
+  string entity_id = 4;
+  string filename = 5;
+  string content_type = 6;
+  int64 size = 7;
+  string s3_key = 8;
+}
+
+message GetAttachmentURLRequest {
+  string workspace_id = 1;
+  string s3_key = 2;
+}
+
+message URLResponse {
+  string url = 1;
+}
+
+message SetKeyRequest {
+  string workspace_id = 1;
+  string s3_key = 2; // пустой = снять аватар/лого
+}

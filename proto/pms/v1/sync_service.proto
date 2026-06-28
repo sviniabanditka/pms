@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+// Bootstrap-срез + догон. Live-дельты — по WS (ws.proto, Срез 5).
+service SyncService {
+  rpc Bootstrap(BootstrapRequest) returns (stream BootstrapChunk);
+  rpc Changes(ChangesRequest) returns (ChangesResponse);
+}
+
+message BootstrapRequest {
+  string workspace_id = 1;
+  repeated string team_ids = 2;
+}
+
+message BootstrapChunk {
+  string entity_type = 1;
+  bytes entities = 2; // json batch
+  int64 cursor = 3;
+}
+
+message ChangesRequest {
+  string workspace_id = 1;
+  int64 since_cursor = 2;
+}
+
+message ChangesResponse {
+  repeated Delta deltas = 1;
+  int64 cursor = 2;
+}
+
+message Delta {
+  int64 seq = 1;
+  string entity_type = 2;
+  string entity_id = 3;
+  int64 version = 4;
+  string op = 5;
+  bytes changed_fields = 6; // json
+}

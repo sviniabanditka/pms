@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/filter.proto";
+import "pms/v1/common.proto";
+
+message GroupSpec {
+  FieldRef field = 1;
+}
+
+message OrderSpec {
+  FieldRef field = 1;
+  bool desc = 2;
+  bool manual = 3;
+}
+
+// ViewDefinition (§6.1). rich-контент (layout_options/options) — json в bytes.
+message ViewDefinition {
+  string data_source = 1;
+  Scope scope = 2;
+  FilterNode filter = 3;
+  GroupSpec grouping = 4;
+  GroupSpec sub_grouping = 5;
+  repeated OrderSpec ordering = 6;
+  string layout = 7;
+  bytes layout_options = 8;
+  repeated string display_props = 9;
+  bytes options = 10;
+}

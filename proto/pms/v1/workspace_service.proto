@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/common.proto";
+
+service WorkspaceService {
+  rpc CreateWorkspace(CreateWorkspaceRequest) returns (CommandResult);
+  rpc UpdateWorkspaceSettings(UpdateWorkspaceSettingsRequest) returns (CommandResult);
+  rpc InviteMember(InviteMemberRequest) returns (CommandResult);
+  rpc AcceptInvitation(AcceptInvitationRequest) returns (CommandResult);
+  rpc UpdateMemberRole(UpdateMemberRoleRequest) returns (CommandResult);
+  rpc UpdateSectionsConfig(UpdateSectionsConfigRequest) returns (CommandResult);
+  rpc DeleteWorkspace(EntityRef) returns (CommandResult);
+  rpc RemoveMember(RemoveMemberRequest) returns (CommandResult);
+}
+
+message UpdateSectionsConfigRequest {
+  string workspace_id = 1;
+  bytes config = 2; // json: { sections: [{key, visible}] }
+}
+
+message CreateWorkspaceRequest {
+  string id = 1; // client-generated UUIDv7 (== Idempotency-Key)
+  string slug = 2;
+  string name = 3;
+}
+
+message UpdateWorkspaceSettingsRequest {
+  string workspace_id = 1;
+  int64 base_version = 2;
+  bytes settings = 3; // json
+  optional string name = 4;
+}
+
+message InviteMemberRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string email = 3;
+  string role = 4;
+}
+
+message AcceptInvitationRequest {
+  string token = 1;
+}
+
+message RemoveMemberRequest {
+  string workspace_id = 1;
+  string user_id = 2;
+}
+
+message UpdateMemberRoleRequest {
+  string workspace_id = 1;
+  string user_id = 2;
+  int64 base_version = 3;
+  string role = 4;
+}

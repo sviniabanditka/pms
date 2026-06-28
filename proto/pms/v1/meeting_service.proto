@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/common.proto";
+
+service MeetingService {
+  // scheduled-митинг с явным кругом участников
+  rpc CreateMeeting(CreateMeetingRequest) returns (CommandResult);
+  // ad-hoc huddle из чата: весь канал или 1-1 DM (channel_idканала kind=dm)
+  rpc StartHuddle(StartHuddleRequest) returns (CommandResult);
+  rpc JoinMeeting(JoinMeetingRequest) returns (JoinMeetingResponse);
+  rpc LeaveMeeting(EntityRef) returns (CommandResult);
+  rpc EndMeeting(EntityRef) returns (CommandResult);
+  // WebRTC-сигналинг peer→peer (offer/answer/ice/bye) через WS воркспейса
+  rpc SendSignal(SendSignalRequest) returns (CommandResult);
+}
+
+message CreateMeetingRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string title = 3;
+  string scheduled_at = 4;          // ISO datetime, опц.
+  repeated string participant_ids = 5;
+  string channel_id = 6;            // опц. — привязать к каналу
+}
+
+message StartHuddleRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string channel_id = 3;            // huddle на весь канал (или DM 1-1)
+}
+
+message JoinMeetingRequest {
+  string workspace_id = 1;
+  string meeting_id = 2;
+}
+
+message JoinMeetingResponse {
+  repeated string peer_ids = 1;     // уже подключённые участники (для mesh-оферов)
+}
+
+message SendSignalRequest {
+  string workspace_id = 1;
+  string meeting_id = 2;
+  string to_user_id = 3;
+  string kind = 4;                  // offer | answer | ice | bye
+  string payload = 5;               // JSON: SDP или ICE-кандидат
+}

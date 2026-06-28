@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/common.proto";
+
+service CustomFieldService {
+  rpc CreateCustomField(CreateCustomFieldRequest) returns (CommandResult);
+  rpc ArchiveCustomField(EntityRef) returns (CommandResult);
+}
+
+message CreateCustomFieldRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string team_id = 3;   // пусто = workspace-scope
+  string name = 4;
+  string type = 5;      // text|number|date|checkbox|select|multiselect|url
+  bytes config = 6;     // json (напр. {"options":[...]})
+}

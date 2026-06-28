@@ -1,0 +1,4 @@
+ALTER TABLE issues DROP CONSTRAINT IF EXISTS issues_cycle_fk;
+ALTER TABLE issues DROP CONSTRAINT IF EXISTS issues_project_fk;
+DROP TABLE IF EXISTS cycles;
+DROP TABLE IF EXISTS projects;

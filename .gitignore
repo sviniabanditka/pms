@@ -1,0 +1,25 @@
+# Go
+/backend/bin/
+*.test
+*.out
+
+# Node / Nuxt
+node_modules/
+/frontend/.nuxt/
+/frontend/.output/
+/frontend/dist/
+
+# Generated (proto codegen) — regenerate via buf
+/backend/gen/
+/frontend/gen/
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/

@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/common.proto";
+
+service NotificationService {
+  rpc MarkRead(EntityRef) returns (CommandResult);
+  rpc MarkAllRead(MarkAllReadRequest) returns (CommandResult);
+}
+
+message MarkAllReadRequest {
+  string workspace_id = 1;
+}

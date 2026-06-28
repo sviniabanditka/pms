@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/common.proto";
+
+service MilestoneService {
+  rpc CreateMilestone(CreateMilestoneRequest) returns (CommandResult);
+  rpc UpdateMilestone(UpdateMilestoneRequest) returns (CommandResult);
+  rpc DeleteMilestone(EntityRef) returns (CommandResult);
+}
+
+message CreateMilestoneRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string team_id = 3;
+  string name = 4;
+  string target_date = 5; // YYYY-MM-DD, опц.
+}
+
+message UpdateMilestoneRequest {
+  string workspace_id = 1;
+  string id = 2;
+  optional string name = 3;
+  optional string target_date = 4;
+  optional string status = 5;
+}

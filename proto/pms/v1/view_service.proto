@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/common.proto";
+
+service ViewService {
+  rpc CreateView(CreateViewRequest) returns (CommandResult);
+  rpc UpdateView(UpdateViewRequest) returns (CommandResult);
+  rpc DeleteView(EntityRef) returns (CommandResult);
+}
+
+message CreateViewRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string name = 3;
+  string data_source = 4;  // 'issue'
+  string scope_kind = 5;   // 'team' | 'personal' | 'workspace'
+  string team_id = 6;      // при scope=team
+  bytes filter = 7;        // json Filter AST
+  bytes grouping = 8;      // json GroupSpec (опц.)
+  string layout = 9;       // 'list' | 'board'
+}
+
+message UpdateViewRequest {
+  string workspace_id = 1;
+  string id = 2;
+  int64 base_version = 3;
+  optional string name = 4;
+  optional bytes filter = 5;
+  optional bytes grouping = 6;
+  optional string layout = 7;
+}

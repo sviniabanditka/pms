@@ -1,0 +1,11 @@
+version: v2
+modules:
+  - path: proto
+lint:
+  # BASIC, не STANDARD: переиспользуем CommandResult между RPC (см. commands.md) и держим
+  # короткие enum-значения — это осознанные решения, а не стилевые огрехи.
+  use:
+    - BASIC
+breaking:
+  use:
+    - FILE

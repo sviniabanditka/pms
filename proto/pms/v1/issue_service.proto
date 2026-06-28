@@ -1,0 +1,126 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/common.proto";
+
+service IssueService {
+  rpc CreateIssue(CreateIssueRequest) returns (CommandResult);
+  rpc UpdateIssue(UpdateIssueRequest) returns (CommandResult);
+  rpc UpdateIssueState(UpdateIssueStateRequest) returns (CommandResult);
+  rpc AssignIssue(AssignIssueRequest) returns (CommandResult);
+  rpc SetPriority(SetPriorityRequest) returns (CommandResult);
+  rpc SetCycle(SetCycleRequest) returns (CommandResult);
+  rpc SetEstimate(SetEstimateRequest) returns (CommandResult);
+  rpc SetMilestone(SetMilestoneRequest) returns (CommandResult);
+  rpc SetCustomFieldValue(SetCustomFieldValueRequest) returns (CommandResult);
+  rpc AddLabel(LabelRequest) returns (CommandResult);
+  rpc RemoveLabel(LabelRequest) returns (CommandResult);
+  rpc AddRelation(AddRelationRequest) returns (CommandResult);
+  rpc RemoveRelation(EntityRef) returns (CommandResult);
+  rpc ReorderIssue(ReorderIssueRequest) returns (CommandResult);
+  rpc GetActivity(GetActivityRequest) returns (GetActivityResponse);
+  rpc ArchiveIssue(EntityRef) returns (CommandResult);
+}
+
+message AddRelationRequest {
+  string workspace_id = 1;
+  string id = 2;        // client-generated UUIDv7 (relation id)
+  string source_id = 3;
+  string target_id = 4;
+  string type = 5;      // blocks | blocked_by | related | duplicate | duplicate_of
+}
+
+message ReorderIssueRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string state_id = 3;   // целевая колонка (статус); пусто = текущий
+  string before_id = 4;  // сосед сверху (опц.)
+  string after_id = 5;   // сосед снизу (опц.)
+}
+
+message CreateIssueRequest {
+  string workspace_id = 1;
+  string id = 2; // client-generated UUIDv7
+  string team_id = 3;
+  string title = 4;
+  string state_id = 5;    // опц.: пусто → дефолтный статус команды
+  int32 priority = 6;
+  string assignee_id = 7; // опц.
+  string parent_id = 8;   // опц. (sub-issue)
+}
+
+message UpdateIssueRequest {
+  string workspace_id = 1;
+  string id = 2;
+  int64 base_version = 3; // per-field LWW
+  optional string title = 4;
+  optional int32 priority = 5;
+  optional string assignee_id = 6;
+  optional string due_date = 7;       // ISO date; пустая строка = очистить
+  optional string scheduled_date = 8;
+  optional string description = 9;    // markdown; хранится как jsonb {"md": ...}
+}
+
+message UpdateIssueStateRequest {
+  string workspace_id = 1;
+  string id = 2;
+  int64 base_version = 3;
+  string state_id = 4;
+}
+
+message AssignIssueRequest {
+  string workspace_id = 1;
+  string id = 2;
+  int64 base_version = 3;
+  string assignee_id = 4; // пусто = снять
+}
+
+message SetPriorityRequest {
+  string workspace_id = 1;
+  string id = 2;
+  int64 base_version = 3;
+  int32 priority = 4;
+}
+
+message SetCycleRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string cycle_id = 3; // пусто = снять
+}
+
+message SetCustomFieldValueRequest {
+  string workspace_id = 1;
+  string issue_id = 2;
+  string field_id = 3;
+  bytes value = 4; // json; пусто = снять
+}
+
+message LabelRequest {
+  string workspace_id = 1;
+  string issue_id = 2;
+  string label_id = 3;
+}
+
+message SetEstimateRequest {
+  string workspace_id = 1;
+  string id = 2;
+  double estimate = 3; // 0 = снять
+}
+
+message SetMilestoneRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string milestone_id = 3; // пусто = снять
+}
+
+message GetActivityRequest {
+  string workspace_id = 1;
+  string entity_id = 2;
+}
+
+message GetActivityResponse {
+  bytes activity = 1; // json-массив записей change_log
+}

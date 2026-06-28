@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/common.proto";
+
+service ChatService {
+  rpc CreateChannel(CreateChannelRequest) returns (CommandResult);
+  rpc CreateDM(CreateDMRequest) returns (CommandResult);
+  rpc SendMessage(SendMessageRequest) returns (CommandResult);
+  rpc EditMessage(EditMessageRequest) returns (CommandResult);
+  rpc DeleteMessage(EntityRef) returns (CommandResult);
+  rpc ToggleReaction(ToggleReactionRequest) returns (CommandResult);
+  rpc SendTyping(SendTypingRequest) returns (CommandResult);
+  rpc GetMessages(GetMessagesRequest) returns (GetMessagesResponse);
+  rpc MarkChannelRead(MarkChannelReadRequest) returns (CommandResult);
+}
+
+message MarkChannelReadRequest {
+  string workspace_id = 1;
+  string channel_id = 2;
+}
+
+message CreateChannelRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string name = 3;
+}
+
+message CreateDMRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string other_user_id = 3;
+}
+
+message SendMessageRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string channel_id = 3;
+  string body = 4; // markdown
+  string parent_id = 5; // опц. — ответ в треде
+}
+
+message EditMessageRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string body = 3;
+}
+
+message ToggleReactionRequest {
+  string workspace_id = 1;
+  string message_id = 2;
+  string emoji = 3;
+}
+
+message SendTypingRequest {
+  string workspace_id = 1;
+  string channel_id = 2;
+}
+
+message GetMessagesRequest {
+  string workspace_id = 1;
+  string channel_id = 2;
+  string parent_id = 3; // если задан — реплаи треда
+  string before = 4;    // пагинация: id, выдать более старые
+  int32 limit = 5;
+}
+
+message GetMessagesResponse {
+  bytes messages = 1; // json-массив MessageDTO (с reactions + replyCount)
+  bool has_more = 2;
+}

@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+// Filter AST (§6.2). Сериализуемое булево дерево предикатов.
+message FilterNode {
+  oneof node {
+    BoolGroup and = 1;
+    BoolGroup or = 2;
+    FilterNode not = 3;
+    Predicate predicate = 4;
+  }
+}
+
+message BoolGroup {
+  repeated FilterNode children = 1;
+}
+
+message Predicate {
+  FieldRef field = 1;
+  Operator op = 2;
+  FilterValue value = 3;
+}
+
+message FieldRef {
+  oneof ref {
+    string builtin = 1;
+    string custom_field_id = 2;
+  }
+}
+
+enum Operator {
+  OP_UNSPECIFIED = 0;
+  EQ = 1;
+  NEQ = 2;
+  IN = 3;
+  NIN = 4;
+  LT = 5;
+  LTE = 6;
+  GT = 7;
+  GTE = 8;
+  CONTAINS = 9;
+  STARTS_WITH = 10;
+  IS_SET = 11;
+  IS_NOT_SET = 12;
+  BEFORE = 13;
+  AFTER = 14;
+  WITHIN_NEXT = 15;
+  WITHIN_PAST = 16;
+}
+
+message RelativeDate {
+  enum Unit {
+    UNIT_UNSPECIFIED = 0;
+    DAY = 1;
+    WEEK = 2;
+    MONTH = 3;
+  }
+  Unit unit = 1;
+  int32 amount = 2;
+}
+
+message FilterValue {
+  oneof v {
+    string s = 1;
+    double n = 2;
+    bool b = 3;
+    StringList list = 4;
+    RelativeDate relative = 5;
+    bool null_v = 6;
+  }
+}
+
+message StringList {
+  repeated string values = 1;
+}

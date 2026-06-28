@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/common.proto";
+
+service DashboardService {
+  rpc CreateDashboard(CreateDashboardRequest) returns (CommandResult);
+  rpc AddWidget(AddWidgetRequest) returns (CommandResult);
+  rpc UpdateWidget(UpdateWidgetRequest) returns (CommandResult);
+  rpc RemoveWidget(EntityRef) returns (CommandResult);
+}
+
+message CreateDashboardRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string name = 3;
+}
+
+message AddWidgetRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string dashboard_id = 3;
+  string type = 4;   // view | stat | chart | note
+  string title = 5;
+  bytes config = 6;  // json
+}
+
+message UpdateWidgetRequest {
+  string workspace_id = 1;
+  string id = 2;
+  int64 base_version = 3;
+  optional string title = 4;
+  optional bytes config = 5;
+  optional int32 x = 6;
+  optional int32 y = 7;
+  optional int32 w = 8;
+  optional int32 h = 9;
+}
