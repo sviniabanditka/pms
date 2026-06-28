@@ -203,7 +203,7 @@ const calRangeLabel = computed(() => {
 const selectedCycleId = ref('')
 const activeCycleOf = (tid: string) => store.teamCycles(tid).find((c: any) => c.status === 'active')
 const upcomingCycleOf = (tid: string) => store.teamCycles(tid).find((c: any) => c.status === 'upcoming') || store.teamCycles(tid).find((c: any) => c.status !== 'active' && c.status !== 'completed')
-function openCycle(id: string) { selectedCycleId.value = id; filterBy('cycle', id); applySavedAssignee() }
+function openCycle(id: string) { selectedCycleId.value = id; filterBy('cycle', id) }
 function openCycleFor(tid: string, c: any) {
   if (!c) return
   selectedTeamId.value = tid; selectedDocId.value = ''; selectedIssueId.value = ''
@@ -211,8 +211,7 @@ function openCycleFor(tid: string, c: any) {
   openCycle(c.id)
 }
 function closeCycle() {
-  selectedCycleId.value = ''; store.setFieldPredicate('cycle', null); store.setFieldPredicate('assignee', null)
-  if (import.meta.client) localStorage.removeItem('cycleAssignee')
+  selectedCycleId.value = ''; store.setFieldPredicate('cycle', null); clearBreakdownFilters()
 }
 
 // burndown: live-расчёт из completedAt issues цикла (scope константа = текущее число).
@@ -272,69 +271,67 @@ const cycleStatus = computed(() => {
   return 'Current'
 })
 const BREAKDOWN_PALETTE = ['#5e6ad2', '#26a69a', '#d29922', '#e5484d', '#9c5cf6', '#0ea5e9', '#f76808', '#46a758']
-// активный ассайни-фильтр (из activeFilter). null = нет фильтра; '__none__' = только без ассайни.
-const NONE_ASSIGNEE = '__none__'
-const activeAssignee = computed(() => {
+const NONE = '__none__' // сентинел «без значения» (isNotSet)
+// фильтр по любой breakdown-строке: priority/assignee/milestone/team — predicate; label — labelFilter.
+function activeValueFor(field: string) {
   const f = store.activeFilter
   const kids = f && f.type === 'and' ? f.children : f ? [f] : []
-  const p: any = kids.find((c: any) => c.type === 'predicate' && c.field === 'assignee' && (c.op === 'eq' || c.op === 'isNotSet'))
+  const p: any = kids.find((c: any) => c.type === 'predicate' && c.field === field && (c.op === 'eq' || c.op === 'isNotSet'))
   if (!p) return null
-  return p.op === 'isNotSet' ? NONE_ASSIGNEE : p.value
-})
-function predForAssignee(key: string | null) {
-  if (!key) return null
-  return key === NONE_ASSIGNEE
-    ? { type: 'predicate', field: 'assignee', op: 'isNotSet' }
-    : { type: 'predicate', field: 'assignee', op: 'eq', value: key }
+  return p.op === 'isNotSet' ? NONE : p.value
 }
-function toggleAssignee(key: string) {
-  const next = activeAssignee.value === key ? null : key
-  store.setFieldPredicate('assignee', predForAssignee(next) as any)
-  if (import.meta.client) localStorage.setItem('cycleAssignee', next || '')
+function rowActive(r: any) {
+  if (r.kind === 'label') return store.labelFilter.includes(r.value)
+  return activeValueFor(r.field) === r.value
 }
-// восстановить сохранённый ассайни-фильтр при открытии цикла (переживает перезагрузку)
-function applySavedAssignee() {
-  if (!import.meta.client) return
-  const k = localStorage.getItem('cycleAssignee') || ''
-  store.setFieldPredicate('assignee', predForAssignee(k || null) as any)
+function toggleRow(r: any) {
+  if (r.kind === 'label') { store.toggleLabelFilter(r.value); return }
+  const next = activeValueFor(r.field) === r.value ? null : r.value
+  store.setFieldPredicate(r.field, next === null ? null
+    : next === NONE ? { type: 'predicate', field: r.field, op: 'isNotSet' }
+    : { type: 'predicate', field: r.field, op: 'eq', value: next })
+}
+function clearBreakdownFilters() {
+  for (const fld of ['assignee', 'priority', 'milestone', 'team']) store.setFieldPredicate(fld, null)
+  store.labelFilter = []
 }
 const cycleBreakdown = computed(() => {
   const iss = store.issuesInCycle(selectedCycleId.value)
   const total = iss.length || 1
   const pct = (n: number) => Math.round((n / total) * 100)
   if (insightTab.value === 'priority') {
-    return PRIO.map((p, idx) => ({ label: p, color: prioColor(idx), count: iss.filter((i) => i.priority === idx).length }))
+    return PRIO.map((p, idx) => ({ field: 'priority', value: idx, label: p, color: prioColor(idx), count: iss.filter((i) => i.priority === idx).length }))
       .filter((r) => r.count).map((r) => ({ ...r, pct: pct(r.count) }))
   }
   if (insightTab.value === 'assignees') {
     const ids = Array.from(new Set(iss.map((i) => i.assigneeId).filter(Boolean)))
     const rows = ids.map((uid, n) => ({
-      assigneeId: uid as string, label: store.userName(uid as string),
+      field: 'assignee', value: uid as string, label: store.userName(uid as string),
       color: BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length],
       count: iss.filter((i) => i.assigneeId === uid).length,
     })).map((r) => ({ ...r, pct: pct(r.count) }))
     const none = iss.filter((i) => !i.assigneeId).length
-    if (none) rows.push({ assigneeId: NONE_ASSIGNEE, label: 'No assignee', color: '#7c828c', count: none, pct: pct(none) })
+    if (none) rows.push({ field: 'assignee', value: NONE, label: 'No assignee', color: '#7c828c', count: none, pct: pct(none) })
     return rows
   }
   if (insightTab.value === 'labels') {
     return Object.values(store.labels).map((l: any, n: number) => ({
-      label: l.name, color: l.colorToken || BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length],
+      kind: 'label', value: l.id, label: l.name, color: l.colorToken || BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length],
       count: iss.filter((i) => store.labelsForIssue(i.id).some((x: any) => x.id === l.id)).length,
     })).filter((r) => r.count).map((r) => ({ ...r, pct: pct(r.count) }))
   }
   if (insightTab.value === 'milestones') {
     const rows = Object.values(store.milestones).map((m: any, n: number) => ({
-      label: m.name, color: BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length],
+      field: 'milestone', value: m.id, label: m.name, color: BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length],
       count: iss.filter((i) => i.milestoneId === m.id).length,
     })).filter((r) => r.count).map((r) => ({ ...r, pct: pct(r.count) }))
     const none = iss.filter((i) => !i.milestoneId).length
-    if (none) rows.push({ label: 'No milestone', color: '#7c828c', count: none, pct: pct(none) })
+    if (none) rows.push({ field: 'milestone', value: NONE, label: 'No milestone', color: '#7c828c', count: none, pct: pct(none) })
     return rows
   }
   if (insightTab.value === 'teams') {
     return Object.values(store.teams).map((t: any, n: number) => ({
-      label: `${t.key} · ${t.name}`, color: BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length],
+      field: 'team', value: t.id, label: `${t.key} · ${t.name}`, color: BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length],
       count: iss.filter((i) => i.teamId === t.id).length,
     })).filter((r) => r.count).map((r) => ({ ...r, pct: pct(r.count) }))
   }
@@ -2033,20 +2030,17 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
       <!-- breakdown -->
       <div class="space-y-1">
         <div v-for="r in cycleBreakdown" :key="r.label"
-          class="flex items-center gap-2 rounded-md px-2 py-1.5"
-          :class="[
-            r.assigneeId !== undefined ? 'cursor-pointer' : '',
-            r.assigneeId !== undefined && activeAssignee === r.assigneeId ? 'bg-accent/15 ring-1 ring-accent/40' : 'hover:bg-hover',
-          ]"
-          @click="r.assigneeId !== undefined && toggleAssignee(r.assigneeId)">
+          class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5"
+          :class="rowActive(r) ? 'bg-accent/15 ring-1 ring-accent/40' : 'hover:bg-hover'"
+          @click="toggleRow(r)">
           <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="{ background: r.color }" />
           <span class="flex-1 truncate">{{ r.label }}</span>
-          <UIcon v-if="r.assigneeId !== undefined && activeAssignee === r.assigneeId" name="i-heroicons-funnel" class="text-accent" />
+          <UIcon v-if="rowActive(r)" name="i-heroicons-funnel" class="text-accent" />
           <span class="text-tertiary">{{ r.pct }}% of {{ r.count }}</span>
         </div>
         <div v-if="!cycleBreakdown.length" class="px-2 py-3 text-xs text-tertiary">No data for {{ insightTab }}</div>
       </div>
-      <p v-if="insightTab === 'assignees'" class="mt-1 px-2 text-[11px] text-tertiary/70">Click an assignee to filter the list · click again to clear.</p>
+      <p class="mt-1 px-2 text-[11px] text-tertiary/70">Click a row to filter the list · click again to clear.</p>
     </aside>
 
     <!-- Issue detail panel (M4) -->

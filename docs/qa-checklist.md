@@ -406,3 +406,9 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Выбранный breakdown-таб переживает перезагрузку (localStorage cycleInsightTab).
 - [ ] Активный assignee-фильтр переживает перезагрузку (cycleAssignee), применяется при открытии цикла.
 - [ ] Закрытие цикла очищает сохранённый assignee-фильтр.
+
+## 55. Cycle breakdown — filter on all tabs, no persistence
+- [ ] Любая строка breakdown (priority/assignees/labels/milestones/teams) кликабельна → фильтрует список; повторный клик снимает.
+- [ ] Labels фильтруют через labelFilter; остальные — через predicate (assignee/priority/milestone/team), «No …» через isNotSet.
+- [ ] После перезагрузки фильтры сброшены (не персистятся); выбранная вкладка сохраняется.
+- [ ] Закрытие цикла снимает все breakdown-фильтры.

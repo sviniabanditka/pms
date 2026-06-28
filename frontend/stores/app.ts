@@ -1058,6 +1058,9 @@ export const useAppStore = defineStore('app', {
     clearFilter() {
       this.activeFilter = null
     },
+    toggleLabelFilter(id: string) {
+      this.labelFilter = this.labelFilter.includes(id) ? this.labelFilter.filter((x) => x !== id) : [...this.labelFilter, id]
+    },
 
     // --- Views (M3) ---
     async createView(name: string, teamId: string) {

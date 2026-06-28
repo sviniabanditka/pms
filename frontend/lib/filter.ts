@@ -17,6 +17,9 @@ const FIELD: Record<string, (i: any) => any> = {
   title: (i) => i.title ?? '',
   project: (i) => i.projectId ?? null,
   cycle: (i) => i.cycleId ?? null,
+  milestone: (i) => i.milestoneId ?? null,
+  team: (i) => i.teamId ?? null,
+  creator: (i) => i.createdBy ?? null,
 }
 
 export function match(node: FilterNode | null | undefined, issue: any): boolean {
