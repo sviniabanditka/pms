@@ -66,18 +66,24 @@ func (s *Service) Search(ctx context.Context, actor, wsID uuid.UUID, query strin
 	like := "%" + q + "%"
 	out := []Result{}
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		// FTS по телу (title+description) с ранжированием; ILIKE по identifier; trgm для опечаток.
 		var iss []models.Issue
 		if err := tx.NewSelect().Model(&iss).
 			Where("archived_at IS NULL AND deleted_at IS NULL").
-			Where("identifier ILIKE ? OR title ILIKE ?", like, like).
-			Order("updated_at DESC").Limit(12).Scan(ctx); err != nil {
+			Where("search_vector @@ websearch_to_tsquery('simple', ?) OR identifier ILIKE ? OR title % ?", q, like, q).
+			OrderExpr("ts_rank(search_vector, websearch_to_tsquery('simple', ?)) DESC, updated_at DESC", q).
+			Limit(12).Scan(ctx); err != nil {
 			return err
 		}
 		for _, i := range iss {
 			out = append(out, Result{Type: "issue", ID: i.ID.String(), Title: i.Title, Subtitle: i.Identifier, TeamID: i.TeamID.String()})
 		}
+		// FTS по телу дока (title+body); раньше искались только заголовки.
 		var docs []models.Document
-		if err := tx.NewSelect().Model(&docs).Where("deleted_at IS NULL").Where("title ILIKE ?", like).Limit(8).Scan(ctx); err != nil {
+		if err := tx.NewSelect().Model(&docs).Where("deleted_at IS NULL").
+			Where("search_vector @@ websearch_to_tsquery('simple', ?) OR title % ?", q, q).
+			OrderExpr("ts_rank(search_vector, websearch_to_tsquery('simple', ?)) DESC", q).
+			Limit(8).Scan(ctx); err != nil {
 			return err
 		}
 		for _, d := range docs {
