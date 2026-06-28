@@ -1,5 +1,8 @@
 # LiveKit SFU — dev-конфиг (single-node). Прод: keys в секреты, node_ip=внешний IP/домен, TURN.
 port: 7880
+room:
+  # пустую комнату SFU закрывает через 30с → reaper быстро гасит мёртвый митинг
+  empty_timeout: 30
 rtc:
   tcp_port: 7881
   udp_port: 7882

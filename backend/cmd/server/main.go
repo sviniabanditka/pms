@@ -80,9 +80,13 @@ func main() {
 	defer pool.Close()
 	riverClient, err := jobs.Start(context.Background(), jobs.Deps{
 		Pool: pool, JobsDB: jobsDB, Pub: pub, Mailer: mailer.New(cfg),
-		DueSoonInterval: river.PeriodicInterval(cfg.DueSoonInterval),
-		EmailSweepEvery: river.PeriodicInterval(cfg.EmailSweepEvery),
-		SnapshotEvery:   river.PeriodicInterval(cfg.SnapshotEvery),
+		DueSoonInterval:  river.PeriodicInterval(cfg.DueSoonInterval),
+		EmailSweepEvery:  river.PeriodicInterval(cfg.EmailSweepEvery),
+		SnapshotEvery:    river.PeriodicInterval(cfg.SnapshotEvery),
+		MeetingReapEvery: river.PeriodicInterval(cfg.MeetingReapEvery),
+		LiveKitAPIURL:    cfg.LiveKitAPIURL,
+		LiveKitAPIKey:    cfg.LiveKitAPIKey,
+		LiveKitSecret:    cfg.LiveKitSecret,
 	})
 	if err != nil {
 		slog.Error("jobs start failed", "err", err)
@@ -90,11 +94,11 @@ func main() {
 	}
 
 	svcs := rpc.Services{
-		Workspaces: workspaces.NewService(bdb, pub, jobsDB),
-		Teams:      teams.NewService(bdb, pub),
-		Issues:     issues.NewService(bdb, pub),
-		Views:      views.NewService(bdb, pub),
-		Cycles:       cycles.NewService(bdb, pub),
+		Workspaces:    workspaces.NewService(bdb, pub, jobsDB),
+		Teams:         teams.NewService(bdb, pub),
+		Issues:        issues.NewService(bdb, pub),
+		Views:         views.NewService(bdb, pub),
+		Cycles:        cycles.NewService(bdb, pub),
 		CustomFields:  customfields.NewService(bdb, pub),
 		Dashboards:    dashboards.NewService(bdb, pub),
 		Notifications: notifications.NewService(bdb, pub),

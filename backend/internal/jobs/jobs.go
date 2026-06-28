@@ -15,13 +15,17 @@ import (
 )
 
 type Deps struct {
-	Pool            *pgxpool.Pool
-	JobsDB          *bun.DB // роль pms_jobs (BYPASSRLS) — кросс-тенантный скан
-	Pub             *realtime.Publisher
-	Mailer          mailer.Sender
-	DueSoonInterval river.PeriodicSchedule
-	EmailSweepEvery river.PeriodicSchedule
-	SnapshotEvery   river.PeriodicSchedule
+	Pool             *pgxpool.Pool
+	JobsDB           *bun.DB // роль pms_jobs (BYPASSRLS) — кросс-тенантный скан
+	Pub              *realtime.Publisher
+	Mailer           mailer.Sender
+	DueSoonInterval  river.PeriodicSchedule
+	EmailSweepEvery  river.PeriodicSchedule
+	SnapshotEvery    river.PeriodicSchedule
+	MeetingReapEvery river.PeriodicSchedule
+	LiveKitAPIURL    string
+	LiveKitAPIKey    string
+	LiveKitSecret    string
 }
 
 // Start прогоняет River-миграции, поднимает воркеры и периодические задачи.
@@ -40,6 +44,7 @@ func Start(ctx context.Context, d Deps) (*river.Client[pgx.Tx], error) {
 	river.AddWorker(workers, &DueSoonWorker{db: d.JobsDB, pub: d.Pub})
 	river.AddWorker(workers, &NotifySweepWorker{db: d.JobsDB})
 	river.AddWorker(workers, &CycleSnapshotWorker{db: d.JobsDB})
+	river.AddWorker(workers, &MeetingReaperWorker{db: d.JobsDB, pub: d.Pub, apiURL: d.LiveKitAPIURL, key: d.LiveKitAPIKey, secret: d.LiveKitSecret})
 
 	client, err := river.NewClient(driver, &river.Config{
 		Queues:  map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 10}},
@@ -48,6 +53,7 @@ func Start(ctx context.Context, d Deps) (*river.Client[pgx.Tx], error) {
 			river.NewPeriodicJob(d.DueSoonInterval, func() (river.JobArgs, *river.InsertOpts) { return DueSoonArgs{}, nil }, &river.PeriodicJobOpts{RunOnStart: true}),
 			river.NewPeriodicJob(d.EmailSweepEvery, func() (river.JobArgs, *river.InsertOpts) { return NotifySweepArgs{}, nil }, &river.PeriodicJobOpts{RunOnStart: true}),
 			river.NewPeriodicJob(d.SnapshotEvery, func() (river.JobArgs, *river.InsertOpts) { return SnapshotArgs{}, nil }, &river.PeriodicJobOpts{RunOnStart: true}),
+			river.NewPeriodicJob(d.MeetingReapEvery, func() (river.JobArgs, *river.InsertOpts) { return MeetingReapArgs{}, nil }, &river.PeriodicJobOpts{RunOnStart: true}),
 		},
 	})
 	if err != nil {

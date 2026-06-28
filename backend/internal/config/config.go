@@ -27,10 +27,13 @@ type Config struct {
 	// SecureCookies — Secure-флаг на cookie сессии (true за TLS в проде).
 	SecureCookies bool
 
-	// LiveKit (SFU для митингов). URL — клиентский ws-адрес; key/secret — для подписи токенов.
+	// LiveKit (SFU для митингов). URL — клиентский ws-адрес; APIURL — http для server-API (reaper); key/secret — подпись токенов.
 	LiveKitURL    string
+	LiveKitAPIURL string
 	LiveKitAPIKey string
 	LiveKitSecret string
+	// MeetingReapEvery — как часто гасить «мёртвые» live-митинги (нет комнаты в LiveKit).
+	MeetingReapEvery time.Duration
 
 	// S3 (Garage self-hosted; S3-совместимо). PublicBase — базовый URL для presigned-ссылок в браузер.
 	S3Endpoint   string
@@ -62,8 +65,10 @@ func Load() Config {
 		AllowedOrigins:     envList("ALLOWED_ORIGINS"),
 		SecureCookies:      env("SECURE_COOKIES", "") == "true",
 		LiveKitURL:         env("LIVEKIT_URL", "ws://localhost:7880"),
+		LiveKitAPIURL:      env("LIVEKIT_API_URL", "http://localhost:7880"),
 		LiveKitAPIKey:      env("LIVEKIT_API_KEY", "devkey"),
 		LiveKitSecret:      env("LIVEKIT_SECRET", "devsecretdevsecretdevsecretdevsecret32"),
+		MeetingReapEvery:   envDuration("MEETING_REAP_EVERY", time.Minute),
 		S3Endpoint:         env("S3_ENDPOINT", "http://localhost:3900"),
 		S3PublicBase:       env("S3_PUBLIC_BASE", "http://localhost:3900"),
 		S3Region:           env("S3_REGION", "garage"),
