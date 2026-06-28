@@ -2638,10 +2638,11 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           @keydown.enter.prevent="runResult(paletteResults[paletteIdx])" />
         <div class="max-h-80 overflow-y-auto p-1">
           <div v-for="(r, i) in paletteResults" :key="r.type + r.id"
-            class="flex cursor-pointer items-center gap-2 rounded-sm px-3 py-2 text-sm"
+            class="flex cursor-pointer items-center gap-3 rounded-sm px-3 py-2 text-sm"
             :class="i === paletteIdx ? 'bg-active' : 'hover:bg-hover'"
             @mouseenter="paletteIdx = i" @click="runResult(r)">
-            <span class="text-xs uppercase text-tertiary">{{ r.type }}</span>{{ r.label }}
+            <span class="w-16 shrink-0 text-[10px] uppercase tracking-wide text-tertiary">{{ r.type }}</span>
+            <span class="min-w-0 flex-1 truncate">{{ r.label }}</span>
           </div>
           <div v-if="paletteQ && !paletteResults.length" class="px-3 py-2 text-sm text-tertiary">No results</div>
           <div v-if="!paletteQ" class="px-3 py-2 text-xs text-tertiary">Type to search · ⌘K / Ctrl+K</div>

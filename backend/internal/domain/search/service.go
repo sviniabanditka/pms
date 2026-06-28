@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -14,6 +15,26 @@ import (
 	"github.com/pms/backend/internal/models"
 	"github.com/uptrace/bun"
 )
+
+var (
+	reMention = regexp.MustCompile(`@\[([^\]]*)\]\([^)]*\)`) // @[Name](id) → @Name
+	reImage   = regexp.MustCompile(`!\[[^\]]*\]\([^)]*\)`)   // ![alt](url) → (убрать)
+	reLink    = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)  // [text](url) → text
+	reWS      = regexp.MustCompile(`\s+`)
+)
+
+// cleanSnippet — markdown/mention/url → читаемый текст для превью (≤80).
+func cleanSnippet(body string) string {
+	s := reMention.ReplaceAllString(body, "@$1")
+	s = reImage.ReplaceAllString(s, "")
+	s = reLink.ReplaceAllString(s, "$1")
+	s = strings.NewReplacer("#", "", "*", "", "_", "", "`", "", "~", "", ">", "").Replace(s)
+	s = strings.TrimSpace(reWS.ReplaceAllString(s, " "))
+	if len([]rune(s)) > 80 {
+		s = string([]rune(s)[:80]) + "…"
+	}
+	return s
+}
 
 type Service struct{ db *bun.DB }
 
@@ -106,18 +127,21 @@ func (s *Service) Search(ctx context.Context, actor, wsID uuid.UUID, query strin
 			Body        string    `bun:"body"`
 			ChannelName string    `bun:"channel_name"`
 		}
+		// Матч по ВИДИМОМУ тексту: убираем "](payload)" mention/link/image (id/url не должны
+		// ловиться в поиске, напр. uuid внутри @[Name](id)).
 		if err := tx.NewSelect().Model((*models.Message)(nil)).
 			ColumnExpr("msg.channel_id").ColumnExpr("msg.body").ColumnExpr("ch.name AS channel_name").
 			Join("JOIN channels ch ON ch.id = msg.channel_id").
-			Where("msg.deleted_at IS NULL").Where("msg.body ILIKE ?", like).
+			Where("msg.deleted_at IS NULL").
+			Where(`regexp_replace(msg.body, '\]\([^)]*\)', '', 'g') ILIKE ?`, like).
 			Where("ch.kind = 'channel' OR EXISTS (SELECT 1 FROM channel_members cmx WHERE cmx.channel_id = msg.channel_id AND cmx.user_id = ?)", actor).
 			Order("msg.created_at DESC").Limit(8).Scan(ctx, &msgs); err != nil {
 			return err
 		}
 		for _, m := range msgs {
-			title := strings.TrimSpace(m.Body)
-			if len(title) > 80 {
-				title = title[:80] + "…"
+			title := cleanSnippet(m.Body)
+			if title == "" {
+				continue
 			}
 			sub := "Message"
 			if m.ChannelName != "" {
