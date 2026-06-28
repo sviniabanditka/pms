@@ -246,16 +246,16 @@ const cycleRange = computed(() => {
 // edit cycle (name + dates) через UpdateCycle
 const cycleEdit = ref(false)
 const cycleForm = reactive({ name: '', startsOn: '', endsOn: '' })
+const d10 = (s: string) => (s ? String(s).slice(0, 10) : '') // ISO → YYYY-MM-DD для input[type=date]
 function startCycleEdit() {
   const c = store.cycles[selectedCycleId.value]; if (!c) return
-  cycleForm.name = c.name || ''; cycleForm.startsOn = c.startsOn; cycleForm.endsOn = c.endsOn
+  cycleForm.name = c.name || ''; cycleForm.startsOn = d10(c.startsOn); cycleForm.endsOn = d10(c.endsOn)
   cycleEdit.value = true
 }
 const saveCycle = () => wrap(async () => {
   await store.updateCycle(selectedCycleId.value, { name: cycleForm.name, startsOn: cycleForm.startsOn, endsOn: cycleForm.endsOn })
   cycleEdit.value = false
 })
-const cycleActions = computed(() => [[{ label: 'Edit cycle', icon: 'i-heroicons-pencil-square', click: startCycleEdit }]])
 const cycleStatus = computed(() => {
   const c = store.cycles[selectedCycleId.value]; if (!c) return 'Cycle'
   const today = new Date().toISOString().slice(0, 10)
@@ -1917,10 +1917,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
       <!-- title -->
       <div class="mb-4 flex items-center gap-2">
         <UIcon name="i-heroicons-play-circle" class="text-accent" />
-        <span class="text-base font-semibold">{{ store.cycles[selectedCycleId]?.name || `Cycle ${store.cycles[selectedCycleId]?.number}` }}</span>
-        <UDropdown class="ml-auto" :items="cycleActions" :popper="{ placement: 'bottom-end' }">
-          <UButton icon="i-heroicons-ellipsis-horizontal" color="gray" variant="ghost" size="xs" square />
-        </UDropdown>
+        <span class="text-base font-semibold text-white">{{ store.cycles[selectedCycleId]?.name || `Cycle ${store.cycles[selectedCycleId]?.number}` }}</span>
+        <UButton class="ml-auto" icon="i-heroicons-pencil-square" color="gray" variant="ghost" size="xs" square title="Edit cycle" @click="startCycleEdit" />
       </div>
 
       <!-- edit form -->
