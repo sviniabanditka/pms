@@ -83,11 +83,11 @@ export function useMeeting() {
         try {
           const a = await createLocalTracks({ audio: true, video: false })
           for (const t of a) await room!.localParticipant.publishTrack(t)
-        } catch { muted.value = true; mediaError.value = 'Нет доступа к камере/микрофону' }
+        } catch { muted.value = true; mediaError.value = 'No camera/microphone access' }
       }
       refresh()
     } catch (e: any) {
-      mediaError.value = e?.message || 'Не удалось подключиться к митингу'
+      mediaError.value = e?.message || 'Failed to join the meeting'
       cleanup()
       connecting.value = false
       throw e

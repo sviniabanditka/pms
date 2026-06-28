@@ -1355,25 +1355,24 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <UIcon :name="currentChannel.kind === 'dm' ? 'i-heroicons-user' : currentChannel.private ? 'i-heroicons-lock-closed' : 'i-heroicons-hashtag'" class="text-tertiary" />
             <span class="font-medium">{{ channelTitle(currentChannel) }}</span>
 
-            <!-- участники канала (счётчик + дропдаун управления) -->
+            <!-- channel members (count + management dropdown) -->
             <div v-if="currentChannel.kind !== 'dm'" class="relative ml-auto">
               <UButton color="gray" variant="ghost" size="xs" icon="i-heroicons-users" @click="membersOpen = !membersOpen">
                 {{ store.channelParticipants(currentChannel.id).length }}
               </UButton>
               <div v-if="membersOpen" class="absolute right-0 top-9 z-30 w-64 rounded-lg border border-subtle bg-elevated p-2 shadow-xl">
-                <div class="mb-1 px-1 text-xs font-medium uppercase tracking-wide text-tertiary">Участники{{ !currentChannel.private ? ' · весь воркспейс' : '' }}</div>
+                <div class="mb-1 px-1 text-xs font-medium uppercase tracking-wide text-tertiary">Members{{ !currentChannel.private ? ' · entire workspace' : '' }}</div>
                 <div class="max-h-56 overflow-y-auto">
                   <div v-for="uid in store.channelParticipants(currentChannel.id)" :key="uid" class="group flex items-center gap-2 rounded px-1.5 py-1 hover:bg-hover">
                     <Avatar :name="store.userName(uid)" :avatar-key="store.users[uid]?.avatarKey" :size="22" />
                     <span class="min-w-0 flex-1 truncate text-sm">{{ store.userName(uid) }}{{ uid === store.currentUserId ? ' (you)' : '' }}</span>
-                    <UButton v-if="canManageMembers && uid !== store.currentUserId" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square title="Убрать" @click="store.removeChannelMember(currentChannel.id, uid)" />
+                    <UButton v-if="canManageMembers && uid !== store.currentUserId" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square title="Remove" @click="store.removeChannelMember(currentChannel.id, uid)" />
                   </div>
                 </div>
                 <template v-if="canManageMembers">
                   <div class="my-1.5 h-px bg-subtle" />
-                  <USelectMenu :options="channelAddable" value-attribute="value" option-attribute="label" searchable placeholder="Добавить участника…" @update:model-value="addMember" />
+                  <USelectMenu :options="channelAddable" value-attribute="value" option-attribute="label" searchable placeholder="Add member…" @update:model-value="addMember" />
                 </template>
-                <p v-else class="px-1 pt-1 text-xs text-tertiary/70">Только участники канала могут менять список.</p>
               </div>
             </div>
 
@@ -1745,7 +1744,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         <div class="flex h-[calc(100vh-150px)]">
           <div v-if="docMode !== 'preview'" class="relative" :class="docMode === 'split' ? 'w-1/2 border-r border-subtle' : 'w-full'">
             <MentionMenu :m="docMention" />
-            <textarea ref="docEl" v-model="docDraft" placeholder="Write… (markdown, @mention, #ref, вставляй картинки/файлы)"
+            <textarea ref="docEl" v-model="docDraft" placeholder="Write… (markdown, @mention, #ref, paste images/files)"
               class="h-full w-full resize-none bg-transparent p-4 text-sm leading-relaxed outline-none"
               @paste="onDocPaste" @input="onDocInput(); docMention.detect()" @keydown="onDocKeydown" />
           </div>
@@ -1821,7 +1820,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 @dragover.prevent @drop.stop="onDropOnCard(st.id, i.id)"
                 @click="openIssue(i.id)"
                 tabindex="0" role="button"
-                :aria-label="`${i.identifier} ${i.title}. Alt+стрелки — переместить`"
+                :aria-label="`${i.identifier} ${i.title}. Alt+arrows to move`"
                 @keydown="boardKey($event, st.id, i.id)"
                 class="cursor-pointer rounded-lg border border-subtle bg-elevated p-3 hover:bg-hover focus:outline-none focus:ring-2 focus:ring-accent"
                 :class="{ '!border-accent': selectedIssueId === i.id }">
@@ -2325,7 +2324,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <USelectMenu v-model="cMeetParts" multiple searchable searchable-placeholder="Search people…" placeholder="Select participants" class="w-full"
               value-attribute="value" option-attribute="label"
               :options="store.wsUsers.map((u) => ({ label: u.name || u.email, value: u.id }))" />
-            <div class="mt-1 text-xs text-tertiary">Вы — организатор; остальные приглашаются. Можно стартовать сразу.</div>
+            <div class="mt-1 text-xs text-tertiary">You're the host; others are invited. You can start right away.</div>
           </div>
         </div>
 
@@ -2341,7 +2340,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <UInput v-model="cTitle" placeholder="general" autofocus @keyup.enter="submitCreate" /></div>
           <label class="flex cursor-pointer items-center gap-2 text-sm">
             <UToggle v-model="cPrivate" />
-            <span class="flex items-center gap-1"><UIcon name="i-heroicons-lock-closed" class="text-tertiary" /> Private — только приглашённые участники</span>
+            <span class="flex items-center gap-1"><UIcon name="i-heroicons-lock-closed" class="text-tertiary" /> Private — invite-only</span>
           </label>
         </div>
 
@@ -2505,7 +2504,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               <div class="text-xs text-tertiary">ID: {{ store.activeWorkspaceId }}</div>
               <div class="mt-6 rounded-lg border border-red-500/30 p-3">
                 <div class="mb-1 text-sm font-medium text-red-400">Danger zone</div>
-                <p class="mb-2 text-xs text-tertiary">Удаление воркспейса скроет его и все данные. Действие необратимо.</p>
+                <p class="mb-2 text-xs text-tertiary">Deleting the workspace hides it and all its data. This action is irreversible.</p>
                 <UButton color="red" variant="soft" icon="i-heroicons-trash" @click="confirmDeleteWs">Delete workspace</UButton>
               </div>
             </div>
@@ -2610,7 +2609,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 :class="density === d ? 'border-accent bg-active text-white' : 'border-subtle bg-elevated text-tertiary hover:bg-hover'"
                 @click="applyDensity(d)">{{ d }}</button>
             </div>
-            <p class="mt-2 text-xs text-tertiary">Меняет масштаб всего интерфейса.</p>
+            <p class="mt-2 text-xs text-tertiary">Scales the whole interface.</p>
           </template>
 
           <!-- NOTIFICATIONS -->
@@ -2619,7 +2618,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               <h2 class="text-base font-semibold text-white">Notifications</h2>
               <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
             </div>
-            <p class="mb-3 text-xs text-tertiary">Какие уведомления показывать в Inbox.</p>
+            <p class="mb-3 text-xs text-tertiary">Which notifications to show in the Inbox.</p>
             <div v-for="p in NOTIF_PREF_LIST" :key="p.key" class="flex items-center gap-2 rounded-md px-2 py-2 hover:bg-hover">
               <UCheckbox :model-value="notifPrefs[p.key] !== false" @update:model-value="toggleNotifPref(p.key)" />
               <span class="text-sm">{{ p.label }}</span>
@@ -2632,7 +2631,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               <h2 class="text-base font-semibold text-white">Sidebar sections</h2>
               <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
             </div>
-            <p class="mb-3 text-xs text-tertiary">Включить/выключить разделы рейла и задать порядок.</p>
+            <p class="mb-3 text-xs text-tertiary">Toggle rail sections and set their order.</p>
             <div v-for="(s, i) in cfgList" :key="s.key" class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
               <UCheckbox :model-value="s.visible" @update:model-value="toggleSection(i)" />
               <UIcon :name="s.icon" class="text-tertiary" />

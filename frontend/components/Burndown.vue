@@ -21,7 +21,7 @@ const idealPts = computed(() => {
 
 <template>
   <div>
-    <div v-if="n < 2" class="py-3 text-xs text-tertiary">Burndown накапливается — слепок раз в сутки (нужно ≥2 дня).</div>
+    <div v-if="n < 2" class="py-3 text-xs text-tertiary">Burndown is accumulating — one snapshot per day (needs ≥2 days).</div>
     <svg v-else :viewBox="`0 0 ${W} ${H}`" class="w-full">
       <line :x1="PAD" :y1="H - PAD" :x2="W - PAD" :y2="H - PAD" stroke="currentColor" class="text-subtle" stroke-width="0.5" />
       <polyline :points="idealPts" fill="none" stroke="currentColor" class="text-tertiary" stroke-width="1" stroke-dasharray="3 3" />
