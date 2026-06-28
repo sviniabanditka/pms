@@ -679,7 +679,16 @@ const showPreview = ref(false)
 const currentChannel = computed(() => store.channels[store.activeChannelId])
 const threadParent = computed(() => store.channelMessages(store.activeChannelId).find((m: any) => m.id === store.threadParentId))
 const membersOpen = ref(false)
-const canManageMembers = computed(() => !!currentChannel.value && currentChannel.value.kind !== 'dm' && store.isChannelMember(currentChannel.value.id))
+// управлять списком можно только в приватном канале (в публичном участники = весь воркспейс)
+const canManageMembers = computed(() => !!currentChannel.value && currentChannel.value.kind === 'channel' && currentChannel.value.private && store.isChannelMember(currentChannel.value.id))
+const channelActions = computed(() => {
+  const c = currentChannel.value
+  if (!c || c.kind === 'dm') return []
+  const items: any[] = []
+  if (c.private && store.isChannelMember(c.id)) items.push({ label: 'Leave channel', icon: 'i-heroicons-arrow-right-on-rectangle', click: () => wrap(() => store.leaveChannel(c.id)) })
+  if (store.isChannelMember(c.id) || c.createdBy === store.currentUserId) items.push({ label: 'Archive channel', icon: 'i-heroicons-archive-box', click: () => wrap(() => store.archiveChannel(c.id)) })
+  return items.length ? [items] : []
+})
 const channelAddable = computed(() => {
   if (!currentChannel.value) return [] as any[]
   const inCh = new Set(store.channelMembersOf(currentChannel.value.id))
@@ -1349,12 +1358,12 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <!-- участники канала (счётчик + дропдаун управления) -->
             <div v-if="currentChannel.kind !== 'dm'" class="relative ml-auto">
               <UButton color="gray" variant="ghost" size="xs" icon="i-heroicons-users" @click="membersOpen = !membersOpen">
-                {{ store.channelMembersOf(currentChannel.id).length }}
+                {{ store.channelParticipants(currentChannel.id).length }}
               </UButton>
               <div v-if="membersOpen" class="absolute right-0 top-9 z-30 w-64 rounded-lg border border-subtle bg-elevated p-2 shadow-xl">
-                <div class="mb-1 px-1 text-xs font-medium uppercase tracking-wide text-tertiary">Участники</div>
+                <div class="mb-1 px-1 text-xs font-medium uppercase tracking-wide text-tertiary">Участники{{ !currentChannel.private ? ' · весь воркспейс' : '' }}</div>
                 <div class="max-h-56 overflow-y-auto">
-                  <div v-for="uid in store.channelMembersOf(currentChannel.id)" :key="uid" class="group flex items-center gap-2 rounded px-1.5 py-1 hover:bg-hover">
+                  <div v-for="uid in store.channelParticipants(currentChannel.id)" :key="uid" class="group flex items-center gap-2 rounded px-1.5 py-1 hover:bg-hover">
                     <Avatar :name="store.userName(uid)" :avatar-key="store.users[uid]?.avatarKey" :size="22" />
                     <span class="min-w-0 flex-1 truncate text-sm">{{ store.userName(uid) }}{{ uid === store.currentUserId ? ' (you)' : '' }}</span>
                     <UButton v-if="canManageMembers && uid !== store.currentUserId" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square title="Убрать" @click="store.removeChannelMember(currentChannel.id, uid)" />
@@ -1377,6 +1386,9 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             </template>
             <UButton v-else class="ml-auto" color="gray" variant="ghost" size="xs" icon="i-heroicons-signal" title="Start huddle" @click="startOrJoinHuddle(currentChannel.id)">Huddle</UButton>
             <UButton :icon="linkCopied ? 'i-heroicons-check' : 'i-heroicons-link'" color="gray" variant="ghost" size="xs" square :title="linkCopied ? 'Copied!' : 'Copy link'" @click="copyLink" />
+            <UDropdown v-if="channelActions.length" :items="channelActions" :popper="{ placement: 'bottom-end' }">
+              <UButton icon="i-heroicons-ellipsis-horizontal" color="gray" variant="ghost" size="xs" square title="Channel actions" />
+            </UDropdown>
           </div>
           <!-- messages -->
           <div ref="msgScrollEl" class="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-3" @scroll="onMessagesScroll">

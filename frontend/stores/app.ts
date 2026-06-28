@@ -253,7 +253,7 @@ export const useAppStore = defineStore('app', {
     myNotifications: (s) => Object.values(s.notifications).sort((a, b) => String(b.at).localeCompare(String(a.at))),
     unreadCount: (s) => Object.values(s.notifications).filter((n) => !n.readAt).length,
     // --- Чаты ---
-    channelList: (s) => Object.values(s.channels).filter((c) => c.kind === 'channel' && !c.deletedAt).sort((a, b) => String(a.name).localeCompare(String(b.name))),
+    channelList: (s) => Object.values(s.channels).filter((c) => c.kind === 'channel' && !c.deletedAt && !c.archivedAt).sort((a, b) => String(a.name).localeCompare(String(b.name))),
     myDMs: (s) => Object.values(s.channels).filter((c) => c.kind === 'dm' && !c.deletedAt),
     userName: (s) => (id: string) => s.users[id]?.name || s.users[id]?.email || 'Unknown',
     wsUsers: (s) => Object.values(s.users).filter((u) => u.id !== s.currentUserId),
@@ -262,6 +262,12 @@ export const useAppStore = defineStore('app', {
       Object.values(s.channelMembers).filter((m) => m.channelId === channelId).map((m) => m.userId),
     isChannelMember: (s) => (channelId: string) =>
       Object.values(s.channelMembers).some((m) => m.channelId === channelId && m.userId === s.currentUserId),
+    // участники для отображения: публичный канал = весь воркспейс (видят все), приватный = явные member'ы
+    channelParticipants: (s) => (channelId: string) => {
+      const ch = s.channels[channelId]
+      if (ch && ch.kind === 'channel' && !ch.private) return Object.keys(s.users)
+      return Object.values(s.channelMembers).filter((m) => m.channelId === channelId).map((m) => m.userId)
+    },
     dmOtherId: (s) => (channelId: string) => {
       const m = Object.values(s.channelMembers).find((x) => x.channelId === channelId && x.userId !== s.currentUserId)
       return m?.userId
@@ -821,6 +827,18 @@ export const useAppStore = defineStore('app', {
       const { chats } = useClients()
       await chats.removeChannelMember({ workspaceId: this.activeWorkspaceId, channelId, userId })
       await this.bootstrap(this.activeWorkspaceId)
+    },
+    async leaveChannel(channelId: string) {
+      const { chats } = useClients()
+      await chats.removeChannelMember({ workspaceId: this.activeWorkspaceId, channelId, userId: this.currentUserId })
+      if (this.activeChannelId === channelId) this.activeChannelId = ''
+      await this.bootstrap(this.activeWorkspaceId)
+    },
+    async archiveChannel(channelId: string) {
+      const { chats } = useClients()
+      await chats.archiveChannel({ workspaceId: this.activeWorkspaceId, id: channelId })
+      if (this.activeChannelId === channelId) this.activeChannelId = ''
+      if (this.channels[channelId]) this.channels[channelId].archivedAt = new Date().toISOString()
     },
     async createDM(userId: string): Promise<string> {
       const { chats } = useClients()

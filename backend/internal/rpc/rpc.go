@@ -1152,6 +1152,17 @@ func (h *chatHandler) RemoveChannelMember(ctx context.Context, req *connect.Requ
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: chID.String()}), nil
 }
 
+func (h *chatHandler) ArchiveChannel(ctx context.Context, req *connect.Request[pmsv1.EntityRef]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, wsID, chID, err := issueRef(ctx, req.Msg.WorkspaceId, req.Msg.Id)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.ArchiveChannel(ctx, actor, wsID, chID); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: chID.String()}), nil
+}
+
 func (h *chatHandler) CreateDM(ctx context.Context, req *connect.Request[pmsv1.CreateDMRequest]) (*connect.Response[pmsv1.CommandResult], error) {
 	actor, err := requireActor(ctx)
 	if err != nil {

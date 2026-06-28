@@ -79,7 +79,28 @@ func (s *Service) AddChannelMember(ctx context.Context, actor, wsID, channelID, 
 	return nil
 }
 
-// RemoveChannelMember — убрать участника (только член канала может).
+// ArchiveChannel — архивировать канал (только член; для публичного член = создатель). Скрывает из списков.
+func (s *Service) ArchiveChannel(ctx context.Context, actor, wsID, channelID uuid.UUID) error {
+	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		ok, err := s.isMember(ctx, tx, channelID, actor)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrForbidden
+		}
+		_, err = tx.NewUpdate().Model((*models.Channel)(nil)).
+			Set("archived_at = now()").Set("updated_at = now()").Where("id = ?", channelID).Exec(ctx)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "channel", EntityID: channelID.String(), Op: "update"})
+	return nil
+}
+
+// RemoveChannelMember — убрать участника (только член канала может). Leave = убрать себя.
 func (s *Service) RemoveChannelMember(ctx context.Context, actor, wsID, channelID, userID uuid.UUID) error {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
 		ok, err := s.isMember(ctx, tx, channelID, actor)

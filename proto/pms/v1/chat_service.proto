@@ -18,6 +18,7 @@ service ChatService {
   rpc MarkChannelRead(MarkChannelReadRequest) returns (CommandResult);
   rpc AddChannelMember(ChannelMemberRequest) returns (CommandResult);
   rpc RemoveChannelMember(ChannelMemberRequest) returns (CommandResult);
+  rpc ArchiveChannel(EntityRef) returns (CommandResult);
 }
 
 message ChannelMemberRequest {
