@@ -46,7 +46,7 @@ services:
 
   # SFU для митингов (LiveKit) — масштаб >4 участников без mesh N² (D55).
   livekit:
-    image: livekit/livekit-server:v1.8
+    image: livekit/livekit-server:v1.13
     command: --config /etc/livekit.yaml
     ports:
       - "7880:7880"      # signaling (ws/http)
