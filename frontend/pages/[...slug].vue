@@ -203,14 +203,17 @@ const calRangeLabel = computed(() => {
 const selectedCycleId = ref('')
 const activeCycleOf = (tid: string) => store.teamCycles(tid).find((c: any) => c.status === 'active')
 const upcomingCycleOf = (tid: string) => store.teamCycles(tid).find((c: any) => c.status === 'upcoming') || store.teamCycles(tid).find((c: any) => c.status !== 'active' && c.status !== 'completed')
-function openCycle(id: string) { selectedCycleId.value = id; filterBy('cycle', id) }
+function openCycle(id: string) { selectedCycleId.value = id; filterBy('cycle', id); applySavedAssignee() }
 function openCycleFor(tid: string, c: any) {
   if (!c) return
   selectedTeamId.value = tid; selectedDocId.value = ''; selectedIssueId.value = ''
   teamSection.value = ''; personalView.value = ''; activeSection.value = 'tasks'
   openCycle(c.id)
 }
-function closeCycle() { selectedCycleId.value = ''; store.setFieldPredicate('cycle', null); store.setFieldPredicate('assignee', null) }
+function closeCycle() {
+  selectedCycleId.value = ''; store.setFieldPredicate('cycle', null); store.setFieldPredicate('assignee', null)
+  if (import.meta.client) localStorage.removeItem('cycleAssignee')
+}
 
 // burndown: live-расчёт из completedAt issues цикла (scope константа = текущее число).
 const cycleBurndown = computed(() => {
@@ -236,6 +239,11 @@ const cycleBurndown = computed(() => {
   return { ...stats, idealPts, actualPts, areaPts, startLabel: fmt(start), midLabel: fmt(days[Math.floor(days.length / 2)]), endLabel: fmt(end) }
 })
 const insightTab = ref<'assignees' | 'priority' | 'labels' | 'milestones' | 'teams'>('priority')
+if (import.meta.client) {
+  const s = localStorage.getItem('cycleInsightTab')
+  if (s) insightTab.value = s as any
+}
+watch(insightTab, (v) => { if (import.meta.client) localStorage.setItem('cycleInsightTab', v) })
 const INSIGHT_TABS = ['Assignees', 'Labels', 'Priority', 'Milestones', 'Teams']
 const cycleRange = computed(() => {
   const c = store.cycles[selectedCycleId.value]
@@ -273,11 +281,22 @@ const activeAssignee = computed(() => {
   if (!p) return null
   return p.op === 'isNotSet' ? NONE_ASSIGNEE : p.value
 })
-function toggleAssignee(key: string) {
-  if (activeAssignee.value === key) { store.setFieldPredicate('assignee', null); return }
-  store.setFieldPredicate('assignee', key === NONE_ASSIGNEE
+function predForAssignee(key: string | null) {
+  if (!key) return null
+  return key === NONE_ASSIGNEE
     ? { type: 'predicate', field: 'assignee', op: 'isNotSet' }
-    : { type: 'predicate', field: 'assignee', op: 'eq', value: key })
+    : { type: 'predicate', field: 'assignee', op: 'eq', value: key }
+}
+function toggleAssignee(key: string) {
+  const next = activeAssignee.value === key ? null : key
+  store.setFieldPredicate('assignee', predForAssignee(next) as any)
+  if (import.meta.client) localStorage.setItem('cycleAssignee', next || '')
+}
+// восстановить сохранённый ассайни-фильтр при открытии цикла (переживает перезагрузку)
+function applySavedAssignee() {
+  if (!import.meta.client) return
+  const k = localStorage.getItem('cycleAssignee') || ''
+  store.setFieldPredicate('assignee', predForAssignee(k || null) as any)
 }
 const cycleBreakdown = computed(() => {
   const iss = store.issuesInCycle(selectedCycleId.value)
