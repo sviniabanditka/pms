@@ -15,3 +15,10 @@ export function isAuthed(): boolean {
 export function clearAuth() {
   if (import.meta.client) localStorage.removeItem(UKEY)
 }
+
+// Сессия протухла (401) — чистим локальный uid и уводим на /login (полный переход, сбрасывает стор).
+export function handleUnauthorized() {
+  if (!import.meta.client) return
+  clearAuth()
+  if (location.pathname !== '/login') location.href = '/login'
+}

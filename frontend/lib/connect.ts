@@ -1,6 +1,7 @@
 import { useRuntimeConfig } from '#imports'
-import { createClient } from '@connectrpc/connect'
+import { createClient, Code, ConnectError, type Interceptor } from '@connectrpc/connect'
 import { createConnectTransport } from '@connectrpc/connect-web'
+import { handleUnauthorized } from './token'
 import { SyncService } from '~/gen/pms/v1/sync_service_pb'
 import { WorkspaceService } from '~/gen/pms/v1/workspace_service_pb'
 import { TeamService } from '~/gen/pms/v1/team_service_pb'
@@ -18,11 +19,22 @@ import { MeetingService } from '~/gen/pms/v1/meeting_service_pb'
 import { AttachmentService } from '~/gen/pms/v1/attachment_service_pb'
 import { QueryService } from '~/gen/pms/v1/query_service_pb'
 
+// Протухшая сессия (Unauthenticated на любом RPC) → редирект на /login.
+const authGuard: Interceptor = (next) => async (req) => {
+  try {
+    return await next(req)
+  } catch (e) {
+    if (e instanceof ConnectError && e.code === Code.Unauthenticated) handleUnauthorized()
+    throw e
+  }
+}
+
 // useClients — connect-клиенты с cookie-аутентификацией (credentials:'include' → шлёт httpOnly-cookie).
 export function useClients() {
   const transport = createConnectTransport({
     baseUrl: useRuntimeConfig().public.apiBase as string,
     fetch: (input, init) => fetch(input, { ...init, credentials: 'include' }),
+    interceptors: [authGuard],
   })
   return {
     sync: createClient(SyncService, transport),

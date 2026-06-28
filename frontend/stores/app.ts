@@ -4,7 +4,7 @@ import { useRuntimeConfig } from '#imports'
 import { useClients } from '~/lib/connect'
 import { connectWs } from '~/lib/ws'
 import { uploadFile } from '~/lib/upload'
-import { getUser } from '~/lib/token'
+import { getUser, handleUnauthorized } from '~/lib/token'
 import { match, type FilterNode } from '~/lib/filter'
 
 type Entity = Record<string, any>
@@ -472,6 +472,7 @@ export const useAppStore = defineStore('app', {
       if (!this.currentUserId) {
         const base = useRuntimeConfig().public.apiBase as string
         const res = await fetch(`${base}/auth/me`, { credentials: 'include' })
+        if (res.status === 401) return handleUnauthorized()
         if (res.ok) this.currentUserId = (await res.json()).user_id || ''
       }
     },
@@ -487,6 +488,7 @@ export const useAppStore = defineStore('app', {
     async fetchMyWorkspaces() {
       const base = useRuntimeConfig().public.apiBase as string
       const res = await fetch(`${base}/me/workspaces`, { credentials: 'include' })
+      if (res.status === 401) return handleUnauthorized()
       if (res.ok) this.myWorkspaces = await res.json()
     },
 
