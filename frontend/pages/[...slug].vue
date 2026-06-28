@@ -1886,7 +1886,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
 
     <!-- Cycle insights panel (когда выбран цикл и не открыт issue) -->
     <aside v-if="cycleBurndown && !selectedIssue" :style="{ width: cyclePanel.w.value + 'px' }" class="relative shrink-0 overflow-y-auto rounded-xl border border-subtle bg-surface px-4 py-3 text-sm">
-      <div class="absolute inset-y-0 left-0 z-20 w-1.5 cursor-col-resize hover:bg-accent/40" title="Drag to resize" @pointerdown="cyclePanel.onResizeStart" />
+      <ResizeHandle @down="cyclePanel.onResizeStart" />
       <!-- header: Current pill + range -->
       <div class="mb-3 flex items-center gap-2 text-sm">
         <span class="rounded-md bg-elevated px-2 py-0.5 text-xs font-medium">Current</span>
@@ -1947,7 +1947,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
 
     <!-- Issue detail panel (M4) -->
     <aside v-if="selectedIssue" :style="{ width: detailPanel.w.value + 'px' }" class="relative flex shrink-0 flex-col overflow-y-auto rounded-xl border border-subtle bg-surface text-sm">
-      <div class="absolute inset-y-0 left-0 z-20 w-1.5 cursor-col-resize hover:bg-accent/40" title="Drag to resize" @pointerdown="detailPanel.onResizeStart" />
+      <ResizeHandle @down="detailPanel.onResizeStart" />
       <!-- top bar -->
       <div class="flex items-center gap-2 border-b border-subtle px-4 py-2.5">
         <UIcon :name="statusIcon(store.states[selectedIssue.stateId]?.category)" :style="{ color: statusColor(store.states[selectedIssue.stateId]?.category) }" />
@@ -2184,7 +2184,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
 
     <!-- Thread panel (плавающая) -->
     <aside v-if="store.threadParentId && activeSection === 'chats'" :style="{ width: threadPanel.w.value + 'px' }" class="relative flex shrink-0 flex-col overflow-hidden rounded-xl border border-subtle bg-surface text-sm">
-      <div class="absolute inset-y-0 left-0 z-20 w-1.5 cursor-col-resize hover:bg-accent/40" title="Drag to resize" @pointerdown="threadPanel.onResizeStart" />
+      <ResizeHandle @down="threadPanel.onResizeStart" />
       <div class="flex shrink-0 items-center gap-2 border-b border-subtle px-4 py-3">
         <UIcon name="i-heroicons-chat-bubble-left-right" class="text-tertiary" />
         <span class="font-medium">Thread</span>
