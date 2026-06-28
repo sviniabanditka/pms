@@ -52,6 +52,8 @@ export function useMeeting() {
   async function join(meetingId: string) {
     if (activeMeetingId.value) await leave()
     connecting.value = true; mediaError.value = ''
+    activeMeetingId.value = meetingId // показать окно сразу (connecting), до установки соединения
+    muted.value = false; camOff.value = false
     try {
       const { url, token } = await store.joinMeeting(meetingId)
       room = new Room({ adaptiveStream: true, dynacast: true })
@@ -70,8 +72,6 @@ export function useMeeting() {
         .on(RoomEvent.TrackUnmuted, refresh)
         .on(RoomEvent.Disconnected, () => { cleanup() })
       await room.connect(url, token)
-      activeMeetingId.value = meetingId
-      muted.value = false; camOff.value = false
       try { await room.localParticipant.setMicrophoneEnabled(true) } catch { muted.value = true }
       try { await room.localParticipant.setCameraEnabled(true) } catch { camOff.value = true }
       refresh()

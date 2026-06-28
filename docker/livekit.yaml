@@ -1,9 +1,12 @@
-# LiveKit SFU — dev-конфиг (single-node). Прод: вынести keys в секреты, задать TURN/внешний IP.
+# LiveKit SFU — dev-конфиг (single-node). Прод: keys в секреты, node_ip=внешний IP/домен, TURN.
 port: 7880
 rtc:
   tcp_port: 7881
   udp_port: 7882
   use_external_ip: false
+  # КРИТИЧНО для docker-dev: анонсировать localhost, иначе SFU отдаёт внутренний IP контейнера
+  # (172.x), браузер на хосте не достучаться по UDP → ICE виснет → вечный "connecting".
+  node_ip: 127.0.0.1
 # dev-ключи (совпадают с LIVEKIT_API_KEY/LIVEKIT_SECRET бэкенда). В проде заменить.
 keys:
   devkey: devsecretdevsecretdevsecretdevsecret32
