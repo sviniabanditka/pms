@@ -938,18 +938,30 @@ const paletteOpen = ref(false)
 const paletteQ = ref('')
 const paletteIdx = ref(0)
 const paletteInput = ref<HTMLInputElement | null>(null)
-const msgResults = ref<any[]>([])
-let msgSearchTimer: any = null
+// Серверные FTS-результаты (тело задач/доков, опечатки, сообщения) — дебаунс.
+const srvResults = ref<any[]>([])
+let srvSearchTimer: any = null
 watch(paletteQ, (q) => {
-  clearTimeout(msgSearchTimer)
-  if (!q.trim()) { msgResults.value = []; return }
-  msgSearchTimer = setTimeout(async () => {
-    try { msgResults.value = await store.searchMessages(q) } catch { msgResults.value = [] }
-  }, 250)
+  clearTimeout(srvSearchTimer)
+  if (!q.trim()) { srvResults.value = []; return }
+  srvSearchTimer = setTimeout(async () => {
+    try { srvResults.value = await store.serverSearch(q) } catch { srvResults.value = [] }
+  }, 200)
 })
-const paletteResults = computed(() => [...store.searchAll(paletteQ.value), ...msgResults.value])
+// Клиентский searchAll — мгновенно по заголовкам/локальному стору; серверный добавляет
+// совпадения по телу/опечаткам. Дедуп по type:id (клиент первым — у него стабильный teamId).
+const paletteResults = computed(() => {
+  const seen = new Set<string>()
+  const out: any[] = []
+  for (const r of [...store.searchAll(paletteQ.value), ...srvResults.value]) {
+    const k = `${r.type}:${r.id}`
+    if (seen.has(k)) continue
+    seen.add(k); out.push(r)
+  }
+  return out
+})
 function openPalette() {
-  paletteOpen.value = true; paletteQ.value = ''; paletteIdx.value = 0; msgResults.value = []
+  paletteOpen.value = true; paletteQ.value = ''; paletteIdx.value = 0; srvResults.value = []
   nextTick(() => paletteInput.value?.focus())
 }
 function paletteMove(d: number) {

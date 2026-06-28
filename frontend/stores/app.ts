@@ -741,13 +741,20 @@ export const useAppStore = defineStore('app', {
     },
     closeThread() { this.threadParentId = ''; this.threadMessages = [] },
     // --- Комментарии к задачам ---
-    // Серверный поиск по телу сообщений чата (локальный стор держит лишь активный канал).
-    async searchMessages(q: string): Promise<any[]> {
+    // Серверный поиск (FTS): тело задач/доков + ранжирование + опечатки (trgm) + сообщения.
+    // Возвращает в форме палитры; клиентский searchAll покрывает только заголовки/локальный стор.
+    async serverSearch(q: string): Promise<any[]> {
       if (!q.trim() || !this.activeWorkspaceId) return []
       const { query } = useClients()
       const res = await query.search({ workspaceId: this.activeWorkspaceId, query: q })
       const all = this._decode(res.results) as any[]
-      return all.filter((r) => r.type === 'message').map((r) => ({ type: 'message', id: r.id, label: `${r.subtitle} · ${r.title}` }))
+      return all.map((r) => {
+        if (r.type === 'issue') return { type: 'issue', id: r.id, label: `${r.subtitle} ${r.title}`, teamId: r.teamId }
+        if (r.type === 'doc') return { type: 'doc', id: r.id, label: `Doc · ${r.title}`, teamId: r.teamId }
+        if (r.type === 'channel') return { type: 'channel', id: r.id, label: `Channel · ${r.title}` }
+        if (r.type === 'message') return { type: 'message', id: r.id, label: `${r.subtitle} · ${r.title}` }
+        return { type: r.type, id: r.id, label: r.title, teamId: r.teamId }
+      })
     },
     async loadComments(issueId: string) {
       const { comments } = useClients()
