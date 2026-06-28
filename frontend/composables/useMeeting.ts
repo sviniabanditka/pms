@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { Room, RoomEvent, Track, type RemoteTrack, type Participant } from 'livekit-client'
+import { Room, RoomEvent, Track, createLocalTracks, type RemoteTrack, type Participant } from 'livekit-client'
 import { useAppStore } from '~/stores/app'
 
 // Митинги через LiveKit SFU: 1 upstream + N downstream (без mesh N²). Сервер выдаёт JWT-токен
@@ -50,6 +50,7 @@ export function useMeeting() {
   const store = useAppStore()
 
   async function join(meetingId: string) {
+    if (activeMeetingId.value === meetingId && room) return // уже в этом митинге — не реконнектим
     if (activeMeetingId.value) await leave()
     connecting.value = true; mediaError.value = ''
     activeMeetingId.value = meetingId // показать окно сразу (connecting), до установки соединения
@@ -72,15 +73,24 @@ export function useMeeting() {
         .on(RoomEvent.TrackUnmuted, refresh)
         .on(RoomEvent.Disconnected, () => { cleanup() })
       await room.connect(url, token)
-      try { await room.localParticipant.setMicrophoneEnabled(true) } catch { muted.value = true }
-      try { await room.localParticipant.setCameraEnabled(true) } catch { camOff.value = true }
+      connecting.value = false // подключились к комнате — UI интерактивен, медиа инициализируем дальше
+      // ОДИН getUserMedia на мик+камеру (единый промпт), затем публикуем оба трека
+      try {
+        const tracks = await createLocalTracks({ audio: true, video: true })
+        for (const t of tracks) await room!.localParticipant.publishTrack(t)
+      } catch {
+        camOff.value = true // нет камеры/доступа — пробуем только аудио
+        try {
+          const a = await createLocalTracks({ audio: true, video: false })
+          for (const t of a) await room!.localParticipant.publishTrack(t)
+        } catch { muted.value = true; mediaError.value = 'Нет доступа к камере/микрофону' }
+      }
       refresh()
     } catch (e: any) {
       mediaError.value = e?.message || 'Не удалось подключиться к митингу'
       cleanup()
-      throw e
-    } finally {
       connecting.value = false
+      throw e
     }
   }
 
