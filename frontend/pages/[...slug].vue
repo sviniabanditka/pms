@@ -243,6 +243,26 @@ const cycleRange = computed(() => {
   const f = (d: string) => new Date(d).toLocaleDateString('en', { month: 'short', day: 'numeric' })
   return `${f(c.startsOn)} → ${f(c.endsOn)}`
 })
+// edit cycle (name + dates) через UpdateCycle
+const cycleEdit = ref(false)
+const cycleForm = reactive({ name: '', startsOn: '', endsOn: '' })
+function startCycleEdit() {
+  const c = store.cycles[selectedCycleId.value]; if (!c) return
+  cycleForm.name = c.name || ''; cycleForm.startsOn = c.startsOn; cycleForm.endsOn = c.endsOn
+  cycleEdit.value = true
+}
+const saveCycle = () => wrap(async () => {
+  await store.updateCycle(selectedCycleId.value, { name: cycleForm.name, startsOn: cycleForm.startsOn, endsOn: cycleForm.endsOn })
+  cycleEdit.value = false
+})
+const cycleActions = computed(() => [[{ label: 'Edit cycle', icon: 'i-heroicons-pencil-square', click: startCycleEdit }]])
+const cycleStatus = computed(() => {
+  const c = store.cycles[selectedCycleId.value]; if (!c) return 'Cycle'
+  const today = new Date().toISOString().slice(0, 10)
+  if (today < c.startsOn) return 'Upcoming'
+  if (today > c.endsOn) return 'Past'
+  return 'Current'
+})
 const cycleBreakdown = computed(() => {
   const iss = store.issuesInCycle(selectedCycleId.value)
   const total = iss.length || 1
@@ -1889,21 +1909,32 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     <aside v-if="cycleBurndown && !selectedIssue" :style="{ width: cyclePanel.w.value + 'px' }" class="shrink-0 overflow-y-auto rounded-xl border border-subtle bg-surface px-4 py-3 text-sm">
       <!-- header: Current pill + range -->
       <div class="mb-3 flex items-center gap-2 text-sm">
-        <span class="rounded-md bg-elevated px-2 py-0.5 text-xs font-medium">Current</span>
+        <span class="rounded-md px-2 py-0.5 text-xs font-medium"
+          :class="cycleStatus === 'Current' ? 'bg-accent/20 text-accent' : 'bg-elevated text-secondary'">{{ cycleStatus }}</span>
         <span class="text-tertiary">{{ cycleRange }}</span>
         <UButton class="ml-auto" size="2xs" color="gray" variant="ghost" square icon="i-heroicons-x-mark" @click="closeCycle" />
       </div>
       <!-- title -->
-      <div class="mb-3 flex items-center gap-2">
+      <div class="mb-4 flex items-center gap-2">
         <UIcon name="i-heroicons-play-circle" class="text-accent" />
-        <span class="text-base font-semibold">Cycle {{ store.cycles[selectedCycleId]?.number }}</span>
-        <UIcon name="i-heroicons-star" class="ml-auto text-tertiary" />
-        <UIcon name="i-heroicons-ellipsis-horizontal" class="text-tertiary" />
+        <span class="text-base font-semibold">{{ store.cycles[selectedCycleId]?.name || `Cycle ${store.cycles[selectedCycleId]?.number}` }}</span>
+        <UDropdown class="ml-auto" :items="cycleActions" :popper="{ placement: 'bottom-end' }">
+          <UButton icon="i-heroicons-ellipsis-horizontal" color="gray" variant="ghost" size="xs" square />
+        </UDropdown>
       </div>
-      <div class="mb-4 rounded-md px-2 py-1.5 text-tertiary hover:bg-hover">+ Add document or link…</div>
+
+      <!-- edit form -->
+      <div v-if="cycleEdit" class="mb-4 space-y-2 rounded-lg border border-subtle bg-elevated p-3">
+        <UInput v-model="cycleForm.name" size="xs" placeholder="Cycle name (optional)" />
+        <div class="flex gap-2">
+          <div class="flex-1"><label class="mb-1 block text-[11px] text-tertiary">Start</label><UInput v-model="cycleForm.startsOn" type="date" size="xs" class="w-full" /></div>
+          <div class="flex-1"><label class="mb-1 block text-[11px] text-tertiary">End</label><UInput v-model="cycleForm.endsOn" type="date" size="xs" class="w-full" /></div>
+        </div>
+        <div class="flex justify-end gap-2"><UButton size="2xs" color="gray" variant="ghost" @click="cycleEdit = false">Cancel</UButton><UButton size="2xs" @click="saveCycle">Save</UButton></div>
+      </div>
 
       <!-- Progress -->
-      <div class="mb-2 text-sm font-medium">Progress</div>
+      <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary">Progress</div>
       <div class="mb-3 grid grid-cols-3 gap-2 text-xs">
         <div>
           <div class="flex items-center gap-1.5 text-tertiary"><span class="h-2 w-2 rounded-sm bg-tertiary" />Scope</div>
@@ -1918,17 +1949,23 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <div class="mt-1 font-medium">{{ cycleBurndown.completed }} <span class="text-tertiary">· {{ cycleBurndown.scope ? Math.round(cycleBurndown.completed / cycleBurndown.scope * 100) : 0 }}%</span></div>
         </div>
       </div>
-      <div class="mb-3 flex items-center gap-4 text-xs">
+      <div class="flex items-center gap-4 text-xs">
         <span class="text-tertiary">Points <span class="text-secondary">{{ cycleBurndown.donePoints }}/{{ cycleBurndown.scopePoints }}</span></span>
         <span class="text-tertiary">Velocity <span class="text-secondary">{{ store.teamVelocity(store.cycles[selectedCycleId]?.teamId) }}</span> pts/cycle</span>
       </div>
 
+      <div class="my-4 h-px bg-subtle" />
+
       <!-- burndown chart (реальные ежедневные слепки, River) -->
       <div class="mb-1 text-xs font-medium uppercase tracking-wider text-tertiary">Burndown</div>
-      <Burndown :cycle-id="selectedCycleId" class="mb-4" />
+      <Burndown :cycle-id="selectedCycleId" />
 
+      <div class="my-4 h-px bg-subtle" />
+
+      <!-- breakdown -->
+      <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary">Breakdown</div>
       <!-- tabs -->
-      <div class="mb-3 flex gap-1 text-xs">
+      <div class="mb-3 flex flex-wrap gap-1 text-xs">
         <button v-for="t in INSIGHT_TABS" :key="t"
           class="rounded-md px-2 py-1"
           :class="insightTab === t.toLowerCase() ? 'bg-elevated font-medium' : 'text-tertiary hover:bg-hover'"

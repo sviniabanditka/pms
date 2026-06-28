@@ -858,6 +858,13 @@ export const useAppStore = defineStore('app', {
       const res = await cycles.createCycle({ workspaceId: this.activeWorkspaceId, teamId, name, startsOn, endsOn })
       this.cycles[res.entityId] = { id: res.entityId, teamId, name, startsOn, endsOn }
     },
+    async updateCycle(id: string, patch: { name?: string; startsOn?: string; endsOn?: string }) {
+      const { cycles } = useClients()
+      const c = this.cycles[id]
+      await cycles.updateCycle({ workspaceId: this.activeWorkspaceId, id, baseVersion: BigInt(c?.version ?? 0), ...patch })
+      if (c) Object.assign(c, patch)
+      await this.bootstrap(this.activeWorkspaceId)
+    },
     async setIssueCycle(id: string, cycleId: string) {
       const { issues } = useClients()
       if (this.issues[id]) this.issues[id].cycleId = cycleId || null
