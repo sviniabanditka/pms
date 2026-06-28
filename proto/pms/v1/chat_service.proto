@@ -16,6 +16,14 @@ service ChatService {
   rpc SendTyping(SendTypingRequest) returns (CommandResult);
   rpc GetMessages(GetMessagesRequest) returns (GetMessagesResponse);
   rpc MarkChannelRead(MarkChannelReadRequest) returns (CommandResult);
+  rpc AddChannelMember(ChannelMemberRequest) returns (CommandResult);
+  rpc RemoveChannelMember(ChannelMemberRequest) returns (CommandResult);
+}
+
+message ChannelMemberRequest {
+  string workspace_id = 1;
+  string channel_id = 2;
+  string user_id = 3;
 }
 
 message MarkChannelReadRequest {
@@ -27,6 +35,7 @@ message CreateChannelRequest {
   string workspace_id = 1;
   string id = 2;
   string name = 3;
+  bool private = 4;
 }
 
 message CreateDMRequest {

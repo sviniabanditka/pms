@@ -257,6 +257,11 @@ export const useAppStore = defineStore('app', {
     myDMs: (s) => Object.values(s.channels).filter((c) => c.kind === 'dm' && !c.deletedAt),
     userName: (s) => (id: string) => s.users[id]?.name || s.users[id]?.email || 'Unknown',
     wsUsers: (s) => Object.values(s.users).filter((u) => u.id !== s.currentUserId),
+    // участники канала (userId[]) и проверка членства текущего юзера (право управлять)
+    channelMembersOf: (s) => (channelId: string) =>
+      Object.values(s.channelMembers).filter((m) => m.channelId === channelId).map((m) => m.userId),
+    isChannelMember: (s) => (channelId: string) =>
+      Object.values(s.channelMembers).some((m) => m.channelId === channelId && m.userId === s.currentUserId),
     dmOtherId: (s) => (channelId: string) => {
       const m = Object.values(s.channelMembers).find((x) => x.channelId === channelId && x.userId !== s.currentUserId)
       return m?.userId
@@ -800,11 +805,22 @@ export const useAppStore = defineStore('app', {
       ;(this.typing[channelId] ||= {})[userId] = Date.now()
       setTimeout(() => { if (this.typing[channelId]) { delete this.typing[channelId][userId] } }, 4000)
     },
-    async createChannel(name: string): Promise<string> {
+    async createChannel(name: string, isPrivate = false): Promise<string> {
       const { chats } = useClients()
-      const res = await chats.createChannel({ workspaceId: this.activeWorkspaceId, name })
-      this.channels[res.entityId] = { id: res.entityId, kind: 'channel', name }
+      const res = await chats.createChannel({ workspaceId: this.activeWorkspaceId, name, private: isPrivate })
+      this.channels[res.entityId] = { id: res.entityId, kind: 'channel', name, private: isPrivate }
+      await this.bootstrap(this.activeWorkspaceId) // подтянуть channel_member (себя)
       return res.entityId
+    },
+    async addChannelMember(channelId: string, userId: string) {
+      const { chats } = useClients()
+      await chats.addChannelMember({ workspaceId: this.activeWorkspaceId, channelId, userId })
+      await this.bootstrap(this.activeWorkspaceId)
+    },
+    async removeChannelMember(channelId: string, userId: string) {
+      const { chats } = useClients()
+      await chats.removeChannelMember({ workspaceId: this.activeWorkspaceId, channelId, userId })
+      await this.bootstrap(this.activeWorkspaceId)
     },
     async createDM(userId: string): Promise<string> {
       const { chats } = useClients()

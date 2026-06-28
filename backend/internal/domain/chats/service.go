@@ -32,10 +32,10 @@ func (s *Service) notify(ctx context.Context, wsID uuid.UUID, channelID, op stri
 	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "message", EntityID: channelID, Op: op})
 }
 
-func (s *Service) CreateChannel(ctx context.Context, actor, wsID, id uuid.UUID, name string) error {
+func (s *Service) CreateChannel(ctx context.Context, actor, wsID, id uuid.UUID, name string, private bool) error {
 	now := time.Now().UTC()
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
-		ch := &models.Channel{ID: id, WorkspaceID: wsID, Kind: "channel", Name: strings.TrimSpace(name), CreatedBy: actor, CreatedAt: now, UpdatedAt: now}
+		ch := &models.Channel{ID: id, WorkspaceID: wsID, Kind: "channel", Name: strings.TrimSpace(name), Private: private, CreatedBy: actor, CreatedAt: now, UpdatedAt: now}
 		if _, err := tx.NewInsert().Model(ch).Exec(ctx); err != nil {
 			return err
 		}
@@ -47,6 +47,56 @@ func (s *Service) CreateChannel(ctx context.Context, actor, wsID, id uuid.UUID, 
 		return err
 	}
 	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "channel", EntityID: id.String(), Op: "create"})
+	return nil
+}
+
+// isMember — actor состоит в канале (право управлять участниками).
+func (s *Service) isMember(ctx context.Context, tx bun.Tx, channelID, userID uuid.UUID) (bool, error) {
+	return tx.NewSelect().Model((*models.ChannelMember)(nil)).
+		Where("channel_id = ?", channelID).Where("user_id = ?", userID).Exists(ctx)
+}
+
+// AddChannelMember — добавить участника (только член канала может). Идемпотентно.
+func (s *Service) AddChannelMember(ctx context.Context, actor, wsID, channelID, userID uuid.UUID) error {
+	now := time.Now().UTC()
+	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		ok, err := s.isMember(ctx, tx, channelID, actor)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrForbidden
+		}
+		mid, _ := uuid.NewV7()
+		_, err = tx.NewInsert().Model(&models.ChannelMember{ID: mid, WorkspaceID: wsID, ChannelID: channelID, UserID: userID, CreatedAt: now}).
+			On("CONFLICT (channel_id, user_id) DO NOTHING").Exec(ctx)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "channel", EntityID: channelID.String(), Op: "update"})
+	return nil
+}
+
+// RemoveChannelMember — убрать участника (только член канала может).
+func (s *Service) RemoveChannelMember(ctx context.Context, actor, wsID, channelID, userID uuid.UUID) error {
+	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		ok, err := s.isMember(ctx, tx, channelID, actor)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrForbidden
+		}
+		_, err = tx.NewDelete().Model((*models.ChannelMember)(nil)).
+			Where("channel_id = ?", channelID).Where("user_id = ?", userID).Exec(ctx)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "channel", EntityID: channelID.String(), Op: "update"})
 	return nil
 }
 

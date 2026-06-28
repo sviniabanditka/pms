@@ -14,6 +14,7 @@ type Channel struct {
 	WorkspaceID uuid.UUID  `bun:"workspace_id" json:"workspaceId"`
 	Kind        string     `bun:"kind" json:"kind"`
 	Name        string     `bun:"name" json:"name"`
+	Private     bool       `bun:"private" json:"private"`
 	CreatedBy   uuid.UUID  `bun:"created_by" json:"createdBy"`
 	CreatedAt   time.Time  `bun:"created_at,nullzero" json:"createdAt"`
 	UpdatedAt   time.Time  `bun:"updated_at,nullzero" json:"updatedAt"`

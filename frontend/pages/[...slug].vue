@@ -516,7 +516,7 @@ const CREATE_TYPES = [
   { label: 'Workspace', value: 'workspace' },
 ]
 const cTeam = ref(''); const cTitle = ref('')
-const cStart = ref(''); const cEnd = ref(''); const cMsDate = ref('')
+const cStart = ref(''); const cEnd = ref(''); const cMsDate = ref(''); const cPrivate = ref(false)
 const cKey = ref(''); const cName = ref(''); const cParent = ref(''); const cSlug = ref('')
 const cMeetAt = ref(''); const cMeetParts = ref<string[]>([])
 function openCreate(type: any = 'issue') {
@@ -550,7 +550,7 @@ const submitCreate = () => wrap(async () => {
   if (t === 'issue' && cTeam.value && cTitle.value.trim()) await store.createIssue(cTeam.value, cTitle.value)
   else if (t === 'doc' && cTeam.value && cTitle.value.trim()) { const id = await store.createDoc(cTeam.value, cTitle.value); selectedTeamId.value = cTeam.value; openDoc(id) }
   else if (t === 'dashboard' && cTitle.value.trim()) { const id = await store.createDashboard(cTitle.value); activeSection.value = 'dashboard'; selectedDashboardId.value = id }
-  else if (t === 'channel' && cTitle.value.trim()) { const id = await store.createChannel(cTitle.value); activeSection.value = 'chats'; store.loadMessages(id) }
+  else if (t === 'channel' && cTitle.value.trim()) { const id = await store.createChannel(cTitle.value, cPrivate.value); cPrivate.value = false; activeSection.value = 'chats'; store.loadMessages(id) }
   else if (t === 'cycle' && cTeam.value && cStart.value && cEnd.value) await store.createCycle(cTeam.value, cStart.value, cEnd.value)
   else if (t === 'milestone' && cTeam.value && cTitle.value.trim()) await store.createMilestone(cTeam.value, cTitle.value, cMsDate.value)
   else if (t === 'meeting' && cTitle.value.trim()) {
@@ -678,6 +678,15 @@ const composerEl = ref<HTMLTextAreaElement | null>(null)
 const showPreview = ref(false)
 const currentChannel = computed(() => store.channels[store.activeChannelId])
 const threadParent = computed(() => store.channelMessages(store.activeChannelId).find((m: any) => m.id === store.threadParentId))
+const membersOpen = ref(false)
+const canManageMembers = computed(() => !!currentChannel.value && currentChannel.value.kind !== 'dm' && store.isChannelMember(currentChannel.value.id))
+const channelAddable = computed(() => {
+  if (!currentChannel.value) return [] as any[]
+  const inCh = new Set(store.channelMembersOf(currentChannel.value.id))
+  return Object.values(store.users).filter((u: any) => !inCh.has(u.id)).map((u: any) => ({ label: store.userName(u.id), value: u.id }))
+})
+const addMember = (uid: string) => { if (uid && currentChannel.value) wrap(() => store.addChannelMember(currentChannel.value!.id, uid)) }
+watch(() => store.activeChannelId, () => { membersOpen.value = false })
 function channelTitle(c: any) {
   if (!c) return ''
   return c.kind === 'dm' ? store.userName(store.dmOtherId(c.id)) : '# ' + c.name
@@ -1133,7 +1142,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         <div v-for="c in store.channelList" :key="c.id"
           class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 hover:bg-hover"
           :class="store.activeChannelId === c.id ? 'bg-active text-white' : store.channelUnreadCount(c.id) ? 'font-semibold text-white' : 'text-secondary'"
-          @click="openChannel(c.id)"><UIcon name="i-heroicons-hashtag" class="text-tertiary" /> <span class="truncate">{{ c.name }}</span>
+          @click="openChannel(c.id)"><UIcon :name="c.private ? 'i-heroicons-lock-closed' : 'i-heroicons-hashtag'" class="text-tertiary" /> <span class="truncate">{{ c.name }}</span>
           <span v-if="store.channelUnreadCount(c.id) && store.activeChannelId !== c.id" class="ml-auto rounded-full bg-accent px-1.5 text-[11px] font-medium text-white">{{ store.channelUnreadCount(c.id) }}</span></div>
         <div v-if="!store.channelList.length" class="px-2 py-1 text-xs text-tertiary/60">No channels</div>
 
@@ -1334,8 +1343,31 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
       <template v-else-if="activeSection === 'chats'">
         <div v-if="currentChannel" class="flex h-full flex-col">
           <div class="flex shrink-0 items-center gap-2 border-b border-subtle px-4 py-3">
-            <UIcon :name="currentChannel.kind === 'dm' ? 'i-heroicons-user' : 'i-heroicons-hashtag'" class="text-tertiary" />
+            <UIcon :name="currentChannel.kind === 'dm' ? 'i-heroicons-user' : currentChannel.private ? 'i-heroicons-lock-closed' : 'i-heroicons-hashtag'" class="text-tertiary" />
             <span class="font-medium">{{ channelTitle(currentChannel) }}</span>
+
+            <!-- участники канала (счётчик + дропдаун управления) -->
+            <div v-if="currentChannel.kind !== 'dm'" class="relative ml-auto">
+              <UButton color="gray" variant="ghost" size="xs" icon="i-heroicons-users" @click="membersOpen = !membersOpen">
+                {{ store.channelMembersOf(currentChannel.id).length }}
+              </UButton>
+              <div v-if="membersOpen" class="absolute right-0 top-9 z-30 w-64 rounded-lg border border-subtle bg-elevated p-2 shadow-xl">
+                <div class="mb-1 px-1 text-xs font-medium uppercase tracking-wide text-tertiary">Участники</div>
+                <div class="max-h-56 overflow-y-auto">
+                  <div v-for="uid in store.channelMembersOf(currentChannel.id)" :key="uid" class="group flex items-center gap-2 rounded px-1.5 py-1 hover:bg-hover">
+                    <Avatar :name="store.userName(uid)" :avatar-key="store.users[uid]?.avatarKey" :size="22" />
+                    <span class="min-w-0 flex-1 truncate text-sm">{{ store.userName(uid) }}{{ uid === store.currentUserId ? ' (you)' : '' }}</span>
+                    <UButton v-if="canManageMembers && uid !== store.currentUserId" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square title="Убрать" @click="store.removeChannelMember(currentChannel.id, uid)" />
+                  </div>
+                </div>
+                <template v-if="canManageMembers">
+                  <div class="my-1.5 h-px bg-subtle" />
+                  <USelectMenu :options="channelAddable" value-attribute="value" option-attribute="label" searchable placeholder="Добавить участника…" @update:model-value="addMember" />
+                </template>
+                <p v-else class="px-1 pt-1 text-xs text-tertiary/70">Только участники канала могут менять список.</p>
+              </div>
+            </div>
+
             <template v-if="store.liveHuddleForChannel(currentChannel.id)">
               <UButton class="ml-auto" :color="meeting.activeMeetingId.value === store.liveHuddleForChannel(currentChannel.id)?.id ? 'gray' : 'green'" variant="soft" size="xs" icon="i-heroicons-signal"
                 @click="startOrJoinHuddle(currentChannel.id)">
@@ -2295,6 +2327,10 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         <div v-else-if="createType === 'channel'" class="space-y-3">
           <div><label class="mb-1 block text-xs text-tertiary">Channel name</label>
             <UInput v-model="cTitle" placeholder="general" autofocus @keyup.enter="submitCreate" /></div>
+          <label class="flex cursor-pointer items-center gap-2 text-sm">
+            <UToggle v-model="cPrivate" />
+            <span class="flex items-center gap-1"><UIcon name="i-heroicons-lock-closed" class="text-tertiary" /> Private — только приглашённые участники</span>
+          </label>
         </div>
 
         <!-- TEAM -->

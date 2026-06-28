@@ -1116,10 +1116,40 @@ func (h *chatHandler) CreateChannel(ctx context.Context, req *connect.Request[pm
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if err := h.svc.CreateChannel(ctx, actor, wsID, id, req.Msg.Name); err != nil {
+	if err := h.svc.CreateChannel(ctx, actor, wsID, id, req.Msg.Name, req.Msg.Private); err != nil {
 		return nil, mapErr(err)
 	}
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
+}
+
+func (h *chatHandler) AddChannelMember(ctx context.Context, req *connect.Request[pmsv1.ChannelMemberRequest]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, wsID, chID, err := issueRef(ctx, req.Msg.WorkspaceId, req.Msg.ChannelId)
+	if err != nil {
+		return nil, err
+	}
+	uid, err := uuid.Parse(req.Msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid user_id"))
+	}
+	if err := h.svc.AddChannelMember(ctx, actor, wsID, chID, uid); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: chID.String()}), nil
+}
+
+func (h *chatHandler) RemoveChannelMember(ctx context.Context, req *connect.Request[pmsv1.ChannelMemberRequest]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, wsID, chID, err := issueRef(ctx, req.Msg.WorkspaceId, req.Msg.ChannelId)
+	if err != nil {
+		return nil, err
+	}
+	uid, err := uuid.Parse(req.Msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid user_id"))
+	}
+	if err := h.svc.RemoveChannelMember(ctx, actor, wsID, chID, uid); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: chID.String()}), nil
 }
 
 func (h *chatHandler) CreateDM(ctx context.Context, req *connect.Request[pmsv1.CreateDMRequest]) (*connect.Response[pmsv1.CommandResult], error) {

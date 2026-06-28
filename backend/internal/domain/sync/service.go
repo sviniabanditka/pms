@@ -156,18 +156,21 @@ func (s *Service) Bootstrap(ctx context.Context, actor, wsID uuid.UUID) ([]Chunk
 		}
 		chunks = append(chunks, Chunk{EntityType: "document", Entities: jarr(docsList)})
 
-		// чаты: публичные каналы + dm, где actor участник
+		// чаты: публичные каналы (не приватные) + приватные/dm, где actor участник
 		var channels []models.Channel
 		if err := tx.NewSelect().Model(&channels).
 			Where("deleted_at IS NULL").
-			Where("kind = 'channel' OR id IN (SELECT channel_id FROM channel_members WHERE user_id = ?)", actor).
+			Where("(kind = 'channel' AND private = false) OR id IN (SELECT channel_id FROM channel_members WHERE user_id = ?)", actor).
 			Scan(ctx); err != nil {
 			return err
 		}
 		chunks = append(chunks, Chunk{EntityType: "channel", Entities: jarr(channels)})
 
+		// участники — только видимых каналов (списки приватных не утекают чужим)
 		var chMembers []models.ChannelMember
-		if err := tx.NewSelect().Model(&chMembers).Scan(ctx); err != nil {
+		if err := tx.NewSelect().Model(&chMembers).
+			Where("channel_id IN (SELECT id FROM channels WHERE deleted_at IS NULL AND ((kind = 'channel' AND private = false) OR id IN (SELECT channel_id FROM channel_members WHERE user_id = ?)))", actor).
+			Scan(ctx); err != nil {
 			return err
 		}
 		chunks = append(chunks, Chunk{EntityType: "channel_member", Entities: jarr(chMembers)})
@@ -195,7 +198,7 @@ func (s *Service) Bootstrap(ctx context.Context, actor, wsID uuid.UUID) ([]Chunk
 			ColumnExpr("m.channel_id").ColumnExpr("count(*) AS cnt").
 			Where("m.deleted_at IS NULL").Where("m.author_id != ?", actor).
 			Where("m.created_at > COALESCE((SELECT cr.last_read_at FROM channel_reads cr WHERE cr.channel_id = m.channel_id AND cr.user_id = ?), 'epoch'::timestamptz)", actor).
-			Where("(EXISTS (SELECT 1 FROM channels c WHERE c.id = m.channel_id AND c.kind = 'channel' AND c.deleted_at IS NULL) OR EXISTS (SELECT 1 FROM channel_members cm WHERE cm.channel_id = m.channel_id AND cm.user_id = ?))", actor).
+			Where("(EXISTS (SELECT 1 FROM channels c WHERE c.id = m.channel_id AND c.kind = 'channel' AND c.private = false AND c.deleted_at IS NULL) OR EXISTS (SELECT 1 FROM channel_members cm WHERE cm.channel_id = m.channel_id AND cm.user_id = ?))", actor).
 			GroupExpr("m.channel_id").Scan(ctx, &counts); err != nil {
 			return err
 		}
