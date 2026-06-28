@@ -712,11 +712,11 @@ export const useAppStore = defineStore('app', {
       else await this.refetchActive()
       return res.entityId
     },
-    async sendMessageAttached(channelId: string, body: string, files: File[]) {
+    async sendMessageAttached(channelId: string, body: string, files: File[], parentId = '') {
       const { chats, attachments } = useClients()
       const ups = [] as { key: string; filename: string; contentType: string; size: number }[]
       for (const f of files) ups.push(await this.uploadAndGetKey(f))
-      const res = await chats.sendMessage({ workspaceId: this.activeWorkspaceId, channelId, body })
+      const res = await chats.sendMessage({ workspaceId: this.activeWorkspaceId, channelId, body, parentId })
       for (const up of ups) {
         await attachments.createAttachment({
           workspaceId: this.activeWorkspaceId, entityType: 'message', entityId: res.entityId,
@@ -724,22 +724,26 @@ export const useAppStore = defineStore('app', {
         })
       }
       if (ups.length) await this.bootstrap(this.activeWorkspaceId)
+      if (parentId) await this.loadThread(parentId)
       await this.refetchActive()
     },
     async editMessage(id: string, body: string) {
       const { chats } = useClients()
       await chats.editMessage({ workspaceId: this.activeWorkspaceId, id, body })
       await this.refetchActive()
+      if (this.threadParentId) await this.loadThread(this.threadParentId)
     },
     async deleteMessage(id: string) {
       const { chats } = useClients()
       await chats.deleteMessage({ workspaceId: this.activeWorkspaceId, id })
       await this.refetchActive()
+      if (this.threadParentId) await this.loadThread(this.threadParentId)
     },
     async toggleReaction(messageId: string, emoji: string) {
       const { chats } = useClients()
       await chats.toggleReaction({ workspaceId: this.activeWorkspaceId, messageId, emoji })
       await this.refetchActive()
+      if (this.threadParentId) await this.loadThread(this.threadParentId)
     },
     async sendTyping(channelId: string) {
       const { chats } = useClients()

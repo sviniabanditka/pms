@@ -664,6 +664,10 @@ function notifTime(at: any) {
 
 // --- Meetings ---
 const meeting = useMeeting()
+// ресайз правых панелей (таска/цикл/тред)
+const detailPanel = useResizable('detail', 384)
+const threadPanel = useResizable('thread', 384)
+const cyclePanel = useResizable('cycle', 320)
 const startOrJoinHuddle = (channelId: string) => wrap(async () => {
   const existing = store.liveHuddleForChannel(channelId)
   if (existing && meeting.activeMeetingId.value === existing.id) return // уже в нём
@@ -785,7 +789,7 @@ const firstUnreadMsgId = computed(() => {
   return m?.id || ''
 })
 async function openChannel(id: string) {
-  activeSection.value = 'chats'; store.closeThread(); editingId.value = ''
+  activeSection.value = 'chats'; store.closeThread()
   unreadDividerTs.value = store.channelUnreadCount(id) > 0 ? (store.channelLastReadAt(id) || '1970-01-01') : ''
   await store.loadMessages(id)
   await nextTick()
@@ -818,11 +822,8 @@ function wrapSel(pre: string, post = pre) {
   msgDraft.value = v.slice(0, s) + pre + v.slice(s, e) + post + v.slice(e)
   nextTick(() => { el.focus(); el.selectionStart = s + pre.length; el.selectionEnd = e + pre.length })
 }
-// edit / delete / reactions / threads
+// reactions (комменты задачи; чат-сообщения рендерит ChatMessage)
 const EMOJIS = ['👍', '❤️', '😄', '🎉', '👀', '🚀', '✅', '🔥']
-const editingId = ref('')
-const editDraft = ref('')
-const reactPickerId = ref('')
 const threadDraft = ref('')
 function reactionGroups(m: any) {
   const g: Record<string, { emoji: string; count: number; mine: boolean }> = {}
@@ -832,16 +833,25 @@ function reactionGroups(m: any) {
   }
   return Object.values(g)
 }
-function startEdit(m: any) { editingId.value = m.id; editDraft.value = m.body }
-const saveEdit = () => wrap(async () => { if (editDraft.value.trim()) await store.editMessage(editingId.value, editDraft.value); editingId.value = '' })
-const react = (m: any, emoji: string) => { reactPickerId.value = ''; wrap(() => store.toggleReaction(m.id, emoji)) }
 const cReactPickerId = ref('')
 const commentReact = (c: any, emoji: string) => { cReactPickerId.value = ''; if (selectedIssue.value) wrap(() => store.toggleCommentReaction(c.id, selectedIssue.value!.id, emoji)) }
+const threadPending = ref<File[]>([])
+const threadFileEl = ref<HTMLInputElement | null>(null)
+const onThreadFilePick = (e: Event) => {
+  const files = (e.target as HTMLInputElement).files; if (!files) return
+  for (const f of Array.from(files)) threadPending.value = [...threadPending.value, f]
+  ;(e.target as HTMLInputElement).value = ''
+}
+const onThreadPaste = (e: ClipboardEvent) => {
+  const items = e.clipboardData?.items; if (!items) return
+  for (const it of Array.from(items)) if (it.type.startsWith('image/')) { e.preventDefault(); const f = it.getAsFile(); if (f) threadPending.value = [...threadPending.value, f] }
+}
 const sendThread = () => wrap(async () => {
   const b = threadDraft.value.trim()
-  if (!b || !store.threadParentId) return
-  threadDraft.value = ''
-  await store.sendMessage(store.activeChannelId, b, store.threadParentId)
+  if ((!b && !threadPending.value.length) || !store.threadParentId) return
+  const files = threadPending.value.slice()
+  threadDraft.value = ''; threadPending.value = []
+  await store.sendMessageAttached(store.activeChannelId, b, files, store.threadParentId)
 })
 // mentions
 function insertToken(text: string) {
@@ -1396,50 +1406,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <div v-if="m.id === firstUnreadMsgId" data-unread-divider class="my-1 flex items-center gap-2 px-2 text-xs font-medium text-red-400">
               <span class="h-px flex-1 bg-red-400/40" /> New messages <span class="h-px flex-1 bg-red-400/40" />
             </div>
-            <div
-              class="group relative flex gap-3 rounded-md px-2 py-1.5 hover:bg-hover">
-              <Avatar class="mt-0.5" :name="store.userName(m.authorId)" :avatar-key="store.users[m.authorId]?.avatarKey" :size="32" />
-              <div class="min-w-0 flex-1">
-                <div class="flex items-baseline gap-2">
-                  <span class="text-sm font-medium">{{ store.userName(m.authorId) }}</span>
-                  <span class="text-xs text-tertiary">{{ notifTime(m.createdAt) }}</span>
-                  <span v-if="m.editedAt" class="text-xs text-tertiary/60">(edited)</span>
-                </div>
-                <!-- edit mode -->
-                <div v-if="editingId === m.id" class="mt-1">
-                  <textarea v-model="editDraft" rows="2" class="w-full rounded-md border border-subtle bg-elevated px-2 py-1 text-sm outline-none" @keydown.enter.exact.prevent="saveEdit" @keydown.esc="editingId = ''" />
-                  <div class="mt-1 flex gap-2"><UButton size="2xs" @click="saveEdit">Save</UButton><UButton size="2xs" color="gray" variant="ghost" @click="editingId = ''">Cancel</UButton></div>
-                </div>
-                <template v-else>
-                  <div v-if="m.deletedAt" class="text-sm italic text-tertiary">(message deleted)</div>
-                  <div v-else class="prose-chat text-sm leading-relaxed" v-html="renderMarkdown(m.body)" />
-                  <Attachments v-if="store.attachmentsFor('message', m.id).length" class="mt-1.5" entity-type="message" :entity-id="m.id" readonly />
-                  <!-- reactions -->
-                  <div v-if="reactionGroups(m).length" class="mt-1 flex flex-wrap gap-1">
-                    <button v-for="g in reactionGroups(m)" :key="g.emoji"
-                      class="flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs"
-                      :class="g.mine ? 'border-accent bg-accent/15 text-white' : 'border-subtle hover:bg-hover'"
-                      @click="react(m, g.emoji)">{{ g.emoji }} {{ g.count }}</button>
-                  </div>
-                  <!-- reply count -->
-                  <button v-if="m.replyCount && !m.parentId" class="mt-1 flex items-center gap-1 text-xs text-accent hover:underline" @click="store.loadThread(m.id)">
-                    <UIcon name="i-heroicons-chat-bubble-left-right" /> {{ m.replyCount }} {{ m.replyCount === 1 ? 'reply' : 'replies' }}
-                  </button>
-                </template>
-              </div>
-              <!-- hover actions -->
-              <div v-if="!m.deletedAt && editingId !== m.id" class="absolute -top-3 right-2 hidden items-center gap-0.5 rounded-md border border-subtle bg-elevated px-1 py-0.5 shadow group-hover:flex">
-                <div class="relative">
-                  <UButton icon="i-heroicons-face-smile" color="gray" variant="ghost" size="2xs" square title="React" @click="reactPickerId = reactPickerId === m.id ? '' : m.id" />
-                  <div v-if="reactPickerId === m.id" class="absolute bottom-7 right-0 z-20 flex gap-1 rounded-md border border-subtle bg-elevated p-1 shadow-lg">
-                    <button v-for="e in EMOJIS" :key="e" class="rounded p-1 text-base hover:bg-hover" @click="react(m, e)">{{ e }}</button>
-                  </div>
-                </div>
-                <UButton v-if="!m.parentId" icon="i-heroicons-chat-bubble-oval-left" color="gray" variant="ghost" size="2xs" square title="Reply in thread" @click="store.loadThread(m.id)" />
-                <UButton v-if="m.authorId === store.currentUserId" icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square title="Edit" @click="startEdit(m)" />
-                <UButton v-if="m.authorId === store.currentUserId" icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square title="Delete" @click="store.deleteMessage(m.id)" />
-              </div>
-            </div>
+            <ChatMessage :m="m" />
             </template>
             <div v-if="store.messages[currentChannel.id] === undefined" class="space-y-3 py-2">
               <div v-for="n in 6" :key="n" class="flex gap-3"><div class="skeleton h-8 w-8 rounded-full" /><div class="flex-1 space-y-1"><div class="skeleton h-3 w-24" /><div class="skeleton h-3" :style="{ width: 30 + (n * 13) % 55 + '%' }" /></div></div>
@@ -1918,7 +1885,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     </main>
 
     <!-- Cycle insights panel (когда выбран цикл и не открыт issue) -->
-    <aside v-if="cycleBurndown && !selectedIssue" class="w-80 shrink-0 overflow-y-auto rounded-xl border border-subtle bg-surface px-4 py-3 text-sm">
+    <aside v-if="cycleBurndown && !selectedIssue" :style="{ width: cyclePanel.w.value + 'px' }" class="relative shrink-0 overflow-y-auto rounded-xl border border-subtle bg-surface px-4 py-3 text-sm">
+      <div class="absolute inset-y-0 left-0 z-20 w-1.5 cursor-col-resize hover:bg-accent/40" title="Drag to resize" @pointerdown="cyclePanel.onResizeStart" />
       <!-- header: Current pill + range -->
       <div class="mb-3 flex items-center gap-2 text-sm">
         <span class="rounded-md bg-elevated px-2 py-0.5 text-xs font-medium">Current</span>
@@ -1978,7 +1946,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     </aside>
 
     <!-- Issue detail panel (M4) -->
-    <aside v-if="selectedIssue" class="flex w-96 shrink-0 flex-col overflow-y-auto rounded-xl border border-subtle bg-surface text-sm">
+    <aside v-if="selectedIssue" :style="{ width: detailPanel.w.value + 'px' }" class="relative flex shrink-0 flex-col overflow-y-auto rounded-xl border border-subtle bg-surface text-sm">
+      <div class="absolute inset-y-0 left-0 z-20 w-1.5 cursor-col-resize hover:bg-accent/40" title="Drag to resize" @pointerdown="detailPanel.onResizeStart" />
       <!-- top bar -->
       <div class="flex items-center gap-2 border-b border-subtle px-4 py-2.5">
         <UIcon :name="statusIcon(store.states[selectedIssue.stateId]?.category)" :style="{ color: statusColor(store.states[selectedIssue.stateId]?.category) }" />
@@ -2214,38 +2183,29 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     </aside>
 
     <!-- Thread panel (плавающая) -->
-    <aside v-if="store.threadParentId && activeSection === 'chats'" class="flex w-96 shrink-0 flex-col overflow-hidden rounded-xl border border-subtle bg-surface text-sm">
+    <aside v-if="store.threadParentId && activeSection === 'chats'" :style="{ width: threadPanel.w.value + 'px' }" class="relative flex shrink-0 flex-col overflow-hidden rounded-xl border border-subtle bg-surface text-sm">
+      <div class="absolute inset-y-0 left-0 z-20 w-1.5 cursor-col-resize hover:bg-accent/40" title="Drag to resize" @pointerdown="threadPanel.onResizeStart" />
       <div class="flex shrink-0 items-center gap-2 border-b border-subtle px-4 py-3">
         <UIcon name="i-heroicons-chat-bubble-left-right" class="text-tertiary" />
         <span class="font-medium">Thread</span>
         <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="store.closeThread()" />
       </div>
-      <div class="flex-1 overflow-y-auto px-3 py-3">
-        <!-- parent -->
-        <div v-if="threadParent" class="mb-2 border-b border-subtle pb-2">
-          <div class="flex items-baseline gap-2">
-            <span class="text-sm font-medium">{{ store.userName(threadParent.authorId) }}</span>
-            <span class="text-xs text-tertiary">{{ notifTime(threadParent.createdAt) }}</span>
-          </div>
-          <div class="prose-chat text-sm" v-html="renderMarkdown(threadParent.body)" />
+      <div class="flex-1 overflow-y-auto px-2 py-3">
+        <!-- parent (full message: reactions/attachments, без reply-в-тред) -->
+        <div v-if="threadParent" class="mb-1 border-b border-subtle pb-1">
+          <ChatMessage :m="threadParent" :can-reply="false" />
         </div>
-        <div class="mb-1 text-xs text-tertiary">{{ store.threadMessages.length }} {{ store.threadMessages.length === 1 ? 'reply' : 'replies' }}</div>
-        <div v-for="m in store.threadMessages" :key="m.id" class="group flex gap-2 rounded-md px-1 py-1.5 hover:bg-hover">
-          <span class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-elevated text-[10px]">{{ (store.userName(m.authorId) || '?')[0].toUpperCase() }}</span>
-          <div class="min-w-0 flex-1">
-            <div class="flex items-baseline gap-2">
-              <span class="text-xs font-medium">{{ store.userName(m.authorId) }}</span>
-              <span class="text-xs text-tertiary">{{ notifTime(m.createdAt) }}</span>
-            </div>
-            <div v-if="m.deletedAt" class="text-sm italic text-tertiary">(deleted)</div>
-            <div v-else class="prose-chat text-sm" v-html="renderMarkdown(m.body)" />
-          </div>
-          <UButton v-if="m.authorId === store.currentUserId && !m.deletedAt" class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square @click="store.deleteMessage(m.id)" />
-        </div>
+        <div class="mb-1 px-2 text-xs text-tertiary">{{ store.threadMessages.length }} {{ store.threadMessages.length === 1 ? 'reply' : 'replies' }}</div>
+        <ChatMessage v-for="m in store.threadMessages" :key="m.id" :m="m" :can-reply="false" />
       </div>
       <div class="shrink-0 border-t border-subtle p-2">
-        <textarea v-model="threadDraft" rows="2" placeholder="Reply…" class="w-full resize-none rounded-md border border-subtle bg-elevated px-2 py-1.5 text-sm outline-none" @keydown.enter.exact.prevent="sendThread" />
-        <div class="mt-1 flex justify-end"><UButton size="2xs" icon="i-heroicons-paper-airplane" :disabled="!threadDraft.trim()" @click="sendThread">Reply</UButton></div>
+        <PendingAttachments v-if="threadPending.length" class="mb-2" :files="threadPending" @remove="(i) => threadPending = threadPending.filter((_, j) => j !== i)" />
+        <textarea v-model="threadDraft" rows="2" placeholder="Reply…" class="w-full resize-none rounded-md border border-subtle bg-elevated px-2 py-1.5 text-sm outline-none" @paste="onThreadPaste" @keydown.enter.exact.prevent="sendThread" />
+        <div class="mt-1 flex items-center justify-end gap-2">
+          <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="2xs" square title="Attach" @click="threadFileEl?.click()" />
+          <input ref="threadFileEl" type="file" multiple class="hidden" @change="onThreadFilePick" />
+          <UButton size="2xs" icon="i-heroicons-paper-airplane" :disabled="!threadDraft.trim() && !threadPending.length" @click="sendThread">Reply</UButton>
+        </div>
       </div>
     </aside>
     </div><!-- /content panel -->
