@@ -394,3 +394,10 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] «⋯» → Edit cycle: правка имени + дат (UpdateCycle), Save сохраняет.
 - [ ] Статус-пилл отражает реальность: Current/Upcoming/Past по датам.
 - [ ] Заголовок = имя цикла или «Cycle N»; секции (Progress/Burndown/Breakdown) с единым стилем + разделители.
+
+## 53. Cycle breakdown rework
+- [ ] Edit cycle: имя префиллится (имя или «Cycle N»), даты тоже; сохраняется.
+- [ ] Breakdown табы: Assignees / Labels / Priority / Milestones / Teams (Projects убран).
+- [ ] Labels/Milestones/Teams показывают реальные срезы по задачам цикла.
+- [ ] Assignees: список участников с долями; клик фильтрует список задач по участнику (подсветка + иконка воронки), повторный клик снимает.
+- [ ] Закрытие цикла снимает и cycle-, и assignee-фильтр.

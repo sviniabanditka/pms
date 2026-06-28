@@ -210,7 +210,7 @@ function openCycleFor(tid: string, c: any) {
   teamSection.value = ''; personalView.value = ''; activeSection.value = 'tasks'
   openCycle(c.id)
 }
-function closeCycle() { selectedCycleId.value = ''; store.setFieldPredicate('cycle', null) }
+function closeCycle() { selectedCycleId.value = ''; store.setFieldPredicate('cycle', null); store.setFieldPredicate('assignee', null) }
 
 // burndown: live-расчёт из completedAt issues цикла (scope константа = текущее число).
 const cycleBurndown = computed(() => {
@@ -235,8 +235,8 @@ const cycleBurndown = computed(() => {
   const fmt = (s: string) => new Date(s + 'T00:00:00Z').toLocaleDateString('en', { month: 'short', day: 'numeric' })
   return { ...stats, idealPts, actualPts, areaPts, startLabel: fmt(start), midLabel: fmt(days[Math.floor(days.length / 2)]), endLabel: fmt(end) }
 })
-const insightTab = ref<'assignees' | 'priority' | 'labels' | 'projects' | 'teams'>('priority')
-const INSIGHT_TABS = ['Assignees', 'Labels', 'Priority', 'Projects', 'Teams']
+const insightTab = ref<'assignees' | 'priority' | 'labels' | 'milestones' | 'teams'>('priority')
+const INSIGHT_TABS = ['Assignees', 'Labels', 'Priority', 'Milestones', 'Teams']
 const cycleRange = computed(() => {
   const c = store.cycles[selectedCycleId.value]
   if (!c) return ''
@@ -249,7 +249,7 @@ const cycleForm = reactive({ name: '', startsOn: '', endsOn: '' })
 const d10 = (s: string) => (s ? String(s).slice(0, 10) : '') // ISO → YYYY-MM-DD для input[type=date]
 function startCycleEdit() {
   const c = store.cycles[selectedCycleId.value]; if (!c) return
-  cycleForm.name = c.name || ''; cycleForm.startsOn = d10(c.startsOn); cycleForm.endsOn = d10(c.endsOn)
+  cycleForm.name = c.name || `Cycle ${c.number}`; cycleForm.startsOn = d10(c.startsOn); cycleForm.endsOn = d10(c.endsOn)
   cycleEdit.value = true
 }
 const saveCycle = () => wrap(async () => {
@@ -263,19 +263,56 @@ const cycleStatus = computed(() => {
   if (today > c.endsOn) return 'Past'
   return 'Current'
 })
+const BREAKDOWN_PALETTE = ['#5e6ad2', '#26a69a', '#d29922', '#e5484d', '#9c5cf6', '#0ea5e9', '#f76808', '#46a758']
+// активный ассайни-фильтр (из activeFilter)
+const activeAssignee = computed(() => {
+  const f = store.activeFilter
+  const kids = f && f.type === 'and' ? f.children : f ? [f] : []
+  const p: any = kids.find((c: any) => c.type === 'predicate' && c.field === 'assignee' && c.op === 'eq')
+  return p?.value || ''
+})
+function toggleAssignee(uid: string) {
+  store.setFieldPredicate('assignee', activeAssignee.value === uid ? null : { type: 'predicate', field: 'assignee', op: 'eq', value: uid })
+}
 const cycleBreakdown = computed(() => {
   const iss = store.issuesInCycle(selectedCycleId.value)
   const total = iss.length || 1
+  const pct = (n: number) => Math.round((n / total) * 100)
   if (insightTab.value === 'priority') {
     return PRIO.map((p, idx) => ({ label: p, color: prioColor(idx), count: iss.filter((i) => i.priority === idx).length }))
-      .filter((r) => r.count).map((r) => ({ ...r, pct: Math.round((r.count / total) * 100) }))
+      .filter((r) => r.count).map((r) => ({ ...r, pct: pct(r.count) }))
   }
   if (insightTab.value === 'assignees') {
-    const assigned = iss.filter((i) => i.assigneeId).length
-    return [
-      { label: 'Assigned', color: '#5e6ad2', count: assigned, pct: Math.round((assigned / total) * 100) },
-      { label: 'No assignee', color: '#7c828c', count: iss.length - assigned, pct: Math.round(((iss.length - assigned) / total) * 100) },
-    ].filter((r) => r.count)
+    const ids = Array.from(new Set(iss.map((i) => i.assigneeId).filter(Boolean)))
+    const rows = ids.map((uid, n) => ({
+      assigneeId: uid as string, label: store.userName(uid as string),
+      color: BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length],
+      count: iss.filter((i) => i.assigneeId === uid).length,
+    })).map((r) => ({ ...r, pct: pct(r.count) }))
+    const none = iss.filter((i) => !i.assigneeId).length
+    if (none) rows.push({ assigneeId: '', label: 'No assignee', color: '#7c828c', count: none, pct: pct(none) })
+    return rows
+  }
+  if (insightTab.value === 'labels') {
+    return Object.values(store.labels).map((l: any, n: number) => ({
+      label: l.name, color: l.colorToken || BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length],
+      count: iss.filter((i) => store.labelsForIssue(i.id).some((x: any) => x.id === l.id)).length,
+    })).filter((r) => r.count).map((r) => ({ ...r, pct: pct(r.count) }))
+  }
+  if (insightTab.value === 'milestones') {
+    const rows = Object.values(store.milestones).map((m: any, n: number) => ({
+      label: m.name, color: BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length],
+      count: iss.filter((i) => i.milestoneId === m.id).length,
+    })).filter((r) => r.count).map((r) => ({ ...r, pct: pct(r.count) }))
+    const none = iss.filter((i) => !i.milestoneId).length
+    if (none) rows.push({ label: 'No milestone', color: '#7c828c', count: none, pct: pct(none) })
+    return rows
+  }
+  if (insightTab.value === 'teams') {
+    return Object.values(store.teams).map((t: any, n: number) => ({
+      label: `${t.key} · ${t.name}`, color: BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length],
+      count: iss.filter((i) => i.teamId === t.id).length,
+    })).filter((r) => r.count).map((r) => ({ ...r, pct: pct(r.count) }))
   }
   return []
 })
@@ -1971,13 +2008,21 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
       </div>
       <!-- breakdown -->
       <div class="space-y-1">
-        <div v-for="r in cycleBreakdown" :key="r.label" class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
-          <span class="h-2.5 w-2.5 rounded-full" :style="{ background: r.color }" />
+        <div v-for="r in cycleBreakdown" :key="r.label"
+          class="flex items-center gap-2 rounded-md px-2 py-1.5"
+          :class="[
+            r.assigneeId !== undefined ? 'cursor-pointer' : '',
+            r.assigneeId !== undefined && activeAssignee === r.assigneeId ? 'bg-accent/15 ring-1 ring-accent/40' : 'hover:bg-hover',
+          ]"
+          @click="r.assigneeId !== undefined && toggleAssignee(r.assigneeId)">
+          <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="{ background: r.color }" />
           <span class="flex-1 truncate">{{ r.label }}</span>
+          <UIcon v-if="r.assigneeId !== undefined && activeAssignee === r.assigneeId" name="i-heroicons-funnel" class="text-accent" />
           <span class="text-tertiary">{{ r.pct }}% of {{ r.count }}</span>
         </div>
         <div v-if="!cycleBreakdown.length" class="px-2 py-3 text-xs text-tertiary">No data for {{ insightTab }}</div>
       </div>
+      <p v-if="insightTab === 'assignees'" class="mt-1 px-2 text-[11px] text-tertiary/70">Click an assignee to filter the list · click again to clear.</p>
     </aside>
 
     <!-- Issue detail panel (M4) -->
