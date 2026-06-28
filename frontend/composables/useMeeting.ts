@@ -1,78 +1,49 @@
-import { ref, reactive } from 'vue'
+import { ref } from 'vue'
+import { Room, RoomEvent, Track, type RemoteTrack, type Participant } from 'livekit-client'
 import { useAppStore } from '~/stores/app'
 
-// WebRTC mesh: каждый join'ящийся инициирует offer к уже подключённым пирам (избегаем glare).
-// Сигналинг — через store.sendSignal/setSignalHandler (WS воркспейса).
+// Митинги через LiveKit SFU: 1 upstream + N downstream (без mesh N²). Сервер выдаёт JWT-токен
+// на JoinMeeting, медиа полностью на SFU. Singleton-состояние живёт между ре-рендерами.
 
-type Remote = { userId: string; stream: MediaStream }
+export type Part = {
+  identity: string
+  name: string
+  isLocal: boolean
+  micOn: boolean
+  camOn: boolean
+  videoTrack: Track | null
+  audioTrack: Track | null
+}
 
-// --- singleton state (живёт между ре-рендерами компонентов) ---
 const activeMeetingId = ref('')
-const localStream = ref<MediaStream | null>(null)
-const remotes = ref<Record<string, MediaStream>>({})
+const participants = ref<Record<string, Part>>({})
 const muted = ref(false)
 const camOff = ref(false)
 const connecting = ref(false)
 const mediaError = ref('')
 
-// не-реактивные мапы соединений
-const pcs = new Map<string, RTCPeerConnection>()
-const pendingIce = new Map<string, RTCIceCandidateInit[]>()
+let room: Room | null = null
 
-const ICE = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
-
-function setRemote(userId: string, stream: MediaStream) {
-  remotes.value = { ...remotes.value, [userId]: stream }
-}
-function dropRemote(userId: string) {
-  const next = { ...remotes.value }; delete next[userId]; remotes.value = next
-}
-
-function makePeer(store: ReturnType<typeof useAppStore>, peerId: string): RTCPeerConnection {
-  const pc = new RTCPeerConnection(ICE)
-  localStream.value?.getTracks().forEach((t) => pc.addTrack(t, localStream.value!))
-  pc.onicecandidate = (e) => {
-    if (e.candidate) store.sendSignal(activeMeetingId.value, peerId, 'ice', JSON.stringify(e.candidate))
+function partOf(p: Participant): Part {
+  const cam = p.getTrackPublication(Track.Source.Camera)
+  const mic = p.getTrackPublication(Track.Source.Microphone)
+  return {
+    identity: p.identity,
+    name: p.name || p.identity,
+    isLocal: p.isLocal,
+    camOn: !!cam && !cam.isMuted && !!cam.track,
+    micOn: !!mic && !mic.isMuted,
+    videoTrack: cam?.track ?? null,
+    audioTrack: mic?.track ?? null,
   }
-  pc.ontrack = (e) => setRemote(peerId, e.streams[0])
-  pc.onconnectionstatechange = () => {
-    if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) dropRemote(peerId)
-  }
-  pcs.set(peerId, pc)
-  return pc
 }
 
-async function flushIce(peerId: string, pc: RTCPeerConnection) {
-  const buf = pendingIce.get(peerId)
-  if (!buf) return
-  for (const c of buf) { try { await pc.addIceCandidate(c) } catch {} }
-  pendingIce.delete(peerId)
-}
-
-async function onSignal(store: ReturnType<typeof useAppStore>, sig: any) {
-  const from = sig.fromUserId
-  if (sig.meetingId !== activeMeetingId.value) return
-  try {
-    if (sig.kind === 'offer') {
-      let pc = pcs.get(from) || makePeer(store, from)
-      await pc.setRemoteDescription(JSON.parse(sig.payload))
-      await flushIce(from, pc)
-      const answer = await pc.createAnswer()
-      await pc.setLocalDescription(answer)
-      store.sendSignal(activeMeetingId.value, from, 'answer', JSON.stringify(answer))
-    } else if (sig.kind === 'answer') {
-      const pc = pcs.get(from); if (!pc) return
-      await pc.setRemoteDescription(JSON.parse(sig.payload))
-      await flushIce(from, pc)
-    } else if (sig.kind === 'ice') {
-      const pc = pcs.get(from)
-      const cand = JSON.parse(sig.payload)
-      if (pc && pc.remoteDescription) { try { await pc.addIceCandidate(cand) } catch {} }
-      else { pendingIce.set(from, [...(pendingIce.get(from) || []), cand]) }
-    } else if (sig.kind === 'bye') {
-      pcs.get(from)?.close(); pcs.delete(from); dropRemote(from)
-    }
-  } catch (e) { /* glare/ordering — отдадим следующему сигналу */ }
+function refresh() {
+  if (!room) { participants.value = {}; return }
+  const out: Record<string, Part> = {}
+  out[room.localParticipant.identity] = partOf(room.localParticipant)
+  room.remoteParticipants.forEach((p) => { out[p.identity] = partOf(p) })
+  participants.value = out
 }
 
 export function useMeeting() {
@@ -82,47 +53,62 @@ export function useMeeting() {
     if (activeMeetingId.value) await leave()
     connecting.value = true; mediaError.value = ''
     try {
-      localStream.value = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+      const { url, token } = await store.joinMeeting(meetingId)
+      room = new Room({ adaptiveStream: true, dynacast: true })
+      room
+        .on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
+          // аудио надо явно прицепить, чтобы играло; видео цепляет VideoTile
+          if (track.kind === 'audio') { const el = track.attach(); el.style.display = 'none'; document.body.appendChild(el) }
+          refresh()
+        })
+        .on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => { track.detach().forEach((el) => el.remove()); refresh() })
+        .on(RoomEvent.ParticipantConnected, refresh)
+        .on(RoomEvent.ParticipantDisconnected, refresh)
+        .on(RoomEvent.LocalTrackPublished, refresh)
+        .on(RoomEvent.LocalTrackUnpublished, refresh)
+        .on(RoomEvent.TrackMuted, refresh)
+        .on(RoomEvent.TrackUnmuted, refresh)
+        .on(RoomEvent.Disconnected, () => { cleanup() })
+      await room.connect(url, token)
+      activeMeetingId.value = meetingId
+      muted.value = false; camOff.value = false
+      try { await room.localParticipant.setMicrophoneEnabled(true) } catch { muted.value = true }
+      try { await room.localParticipant.setCameraEnabled(true) } catch { camOff.value = true }
+      refresh()
     } catch (e: any) {
-      // нет камеры/доступа — пробуем только аудио
-      try { localStream.value = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }); camOff.value = true }
-      catch (e2: any) { mediaError.value = 'Нет доступа к камере/микрофону'; connecting.value = false; throw e2 }
+      mediaError.value = e?.message || 'Не удалось подключиться к митингу'
+      cleanup()
+      throw e
+    } finally {
+      connecting.value = false
     }
-    activeMeetingId.value = meetingId
-    muted.value = false
-    store.setSignalHandler((sig) => onSignal(store, sig))
-    const peers = await store.joinMeeting(meetingId)
-    // инициатор: шлём offer каждому уже подключённому
-    for (const peerId of peers) {
-      const pc = makePeer(store, peerId)
-      const offer = await pc.createOffer()
-      await pc.setLocalDescription(offer)
-      store.sendSignal(meetingId, peerId, 'offer', JSON.stringify(offer))
-    }
-    connecting.value = false
+  }
+
+  function cleanup() {
+    try { room?.disconnect() } catch {}
+    room = null
+    activeMeetingId.value = ''
+    participants.value = {}
   }
 
   async function leave() {
     const mid = activeMeetingId.value
-    if (!mid) return
-    for (const [peerId, pc] of pcs) { store.sendSignal(mid, peerId, 'bye', ''); pc.close() }
-    pcs.clear(); pendingIce.clear()
-    localStream.value?.getTracks().forEach((t) => t.stop())
-    localStream.value = null
-    remotes.value = {}
-    activeMeetingId.value = ''
-    store.setSignalHandler(null)
-    try { await store.leaveMeeting(mid) } catch {}
+    cleanup()
+    if (mid) { try { await store.leaveMeeting(mid) } catch {} }
   }
 
-  function toggleMute() {
+  async function toggleMute() {
+    if (!room) return
     muted.value = !muted.value
-    localStream.value?.getAudioTracks().forEach((t) => (t.enabled = !muted.value))
+    await room.localParticipant.setMicrophoneEnabled(!muted.value)
+    refresh()
   }
-  function toggleCam() {
+  async function toggleCam() {
+    if (!room) return
     camOff.value = !camOff.value
-    localStream.value?.getVideoTracks().forEach((t) => (t.enabled = !camOff.value))
+    await room.localParticipant.setCameraEnabled(!camOff.value)
+    refresh()
   }
 
-  return { activeMeetingId, localStream, remotes, muted, camOff, connecting, mediaError, join, leave, toggleMute, toggleCam }
+  return { activeMeetingId, participants, muted, camOff, connecting, mediaError, join, leave, toggleMute, toggleCam }
 }

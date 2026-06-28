@@ -102,7 +102,7 @@ func main() {
 		Chats:         chats.NewService(bdb, pub),
 		Comments:      comments.NewService(bdb, pub),
 		Milestones:    milestones.NewService(bdb, pub),
-		Meetings:      meetings.NewService(bdb, pub),
+		Meetings:      meetings.NewService(bdb, pub, meetings.LiveKit{URL: cfg.LiveKitURL, APIKey: cfg.LiveKitAPIKey, Secret: cfg.LiveKitSecret}),
 		Attachments:   attachments.NewService(bdb, pub, store),
 		Search:        search.NewService(bdb),
 		Sync:          syncsvc.NewService(bdb),

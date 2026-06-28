@@ -18,28 +18,15 @@ type Delta struct {
 	Actor      string `json:"actor,omitempty"` // userId инициатора (typing/авторство)
 }
 
-// Signal — WebRTC-сигналинг peer→peer (offer/answer/ice/bye), доставка через WS воркспейса.
-type Signal struct {
-	MeetingID  string `json:"meetingId"`
-	FromUserID string `json:"fromUserId"`
-	ToUserID   string `json:"toUserId"`
-	Kind       string `json:"kind"`
-	Payload    string `json:"payload"`
-}
-
 // serverMsg — конверт сервер→клиент.
 type serverMsg struct {
-	Type     string   `json:"type"`               // delta | signal | pong | sub_ack
+	Type     string   `json:"type"` // delta | pong | sub_ack
 	Delta    *Delta   `json:"delta,omitempty"`
-	Signal   *Signal  `json:"signal,omitempty"`
 	Channels []string `json:"channels,omitempty"`
 }
 
 // WorkspaceChannel — Redis/WS-канал воркспейса.
 func WorkspaceChannel(wsID uuid.UUID) string { return "ws:" + wsID.String() }
-
-// UserChannel — персональный Redis/WS-канал юзера (таргетная доставка сигналов, D56).
-func UserChannel(userID string) string { return "user:" + userID }
 
 type Publisher struct{ rdb *redis.Client }
 
@@ -54,12 +41,3 @@ func (p *Publisher) PublishDelta(ctx context.Context, wsID uuid.UUID, d Delta) e
 	return p.rdb.Publish(ctx, WorkspaceChannel(wsID), payload).Err()
 }
 
-// PublishSignal публикует WebRTC-сигнал в ПЕРСОНАЛЬНЫЙ канал получателя (D56): только адресат
-// получает фрейм, без широковещания на весь воркспейс. gateway шлёт не-дельты сразу.
-func (p *Publisher) PublishSignal(ctx context.Context, sig Signal) error {
-	payload, err := json.Marshal(serverMsg{Type: "signal", Signal: &sig})
-	if err != nil {
-		return err
-	}
-	return p.rdb.Publish(ctx, UserChannel(sig.ToUserID), payload).Err()
-}

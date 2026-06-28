@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/livekit/protocol/auth"
 	"github.com/pms/backend/internal/db"
 	"github.com/pms/backend/internal/models"
 	"github.com/pms/backend/internal/realtime"
@@ -15,12 +16,30 @@ import (
 
 var ErrNotFound = errors.New("meeting not found")
 
+// LiveKit — реквизиты SFU для подписи клиентских токенов.
+type LiveKit struct {
+	URL    string
+	APIKey string
+	Secret string
+}
+
 type Service struct {
 	db  *bun.DB
 	pub *realtime.Publisher
+	lk  LiveKit
 }
 
-func NewService(bdb *bun.DB, pub *realtime.Publisher) *Service { return &Service{db: bdb, pub: pub} }
+func NewService(bdb *bun.DB, pub *realtime.Publisher, lk LiveKit) *Service {
+	return &Service{db: bdb, pub: pub, lk: lk}
+}
+
+// mintToken — подписанный JWT для входа в комнату LiveKit (room = meetingID, identity = userID).
+func (s *Service) mintToken(room, identity, name string) (string, error) {
+	at := auth.NewAccessToken(s.lk.APIKey, s.lk.Secret).
+		SetIdentity(identity).SetName(name).SetValidFor(12 * time.Hour).
+		AddGrant(&auth.VideoGrant{RoomJoin: true, Room: room})
+	return at.ToJWT()
+}
 
 func (s *Service) delta(ctx context.Context, wsID, id uuid.UUID, op string) {
 	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "meeting", EntityID: id.String(), Op: op})
@@ -116,40 +135,40 @@ func (s *Service) StartHuddle(ctx context.Context, actor, wsID, id, channelID uu
 	return result, nil
 }
 
-// JoinMeeting — помечает участника joined и возвращает уже подключённых пиров (для mesh-оферов).
-func (s *Service) JoinMeeting(ctx context.Context, actor, wsID, meetingID uuid.UUID) ([]string, error) {
-	var peers []string
+// JoinMeeting — помечает участника joined и выдаёт LiveKit-токен (комната = meetingID).
+// Медиа полностью на SFU (LiveKit); сервер только авторизует вход.
+func (s *Service) JoinMeeting(ctx context.Context, actor, wsID, meetingID uuid.UUID) (url, token string, err error) {
 	now := time.Now().UTC()
-	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
-		var peerIDs []uuid.UUID
-		if err := tx.NewSelect().Model((*models.MeetingParticipant)(nil)).Column("user_id").
-			Where("meeting_id = ?", meetingID).Where("state = 'joined'").Where("user_id != ?", actor).
-			Scan(ctx, &peerIDs); err != nil {
-			return err
-		}
-		for _, p := range peerIDs {
-			peers = append(peers, p.String())
-		}
+	var name string
+	err = db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		_ = tx.NewSelect().Model((*models.User)(nil)).Column("name").Where("id = ?", actor).Scan(ctx, &name)
 		// upsert: участник мог быть только invited или ранее left
 		pid, _ := uuid.NewV7()
-		_, err := tx.NewInsert().Model(&models.MeetingParticipant{
+		_, e := tx.NewInsert().Model(&models.MeetingParticipant{
 			ID: pid, WorkspaceID: wsID, MeetingID: meetingID, UserID: actor, Role: "participant", State: "joined", JoinedAt: &now, CreatedAt: now,
 		}).On("CONFLICT (meeting_id, user_id) DO UPDATE").
 			Set("state = 'joined'").Set("joined_at = ?", now).Set("left_at = NULL").Exec(ctx)
-		if err != nil {
-			return err
+		if e != nil {
+			return e
 		}
 		// scheduled → live при первом входе
-		_, err = tx.NewUpdate().Model((*models.Meeting)(nil)).
+		_, e = tx.NewUpdate().Model((*models.Meeting)(nil)).
 			Set("status = 'live'").Set("started_at = COALESCE(started_at, ?)", now).Set("updated_at = ?", now).
 			Where("id = ?", meetingID).Where("status = 'scheduled'").Exec(ctx)
-		return err
+		return e
 	})
 	if err != nil {
-		return nil, err
+		return "", "", err
+	}
+	if name == "" {
+		name = "User"
+	}
+	token, err = s.mintToken(meetingID.String(), actor.String(), name)
+	if err != nil {
+		return "", "", err
 	}
 	s.delta(ctx, wsID, meetingID, "update")
-	return peers, nil
+	return s.lk.URL, token, nil
 }
 
 // LeaveMeeting — участник вышел; если живых не осталось — митинг ended.
@@ -196,15 +215,4 @@ func (s *Service) EndMeeting(ctx context.Context, actor, wsID, meetingID uuid.UU
 	}
 	s.delta(ctx, wsID, meetingID, "update")
 	return nil
-}
-
-// SendSignal — WebRTC offer/answer/ice/bye → персональный канал конкретного пира (D56).
-func (s *Service) SendSignal(ctx context.Context, actor, wsID, meetingID, toUser uuid.UUID, kind, payload string) error {
-	return s.pub.PublishSignal(ctx, realtime.Signal{
-		MeetingID:  meetingID.String(),
-		FromUserID: actor.String(),
-		ToUserID:   toUser.String(),
-		Kind:       kind,
-		Payload:    payload,
-	})
 }

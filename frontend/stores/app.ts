@@ -54,7 +54,6 @@ const REL_INV: Record<string, string> = { blocks: 'blocked by', blocked_by: 'blo
 const IDB_KEY = 'pms-store'
 let ws: WebSocket | null = null
 let refreshTimer: any = null
-let signalHandler: ((s: any) => void) | null = null
 
 export const useAppStore = defineStore('app', {
   state: () => ({
@@ -917,7 +916,6 @@ export const useAppStore = defineStore('app', {
     },
 
     // --- Meetings ---
-    setSignalHandler(fn: ((s: any) => void) | null) { signalHandler = fn },
     async createMeeting(title: string, scheduledAt: string, participantIds: string[], channelId = '') {
       const { meetings } = useClients()
       const res = await meetings.createMeeting({ workspaceId: this.activeWorkspaceId, title, scheduledAt, participantIds, channelId })
@@ -930,10 +928,10 @@ export const useAppStore = defineStore('app', {
       await this.bootstrap(this.activeWorkspaceId)
       return res.entityId
     },
-    async joinMeeting(meetingId: string): Promise<string[]> {
+    async joinMeeting(meetingId: string): Promise<{ url: string; token: string }> {
       const { meetings } = useClients()
       const res = await meetings.joinMeeting({ workspaceId: this.activeWorkspaceId, meetingId })
-      return res.peerIds || []
+      return { url: res.livekitUrl, token: res.token }
     },
     async leaveMeeting(meetingId: string) {
       const { meetings } = useClients()
@@ -942,10 +940,6 @@ export const useAppStore = defineStore('app', {
     async endMeeting(meetingId: string) {
       const { meetings } = useClients()
       await meetings.endMeeting({ workspaceId: this.activeWorkspaceId, id: meetingId })
-    },
-    async sendSignal(meetingId: string, toUserId: string, kind: string, payload: string) {
-      const { meetings } = useClients()
-      await meetings.sendSignal({ workspaceId: this.activeWorkspaceId, meetingId, toUserId, kind, payload })
     },
 
     // --- Attachments / files ---
@@ -1061,9 +1055,6 @@ export const useAppStore = defineStore('app', {
         }
         clearTimeout(refreshTimer)
         refreshTimer = setTimeout(() => this.bootstrap(wsId), 150)
-      }, (sig: any) => {
-        // WebRTC-сигнал → активному звонку (фильтр по toUserId — на стороне обработчика)
-        if (sig?.toUserId === this.currentUserId) signalHandler?.(sig)
       })
     },
 

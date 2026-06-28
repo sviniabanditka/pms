@@ -27,6 +27,11 @@ type Config struct {
 	// SecureCookies — Secure-флаг на cookie сессии (true за TLS в проде).
 	SecureCookies bool
 
+	// LiveKit (SFU для митингов). URL — клиентский ws-адрес; key/secret — для подписи токенов.
+	LiveKitURL    string
+	LiveKitAPIKey string
+	LiveKitSecret string
+
 	// S3 (Garage self-hosted; S3-совместимо). PublicBase — базовый URL для presigned-ссылок в браузер.
 	S3Endpoint   string
 	S3PublicBase string
@@ -56,6 +61,9 @@ func Load() Config {
 		SessionTTL:         envDuration("SESSION_TTL", 30*24*time.Hour),
 		AllowedOrigins:     envList("ALLOWED_ORIGINS"),
 		SecureCookies:      env("SECURE_COOKIES", "") == "true",
+		LiveKitURL:         env("LIVEKIT_URL", "ws://localhost:7880"),
+		LiveKitAPIKey:      env("LIVEKIT_API_KEY", "devkey"),
+		LiveKitSecret:      env("LIVEKIT_SECRET", "devsecretdevsecretdevsecretdevsecret32"),
 		S3Endpoint:         env("S3_ENDPOINT", "http://localhost:3900"),
 		S3PublicBase:       env("S3_PUBLIC_BASE", "http://localhost:3900"),
 		S3Region:           env("S3_REGION", "garage"),

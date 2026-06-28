@@ -14,8 +14,6 @@ service MeetingService {
   rpc JoinMeeting(JoinMeetingRequest) returns (JoinMeetingResponse);
   rpc LeaveMeeting(EntityRef) returns (CommandResult);
   rpc EndMeeting(EntityRef) returns (CommandResult);
-  // WebRTC-сигналинг peer→peer (offer/answer/ice/bye) через WS воркспейса
-  rpc SendSignal(SendSignalRequest) returns (CommandResult);
 }
 
 message CreateMeetingRequest {
@@ -39,13 +37,6 @@ message JoinMeetingRequest {
 }
 
 message JoinMeetingResponse {
-  repeated string peer_ids = 1;     // уже подключённые участники (для mesh-оферов)
-}
-
-message SendSignalRequest {
-  string workspace_id = 1;
-  string meeting_id = 2;
-  string to_user_id = 3;
-  string kind = 4;                  // offer | answer | ice | bye
-  string payload = 5;               // JSON: SDP или ICE-кандидат
+  string livekit_url = 1;           // ws-адрес SFU
+  string token = 2;                 // подписанный JWT для входа в комнату
 }

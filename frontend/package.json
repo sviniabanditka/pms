@@ -15,6 +15,7 @@
     "@nuxt/ui": "^2.20.0",
     "@pinia/nuxt": "^0.7.0",
     "idb-keyval": "^6.2.5",
+    "livekit-client": "^2.20.0",
     "nuxt": "^3.14.1592",
     "pinia": "^2.2.6"
   },

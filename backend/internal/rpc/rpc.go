@@ -1531,11 +1531,11 @@ func (h *meetingHandler) JoinMeeting(ctx context.Context, req *connect.Request[p
 	if err != nil {
 		return nil, err
 	}
-	peers, err := h.svc.JoinMeeting(ctx, actor, wsID, mid)
+	url, token, err := h.svc.JoinMeeting(ctx, actor, wsID, mid)
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return connect.NewResponse(&pmsv1.JoinMeetingResponse{PeerIds: peers}), nil
+	return connect.NewResponse(&pmsv1.JoinMeetingResponse{LivekitUrl: url, Token: token}), nil
 }
 
 func (h *meetingHandler) LeaveMeeting(ctx context.Context, req *connect.Request[pmsv1.EntityRef]) (*connect.Response[pmsv1.CommandResult], error) {
@@ -1555,21 +1555,6 @@ func (h *meetingHandler) EndMeeting(ctx context.Context, req *connect.Request[pm
 		return nil, err
 	}
 	if err := h.svc.EndMeeting(ctx, actor, wsID, mid); err != nil {
-		return nil, mapErr(err)
-	}
-	return connect.NewResponse(&pmsv1.CommandResult{EntityId: mid.String()}), nil
-}
-
-func (h *meetingHandler) SendSignal(ctx context.Context, req *connect.Request[pmsv1.SendSignalRequest]) (*connect.Response[pmsv1.CommandResult], error) {
-	actor, wsID, mid, err := issueRef(ctx, req.Msg.WorkspaceId, req.Msg.MeetingId)
-	if err != nil {
-		return nil, err
-	}
-	toUser, err := uuid.Parse(req.Msg.ToUserId)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid to_user_id"))
-	}
-	if err := h.svc.SendSignal(ctx, actor, wsID, mid, toUser, req.Msg.Kind, req.Msg.Payload); err != nil {
 		return nil, mapErr(err)
 	}
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: mid.String()}), nil

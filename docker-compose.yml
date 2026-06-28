@@ -44,6 +44,17 @@ services:
 
   # bootstrap Garage (layout/key/bucket) — `make s3-init` после `up` (образ distroless, без shell внутри)
 
+  # SFU для митингов (LiveKit) — масштаб >4 участников без mesh N² (D55).
+  livekit:
+    image: livekit/livekit-server:v1.8
+    command: --config /etc/livekit.yaml
+    ports:
+      - "7880:7880"      # signaling (ws/http)
+      - "7881:7881"      # RTC over TCP (fallback)
+      - "7882:7882/udp"  # RTC over UDP
+    volumes:
+      - ./docker/livekit.yaml:/etc/livekit.yaml:ro
+
   # Локальный SMTP-перехватчик: письма не уходят наружу, видны в web-UI :8025 (dev, до реального SMTP).
   mailpit:
     image: axllent/mailpit:latest

@@ -1,0 +1,11 @@
+# LiveKit SFU — dev-конфиг (single-node). Прод: вынести keys в секреты, задать TURN/внешний IP.
+port: 7880
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: false
+# dev-ключи (совпадают с LIVEKIT_API_KEY/LIVEKIT_SECRET бэкенда). В проде заменить.
+keys:
+  devkey: devsecretdevsecretdevsecretdevsecret32
+logging:
+  level: info
