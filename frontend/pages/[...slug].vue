@@ -698,7 +698,7 @@ const addMember = (uid: string) => { if (uid && currentChannel.value) wrap(() =>
 watch(() => store.activeChannelId, () => { membersOpen.value = false })
 function channelTitle(c: any) {
   if (!c) return ''
-  return c.kind === 'dm' ? store.userName(store.dmOtherId(c.id)) : '# ' + c.name
+  return c.kind === 'dm' ? store.userName(store.dmOtherId(c.id)) : c.name
 }
 // inline @/# пикеры (юзеры + сущности)
 const chatMention = useMention(msgDraft, composerEl)
