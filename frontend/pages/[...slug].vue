@@ -264,15 +264,20 @@ const cycleStatus = computed(() => {
   return 'Current'
 })
 const BREAKDOWN_PALETTE = ['#5e6ad2', '#26a69a', '#d29922', '#e5484d', '#9c5cf6', '#0ea5e9', '#f76808', '#46a758']
-// активный ассайни-фильтр (из activeFilter)
+// активный ассайни-фильтр (из activeFilter). null = нет фильтра; '__none__' = только без ассайни.
+const NONE_ASSIGNEE = '__none__'
 const activeAssignee = computed(() => {
   const f = store.activeFilter
   const kids = f && f.type === 'and' ? f.children : f ? [f] : []
-  const p: any = kids.find((c: any) => c.type === 'predicate' && c.field === 'assignee' && c.op === 'eq')
-  return p?.value || ''
+  const p: any = kids.find((c: any) => c.type === 'predicate' && c.field === 'assignee' && (c.op === 'eq' || c.op === 'isNotSet'))
+  if (!p) return null
+  return p.op === 'isNotSet' ? NONE_ASSIGNEE : p.value
 })
-function toggleAssignee(uid: string) {
-  store.setFieldPredicate('assignee', activeAssignee.value === uid ? null : { type: 'predicate', field: 'assignee', op: 'eq', value: uid })
+function toggleAssignee(key: string) {
+  if (activeAssignee.value === key) { store.setFieldPredicate('assignee', null); return }
+  store.setFieldPredicate('assignee', key === NONE_ASSIGNEE
+    ? { type: 'predicate', field: 'assignee', op: 'isNotSet' }
+    : { type: 'predicate', field: 'assignee', op: 'eq', value: key })
 }
 const cycleBreakdown = computed(() => {
   const iss = store.issuesInCycle(selectedCycleId.value)
@@ -290,7 +295,7 @@ const cycleBreakdown = computed(() => {
       count: iss.filter((i) => i.assigneeId === uid).length,
     })).map((r) => ({ ...r, pct: pct(r.count) }))
     const none = iss.filter((i) => !i.assigneeId).length
-    if (none) rows.push({ assigneeId: '', label: 'No assignee', color: '#7c828c', count: none, pct: pct(none) })
+    if (none) rows.push({ assigneeId: NONE_ASSIGNEE, label: 'No assignee', color: '#7c828c', count: none, pct: pct(none) })
     return rows
   }
   if (insightTab.value === 'labels') {
