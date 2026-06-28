@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pms/backend/internal/changelog"
 	"github.com/pms/backend/internal/db"
+	"github.com/pms/backend/internal/frac"
 	"github.com/pms/backend/internal/domain/notifications"
 	"github.com/pms/backend/internal/models"
 	"github.com/pms/backend/internal/realtime"
@@ -104,10 +105,10 @@ func (s *Service) CreateIssue(ctx context.Context, actor, wsID, teamID, id uuid.
 			return ErrStateNotFound
 		}
 
-		// позиция: дописываем в конец колонки (team, state).
-		var maxPos float64
+		// позиция: дописываем в конец колонки (team, state). Фракционный ключ-строка (D20).
+		var maxPos string
 		if err := tx.NewSelect().Model((*models.Issue)(nil)).
-			ColumnExpr("COALESCE(MAX(board_position), 0)").
+			ColumnExpr("COALESCE(MAX(board_position), '')").
 			Where("team_id = ?", teamID).Where("state_id = ?", stateUUID).Scan(ctx, &maxPos); err != nil {
 			return err
 		}
@@ -119,7 +120,7 @@ func (s *Service) CreateIssue(ctx context.Context, actor, wsID, teamID, id uuid.
 			Title:      strings.TrimSpace(title), Description: []byte("{}"),
 			StateID: stateUUID, Priority: int16(priority), AssigneeID: assignee, ParentID: parent,
 			StartedAt: started, CompletedAt: completed,
-			BoardPosition: maxPos + 1, SubPosition: 0, CreatedBy: actor,
+			BoardPosition: frac.Between(maxPos, ""), SubPosition: frac.First(), CreatedBy: actor,
 			CreatedAt: now, UpdatedAt: now,
 		}
 		if _, err := tx.NewInsert().Model(issue).Exec(ctx); err != nil {
@@ -181,21 +182,6 @@ func (s *Service) UpdateIssueState(ctx context.Context, actor, wsID, id uuid.UUI
 	return 0, s.afterMutate(ctx, wsID, id, err)
 }
 
-// midpoint — позиция строго между соседями (nil = открытый край колонки).
-// ponytail: float-midpoint, потолок — исчерпание точности после ~50 вставок в одну точку (см. debt-ledger).
-func midpoint(before, after *float64) float64 {
-	switch {
-	case before == nil && after == nil:
-		return 1
-	case before == nil:
-		return *after - 1
-	case after == nil:
-		return *before + 1
-	default:
-		return (*before + *after) / 2
-	}
-}
-
 // ReorderIssue: перенос в колонку stateID (если меняется) + позиция между before/after.
 func (s *Service) ReorderIssue(ctx context.Context, actor, wsID, id uuid.UUID, stateID string, beforeID, afterID *uuid.UUID) (int64, error) {
 	now := time.Now().UTC()
@@ -218,19 +204,23 @@ func (s *Service) ReorderIssue(ctx context.Context, actor, wsID, id uuid.UUID, s
 			return ErrStateNotFound
 		}
 
-		posOf := func(nid *uuid.UUID) (*float64, error) {
+		posOf := func(nid *uuid.UUID) string {
 			if nid == nil {
-				return nil, nil
+				return ""
 			}
-			var p float64
+			var p string
 			if err := tx.NewSelect().Model((*models.Issue)(nil)).Column("board_position").Where("id = ?", *nid).Scan(ctx, &p); err != nil {
-				return nil, nil // сосед не найден → открытый край
+				return "" // сосед не найден → открытый край
 			}
-			return &p, nil
+			return p
 		}
-		beforePos, _ := posOf(beforeID)
-		afterPos, _ := posOf(afterID)
-		newPos := midpoint(beforePos, afterPos)
+		beforePos := posOf(beforeID)
+		afterPos := posOf(afterID)
+		// Защита от инверсии (рассинхрон клиента): если before>=after — дописать после before.
+		if beforePos != "" && afterPos != "" && beforePos >= afterPos {
+			afterPos = ""
+		}
+		newPos := frac.Between(beforePos, afterPos)
 
 		started, completed := stateTimestamps(category, now, cur.StartedAt, cur.CompletedAt)
 		if _, err := tx.NewUpdate().Model((*models.Issue)(nil)).

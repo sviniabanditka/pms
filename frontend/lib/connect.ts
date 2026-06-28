@@ -1,5 +1,5 @@
 import { useRuntimeConfig } from '#imports'
-import { createClient, type Interceptor } from '@connectrpc/connect'
+import { createClient } from '@connectrpc/connect'
 import { createConnectTransport } from '@connectrpc/connect-web'
 import { SyncService } from '~/gen/pms/v1/sync_service_pb'
 import { WorkspaceService } from '~/gen/pms/v1/workspace_service_pb'
@@ -16,19 +16,13 @@ import { CommentService } from '~/gen/pms/v1/comment_service_pb'
 import { MilestoneService } from '~/gen/pms/v1/milestone_service_pb'
 import { MeetingService } from '~/gen/pms/v1/meeting_service_pb'
 import { AttachmentService } from '~/gen/pms/v1/attachment_service_pb'
-import { getToken } from './token'
+import { QueryService } from '~/gen/pms/v1/query_service_pb'
 
-const bearer: Interceptor = (next) => async (req) => {
-  const t = getToken()
-  if (t) req.header.set('Authorization', 'Bearer ' + t)
-  return next(req)
-}
-
-// useClients — connect-клиенты с Bearer-аутентификацией.
+// useClients — connect-клиенты с cookie-аутентификацией (credentials:'include' → шлёт httpOnly-cookie).
 export function useClients() {
   const transport = createConnectTransport({
     baseUrl: useRuntimeConfig().public.apiBase as string,
-    interceptors: [bearer],
+    fetch: (input, init) => fetch(input, { ...init, credentials: 'include' }),
   })
   return {
     sync: createClient(SyncService, transport),
@@ -46,5 +40,6 @@ export function useClients() {
     milestones: createClient(MilestoneService, transport),
     meetings: createClient(MeetingService, transport),
     attachments: createClient(AttachmentService, transport),
+    query: createClient(QueryService, transport),
   }
 }

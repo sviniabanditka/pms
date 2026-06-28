@@ -51,6 +51,9 @@ func (g *Gateway) Handle(w http.ResponseWriter, r *http.Request) {
 	pubsub := g.rdb.Subscribe(ctx)
 	defer pubsub.Close()
 
+	// Персональный канал юзера: таргетная доставка WebRTC-сигналов (D56).
+	_ = pubsub.Subscribe(ctx, UserChannel(uid.String()))
+
 	// Redis → WS с коалесингом дельт (окно 80мс, дедуп по entity_id → последняя версия).
 	go g.forward(ctx, c, pubsub)
 

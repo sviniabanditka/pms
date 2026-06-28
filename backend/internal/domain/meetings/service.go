@@ -198,9 +198,9 @@ func (s *Service) EndMeeting(ctx context.Context, actor, wsID, meetingID uuid.UU
 	return nil
 }
 
-// SendSignal — WebRTC offer/answer/ice/bye → конкретному пиру через WS воркспейса.
+// SendSignal — WebRTC offer/answer/ice/bye → персональный канал конкретного пира (D56).
 func (s *Service) SendSignal(ctx context.Context, actor, wsID, meetingID, toUser uuid.UUID, kind, payload string) error {
-	return s.pub.PublishSignal(ctx, wsID, realtime.Signal{
+	return s.pub.PublishSignal(ctx, realtime.Signal{
 		MeetingID:  meetingID.String(),
 		FromUserID: actor.String(),
 		ToUserID:   toUser.String(),

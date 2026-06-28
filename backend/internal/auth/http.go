@@ -93,8 +93,8 @@ func (s *Service) setCookie(w http.ResponseWriter, tok string) {
 		Value:    tok,
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode, // ponytail: CSRF-токен для cross-site — отдельная веха; SameSite покрывает базовый случай
-		Secure:   false,                // dev; true за TLS в проде
+		SameSite: http.SameSiteLaxMode, // Lax блокирует cookie на cross-site POST → база CSRF; + origin-check middleware (D2)
+		Secure:   s.secureCookies,      // true за TLS в проде (SECURE_COOKIES=true)
 		Expires:  time.Now().Add(s.sessions.ttl),
 	})
 }

@@ -1,11 +1,11 @@
 import { useRuntimeConfig } from '#imports'
-import { getToken } from './token'
 
 // connectWs открывает WS, подписывается на канал воркспейса.
+// Аутентификация — cookie сессии (same-site handshake шлёт её автоматически).
 // onDelta — на каждую дельту; onSignal — на WebRTC-сигнал (offer/answer/ice/bye).
 export function connectWs(wsId: string, onDelta: (d: any) => void, onSignal?: (s: any) => void): WebSocket {
   const base = useRuntimeConfig().public.wsBase as string
-  const ws = new WebSocket(`${base}/ws?token=${getToken()}`)
+  const ws = new WebSocket(`${base}/ws`)
   ws.onopen = () => ws.send(JSON.stringify({ type: 'subscribe', channels: [`ws:${wsId}`] }))
   ws.onmessage = (e) => {
     try {

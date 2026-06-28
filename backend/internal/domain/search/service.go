@@ -5,10 +5,12 @@ package search
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/pms/backend/internal/db"
+	"github.com/pms/backend/internal/filter"
 	"github.com/pms/backend/internal/models"
 	"github.com/uptrace/bun"
 )
@@ -23,6 +25,37 @@ type Result struct {
 	Title    string `json:"title"`
 	Subtitle string `json:"subtitle,omitempty"`
 	TeamID   string `json:"teamId,omitempty"`
+}
+
+// RunView выполняет View server-side: компилирует Filter-AST → SQL и возвращает issues (JSON).
+// Только data_source="issue" (доводка для масштаба/экспорта, D21). Группировка — на клиенте.
+func (s *Service) RunView(ctx context.Context, actor, wsID uuid.UUID, dataSource string, node *filter.Node, limit int) ([]byte, error) {
+	if dataSource != "" && dataSource != "issue" {
+		return nil, errors.New("unsupported data_source")
+	}
+	where, args, err := filter.Compile(node)
+	if err != nil {
+		return nil, err
+	}
+	if limit <= 0 || limit > 1000 {
+		limit = 500
+	}
+	var iss []models.Issue
+	err = db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		q := tx.NewSelect().Model(&iss).Where("archived_at IS NULL AND deleted_at IS NULL")
+		if where != "" {
+			q = q.Where(where, args...)
+		}
+		return q.OrderExpr("board_position ASC").Limit(limit).Scan(ctx)
+	})
+	if err != nil {
+		return nil, err
+	}
+	raw, _ := json.Marshal(iss)
+	if raw == nil || string(raw) == "null" {
+		return []byte("[]"), nil
+	}
+	return raw, nil
 }
 
 func (s *Service) Search(ctx context.Context, actor, wsID uuid.UUID, query string) ([]byte, error) {
@@ -60,6 +93,32 @@ func (s *Service) Search(ctx context.Context, actor, wsID uuid.UUID, query strin
 		}
 		for _, c := range chans {
 			out = append(out, Result{Type: "channel", ID: c.ID.String(), Title: c.Name, Subtitle: "Channel"})
+		}
+		// Сообщения чата: тело ILIKE, только в видимых каналах (публичный канал ИЛИ участник DM).
+		var msgs []struct {
+			ChannelID   uuid.UUID `bun:"channel_id"`
+			Body        string    `bun:"body"`
+			ChannelName string    `bun:"channel_name"`
+		}
+		if err := tx.NewSelect().Model((*models.Message)(nil)).
+			ColumnExpr("msg.channel_id").ColumnExpr("msg.body").ColumnExpr("ch.name AS channel_name").
+			Join("JOIN channels ch ON ch.id = msg.channel_id").
+			Where("msg.deleted_at IS NULL").Where("msg.body ILIKE ?", like).
+			Where("ch.kind = 'channel' OR EXISTS (SELECT 1 FROM channel_members cmx WHERE cmx.channel_id = msg.channel_id AND cmx.user_id = ?)", actor).
+			Order("msg.created_at DESC").Limit(8).Scan(ctx, &msgs); err != nil {
+			return err
+		}
+		for _, m := range msgs {
+			title := strings.TrimSpace(m.Body)
+			if len(title) > 80 {
+				title = title[:80] + "…"
+			}
+			sub := "Message"
+			if m.ChannelName != "" {
+				sub = "Message in #" + m.ChannelName
+			}
+			// ID = channelId → клик открывает канал.
+			out = append(out, Result{Type: "message", ID: m.ChannelID.String(), Title: title, Subtitle: sub})
 		}
 		return nil
 	})

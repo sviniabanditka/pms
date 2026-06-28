@@ -1,5 +1,4 @@
 import { useRuntimeConfig } from '#imports'
-import { getToken } from './token'
 
 export type Uploaded = { key: string; filename: string; contentType: string; size: number }
 
@@ -18,7 +17,7 @@ export async function uploadFile(workspaceId: string, file: File): Promise<Uploa
   fd.append('file', file)
   const res = await fetch(`${base}/files/upload`, {
     method: 'POST',
-    headers: { Authorization: 'Bearer ' + getToken() },
+    credentials: 'include',
     body: fd,
   })
   if (!res.ok) throw new Error('upload failed: ' + res.status)

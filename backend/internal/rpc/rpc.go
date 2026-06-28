@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -29,15 +30,16 @@ import (
 	"github.com/pms/backend/internal/domain/teams"
 	"github.com/pms/backend/internal/domain/views"
 	"github.com/pms/backend/internal/domain/workspaces"
+	"github.com/pms/backend/internal/filter"
 )
 
 // Services — доменные зависимости connect-хендлеров.
 type Services struct {
-	Workspaces *workspaces.Service
-	Teams      *teams.Service
-	Issues     *issues.Service
-	Views        *views.Service
-	Cycles       *cycles.Service
+	Workspaces    *workspaces.Service
+	Teams         *teams.Service
+	Issues        *issues.Service
+	Views         *views.Service
+	Cycles        *cycles.Service
 	CustomFields  *customfields.Service
 	Dashboards    *dashboards.Service
 	Notifications *notifications.Service
@@ -91,6 +93,99 @@ func (h *queryHandler) Search(ctx context.Context, req *connect.Request[pmsv1.Se
 		return nil, mapErr(err)
 	}
 	return connect.NewResponse(&pmsv1.SearchResponse{Results: raw}), nil
+}
+
+func (h *queryHandler) RunView(ctx context.Context, req *connect.Request[pmsv1.RunViewRequest]) (*connect.Response[pmsv1.RunViewResponse], error) {
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wsID, err := uuid.Parse(req.Msg.WorkspaceId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid workspace_id"))
+	}
+	def := req.Msg.Def
+	if def == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("def required"))
+	}
+	node := protoToFilterNode(def.Filter)
+	raw, err := h.svc.RunView(ctx, actor, wsID, def.DataSource, node, 0)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.RunViewResponse{GroupedResult: raw}), nil
+}
+
+// protoToFilterNode конвертирует protobuf Filter-AST в JSON-форму компилятора (filter.Node).
+func protoToFilterNode(n *pmsv1.FilterNode) *filter.Node {
+	if n == nil {
+		return nil
+	}
+	switch {
+	case n.GetAnd() != nil:
+		return &filter.Node{Type: "and", Children: protoChildren(n.GetAnd().GetChildren())}
+	case n.GetOr() != nil:
+		return &filter.Node{Type: "or", Children: protoChildren(n.GetOr().GetChildren())}
+	case n.GetNot() != nil:
+		return &filter.Node{Type: "not", Child: protoToFilterNode(n.GetNot())}
+	case n.GetPredicate() != nil:
+		p := n.GetPredicate()
+		return &filter.Node{Type: "predicate", Field: p.GetField().GetBuiltin(), Op: opName(p.GetOp()), Value: filterValueJSON(p.GetValue())}
+	}
+	return nil
+}
+
+func protoChildren(in []*pmsv1.FilterNode) []filter.Node {
+	out := make([]filter.Node, 0, len(in))
+	for _, c := range in {
+		if n := protoToFilterNode(c); n != nil {
+			out = append(out, *n)
+		}
+	}
+	return out
+}
+
+func opName(op pmsv1.Operator) string {
+	switch op {
+	case pmsv1.Operator_EQ:
+		return "eq"
+	case pmsv1.Operator_NEQ:
+		return "neq"
+	case pmsv1.Operator_IN:
+		return "in"
+	case pmsv1.Operator_NIN:
+		return "nin"
+	case pmsv1.Operator_CONTAINS:
+		return "contains"
+	case pmsv1.Operator_IS_SET:
+		return "isSet"
+	case pmsv1.Operator_IS_NOT_SET:
+		return "isNotSet"
+	default:
+		return "" // неподдерживаемые (LT/GT/даты) → компилятор трактует как TRUE
+	}
+}
+
+func filterValueJSON(v *pmsv1.FilterValue) json.RawMessage {
+	if v == nil {
+		return nil
+	}
+	var raw []byte
+	switch t := v.GetV().(type) {
+	case *pmsv1.FilterValue_S:
+		raw, _ = json.Marshal(t.S)
+	case *pmsv1.FilterValue_N:
+		raw, _ = json.Marshal(t.N)
+	case *pmsv1.FilterValue_B:
+		raw, _ = json.Marshal(t.B)
+	case *pmsv1.FilterValue_List:
+		raw, _ = json.Marshal(t.List.GetValues())
+	case *pmsv1.FilterValue_NullV:
+		raw = []byte("null")
+	default:
+		return nil
+	}
+	return raw
 }
 
 type syncHandler struct {
@@ -1197,6 +1292,17 @@ func (h *commentHandler) DeleteComment(ctx context.Context, req *connect.Request
 		return nil, mapErr(err)
 	}
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
+}
+
+func (h *commentHandler) ToggleReaction(ctx context.Context, req *connect.Request[pmsv1.ToggleCommentReactionRequest]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, wsID, cid, err := issueRef(ctx, req.Msg.WorkspaceId, req.Msg.CommentId)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.ToggleReaction(ctx, actor, wsID, cid, req.Msg.Emoji); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: cid.String()}), nil
 }
 
 func (h *commentHandler) GetComments(ctx context.Context, req *connect.Request[pmsv1.GetCommentsRequest]) (*connect.Response[pmsv1.GetCommentsResponse], error) {

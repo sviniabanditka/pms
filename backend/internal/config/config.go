@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"time"
 )
 
@@ -19,6 +20,12 @@ type Config struct {
 	RedisURL string
 
 	SessionTTL time.Duration
+
+	// AllowedOrigins — белый список origin'ов для CORS+CSRF. Пусто = dev (любой origin, credentials echo).
+	// Задан (прод) = только перечисленные; чужой Origin на мутациях отклоняется (CSRF-защита).
+	AllowedOrigins []string
+	// SecureCookies — Secure-флаг на cookie сессии (true за TLS в проде).
+	SecureCookies bool
 
 	// S3 (Garage self-hosted; S3-совместимо). PublicBase — базовый URL для presigned-ссылок в браузер.
 	S3Endpoint   string
@@ -47,6 +54,8 @@ func Load() Config {
 		JobsDatabaseURL:    env("JOBS_DATABASE_URL", "postgres://pms_jobs:pms_jobs@localhost:5432/pms?sslmode=disable"),
 		RedisURL:           env("REDIS_URL", "redis://localhost:6379/0"),
 		SessionTTL:         envDuration("SESSION_TTL", 30*24*time.Hour),
+		AllowedOrigins:     envList("ALLOWED_ORIGINS"),
+		SecureCookies:      env("SECURE_COOKIES", "") == "true",
 		S3Endpoint:         env("S3_ENDPOINT", "http://localhost:3900"),
 		S3PublicBase:       env("S3_PUBLIC_BASE", "http://localhost:3900"),
 		S3Region:           env("S3_REGION", "garage"),
@@ -69,6 +78,21 @@ func env(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// envList парсит CSV-переменную в срез (пустые элементы отбрасываются).
+func envList(k string) []string {
+	v := os.Getenv(k)
+	if v == "" {
+		return nil
+	}
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func envDuration(k string, def time.Duration) time.Duration {

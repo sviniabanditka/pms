@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRuntimeConfig } from '#imports'
-import { setToken, setUser } from '~/lib/token'
+import { setUser } from '~/lib/token'
 
 const email = ref('bob@example.com')
 const password = ref('supersecret')
@@ -17,12 +17,13 @@ async function submit() {
     if (mode.value === 'register') body.name = email.value.split('@')[0]
     const res = await fetch(`${api}/auth/${mode.value}`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
     if (!res.ok) { error.value = (await res.json()).error || 'failed'; return }
     const data = await res.json()
-    setToken(data.token); setUser(data.id)
+    setUser(data.id)
     await navigateTo('/')
   } catch (e: any) {
     error.value = String(e)

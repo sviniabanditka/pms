@@ -31,8 +31,8 @@ type Issue struct {
 	ScheduledDate *time.Time      `bun:"scheduled_date" json:"scheduledDate,omitempty"`
 	StartedAt     *time.Time      `bun:"started_at" json:"startedAt,omitempty"`
 	CompletedAt   *time.Time      `bun:"completed_at" json:"completedAt,omitempty"`
-	BoardPosition float64         `bun:"board_position" json:"boardPosition"`
-	SubPosition   float64         `bun:"sub_position" json:"subPosition"`
+	BoardPosition string          `bun:"board_position" json:"boardPosition"`
+	SubPosition   string          `bun:"sub_position" json:"subPosition"`
 	CreatedBy     uuid.UUID       `bun:"created_by" json:"createdBy"`
 	CreatedAt     time.Time       `bun:"created_at,nullzero" json:"createdAt"`
 	UpdatedAt     time.Time       `bun:"updated_at,nullzero" json:"updatedAt"`

@@ -3,26 +3,22 @@ package issues
 import (
 	"testing"
 	"time"
+
+	"github.com/pms/backend/internal/frac"
 )
 
-func TestMidpoint(t *testing.T) {
-	f := func(v float64) *float64 { return &v }
-	if got := midpoint(nil, nil); got != 1 {
-		t.Fatalf("empty: got %v want 1", got)
+// Позиции теперь фракционные строки (D20) — реордер через frac.Between (см. internal/frac тесты).
+func TestFracReorder(t *testing.T) {
+	// append в конец: всегда больше предыдущего
+	a := frac.Between("", "")
+	b := frac.Between(a, "")
+	if !(a < b) {
+		t.Fatalf("append: %q !< %q", a, b)
 	}
-	if got := midpoint(nil, f(5)); got != 4 {
-		t.Fatalf("top: got %v want 4", got)
-	}
-	if got := midpoint(f(5), nil); got != 6 {
-		t.Fatalf("bottom: got %v want 6", got)
-	}
-	if got := midpoint(f(2), f(4)); got != 3 {
-		t.Fatalf("between: got %v want 3", got)
-	}
-	// строго между
-	mid := midpoint(f(1), f(2))
-	if !(mid > 1 && mid < 2) {
-		t.Fatalf("strictly between: got %v", mid)
+	// вставка между соседями — строго между
+	mid := frac.Between(a, b)
+	if !(a < mid && mid < b) {
+		t.Fatalf("between: %q < %q < %q violated", a, mid, b)
 	}
 }
 

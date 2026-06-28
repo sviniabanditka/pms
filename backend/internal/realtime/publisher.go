@@ -38,6 +38,9 @@ type serverMsg struct {
 // WorkspaceChannel — Redis/WS-канал воркспейса.
 func WorkspaceChannel(wsID uuid.UUID) string { return "ws:" + wsID.String() }
 
+// UserChannel — персональный Redis/WS-канал юзера (таргетная доставка сигналов, D56).
+func UserChannel(userID string) string { return "user:" + userID }
+
 type Publisher struct{ rdb *redis.Client }
 
 func NewPublisher(rdb *redis.Client) *Publisher { return &Publisher{rdb: rdb} }
@@ -51,12 +54,12 @@ func (p *Publisher) PublishDelta(ctx context.Context, wsID uuid.UUID, d Delta) e
 	return p.rdb.Publish(ctx, WorkspaceChannel(wsID), payload).Err()
 }
 
-// PublishSignal публикует WebRTC-сигнал в канал воркспейса (gateway пробрасывает не-дельты сразу,
-// клиент-получатель фильтрует по toUserId).
-func (p *Publisher) PublishSignal(ctx context.Context, wsID uuid.UUID, sig Signal) error {
+// PublishSignal публикует WebRTC-сигнал в ПЕРСОНАЛЬНЫЙ канал получателя (D56): только адресат
+// получает фрейм, без широковещания на весь воркспейс. gateway шлёт не-дельты сразу.
+func (p *Publisher) PublishSignal(ctx context.Context, sig Signal) error {
 	payload, err := json.Marshal(serverMsg{Type: "signal", Signal: &sig})
 	if err != nil {
 		return err
 	}
-	return p.rdb.Publish(ctx, WorkspaceChannel(wsID), payload).Err()
+	return p.rdb.Publish(ctx, UserChannel(sig.ToUserID), payload).Err()
 }

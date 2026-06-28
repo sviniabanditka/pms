@@ -65,7 +65,7 @@ func main() {
 	defer rdb.Close()
 
 	sessions := auth.NewSessionStore(rdb, cfg.SessionTTL)
-	authSvc := auth.NewService(bdb, sessions)
+	authSvc := auth.NewService(bdb, sessions, cfg.SecureCookies)
 
 	pub := realtime.NewPublisher(rdb)
 	gw := realtime.NewGateway(rdb, bdb)
@@ -110,7 +110,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           httpx.NewRouter(bdb, rdb, authSvc, gw, svcs, store),
+		Handler:           httpx.NewRouter(bdb, rdb, authSvc, gw, svcs, store, cfg.AllowedOrigins),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

@@ -4,7 +4,7 @@ import { useRuntimeConfig } from '#imports'
 import { useClients } from '~/lib/connect'
 import { connectWs } from '~/lib/ws'
 import { uploadFile } from '~/lib/upload'
-import { getToken, getUser } from '~/lib/token'
+import { getUser } from '~/lib/token'
 import { match, type FilterNode } from '~/lib/filter'
 
 type Entity = Record<string, any>
@@ -128,7 +128,7 @@ export const useAppStore = defineStore('app', {
       }
       return Object.values(s.issues)
         .filter((x) => x.teamId === teamId && x.stateId === stateId && !x.archivedAt && match(s.activeFilter, x) && byLabel(x))
-        .sort((a, b) => (a.boardPosition ?? 0) - (b.boardPosition ?? 0))
+        .sort((a, b) => String(a.boardPosition || '').localeCompare(String(b.boardPosition || '')))
     },
     teamViews: (s) => (teamId: string) =>
       Object.values(s.views).filter((v) => v.teamId === teamId && !v.deletedAt),
@@ -139,7 +139,7 @@ export const useAppStore = defineStore('app', {
       const byLabel = (x: any) => { if (!lf.length) return true; const ids = Object.values(s.issueLabels).filter((il) => il.issueId === x.id).map((il) => il.labelId); return lf.some((id) => ids.includes(id)) }
       const all = Object.values(s.issues)
         .filter((x) => x.teamId === teamId && !x.archivedAt && match(s.activeFilter, x) && byLabel(x))
-        .sort((a, b) => (a.boardPosition ?? 0) - (b.boardPosition ?? 0))
+        .sort((a, b) => String(a.boardPosition || '').localeCompare(String(b.boardPosition || '')))
       if (s.groupBy === 'priority') {
         return [4, 3, 2, 1, 0].map((p) => ({ key: 'p' + p, kind: 'priority', label: PL[p], prio: p, items: all.filter((i) => i.priority === p) }))
       }
@@ -291,7 +291,7 @@ export const useAppStore = defineStore('app', {
     },
     milestoneIssues: (s) => (msId: string) =>
       Object.values(s.issues).filter((i) => i.milestoneId === msId && !i.archivedAt)
-        .sort((a, b) => (a.boardPosition ?? 0) - (b.boardPosition ?? 0)),
+        .sort((a, b) => String(a.boardPosition || '').localeCompare(String(b.boardPosition || ''))),
     labelsForIssue: (s) => (issueId: string) => {
       const ids = Object.values(s.issueLabels).filter((il) => il.issueId === issueId).map((il) => il.labelId)
       return ids.map((id) => s.labels[id]).filter(Boolean)
@@ -472,7 +472,7 @@ export const useAppStore = defineStore('app', {
       this.currentUserId = getUser()
       if (!this.currentUserId) {
         const base = useRuntimeConfig().public.apiBase as string
-        const res = await fetch(`${base}/auth/me`, { headers: { Authorization: 'Bearer ' + getToken() } })
+        const res = await fetch(`${base}/auth/me`, { credentials: 'include' })
         if (res.ok) this.currentUserId = (await res.json()).user_id || ''
       }
     },
@@ -487,7 +487,7 @@ export const useAppStore = defineStore('app', {
     // Список «мои воркспейсы» для свитчера.
     async fetchMyWorkspaces() {
       const base = useRuntimeConfig().public.apiBase as string
-      const res = await fetch(`${base}/me/workspaces`, { headers: { Authorization: 'Bearer ' + getToken() } })
+      const res = await fetch(`${base}/me/workspaces`, { credentials: 'include' })
       if (res.ok) this.myWorkspaces = await res.json()
     },
 
@@ -741,6 +741,14 @@ export const useAppStore = defineStore('app', {
     },
     closeThread() { this.threadParentId = ''; this.threadMessages = [] },
     // --- Комментарии к задачам ---
+    // Серверный поиск по телу сообщений чата (локальный стор держит лишь активный канал).
+    async searchMessages(q: string): Promise<any[]> {
+      if (!q.trim() || !this.activeWorkspaceId) return []
+      const { query } = useClients()
+      const res = await query.search({ workspaceId: this.activeWorkspaceId, query: q })
+      const all = this._decode(res.results) as any[]
+      return all.filter((r) => r.type === 'message').map((r) => ({ type: 'message', id: r.id, label: `${r.subtitle} · ${r.title}` }))
+    },
     async loadComments(issueId: string) {
       const { comments } = useClients()
       const res = await comments.getComments({ workspaceId: this.activeWorkspaceId, issueId })
@@ -773,6 +781,11 @@ export const useAppStore = defineStore('app', {
     async deleteComment(id: string, issueId: string) {
       const { comments } = useClients()
       await comments.deleteComment({ workspaceId: this.activeWorkspaceId, id })
+      await this.loadComments(issueId)
+    },
+    async toggleCommentReaction(id: string, issueId: string, emoji: string) {
+      const { comments } = useClients()
+      await comments.toggleReaction({ workspaceId: this.activeWorkspaceId, commentId: id, emoji })
       await this.loadComments(issueId)
     },
     markTyping(channelId: string, userId: string) {

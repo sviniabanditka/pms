@@ -11,6 +11,13 @@ service CommentService {
   rpc EditComment(EditCommentRequest) returns (CommandResult);
   rpc DeleteComment(EntityRef) returns (CommandResult);
   rpc GetComments(GetCommentsRequest) returns (GetCommentsResponse);
+  rpc ToggleReaction(ToggleCommentReactionRequest) returns (CommandResult);
+}
+
+message ToggleCommentReactionRequest {
+  string workspace_id = 1;
+  string comment_id = 2;
+  string emoji = 3;
 }
 
 message AddCommentRequest {

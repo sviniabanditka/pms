@@ -22,13 +22,13 @@ import (
 )
 
 // NewRouter собирает chi-роутер: health/readiness, auth, WS, connect-сервисы.
-func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realtime.Gateway, svcs rpc.Services, store *storage.Store) http.Handler {
+func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realtime.Gateway, svcs rpc.Services, store *storage.Store, allowedOrigins []string) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
-	r.Use(corsDev)               // dev CORS для SPA на :3000 (Bearer, без credentials)
-	r.Use(authSvc.Authenticator) // кладёт user в контекст, если есть сессия
+	r.Use(corsCSRF(allowedOrigins)) // CORS (credentials) + origin-check CSRF; dev=любой origin, прод=allowlist
+	r.Use(authSvc.Authenticator)    // кладёт user в контекст, если есть сессия
 
 	// Liveness — процесс жив.
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -148,23 +148,52 @@ func sanitizeName(name string) string {
 	return name
 }
 
-// corsDev — разрешающий CORS для локальной разработки (SPA на :3000, Bearer-токен).
-// В проде — same-origin или строгая политика; это только dev-удобство.
-func corsDev(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h := w.Header()
-		h.Set("Access-Control-Allow-Origin", "*")
-		h.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		if reqH := r.Header.Get("Access-Control-Request-Headers"); reqH != "" {
-			h.Set("Access-Control-Allow-Headers", reqH)
-		} else {
-			h.Set("Access-Control-Allow-Headers", "*")
+// corsCSRF — CORS с поддержкой credentials (cookie-auth) + origin-check CSRF.
+// allowed пуст (dev): любой Origin отражается (echo) → удобно с любого порта.
+// allowed задан (прод): только из списка; чужой Origin на мутирующем запросе → 403 (CSRF).
+// Cookie сессии = SameSite=Lax (браузер не шлёт её на cross-site POST) + этот origin-check = двойная защита.
+func corsCSRF(allowed []string) func(http.Handler) http.Handler {
+	allow := func(origin string) bool {
+		if origin == "" {
+			return false
 		}
-		h.Set("Access-Control-Expose-Headers", "*")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
+		if len(allowed) == 0 {
+			return true // dev: любой origin
 		}
-		next.ServeHTTP(w, r)
-	})
+		for _, a := range allowed {
+			if a == origin {
+				return true
+			}
+		}
+		return false
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			ok := allow(origin)
+			h := w.Header()
+			if ok {
+				h.Set("Access-Control-Allow-Origin", origin)
+				h.Set("Access-Control-Allow-Credentials", "true")
+				h.Set("Vary", "Origin")
+				h.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+				if reqH := r.Header.Get("Access-Control-Request-Headers"); reqH != "" {
+					h.Set("Access-Control-Allow-Headers", reqH)
+				} else {
+					h.Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Connect-Protocol-Version, Connect-Timeout-Ms")
+				}
+			}
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			// CSRF: мутирующий запрос с чужим Origin в проде → отказ. Запросы без Origin
+			// (curl/CLI с Bearer) проходят — у них нет cookie, отправленной браузером.
+			if len(allowed) > 0 && origin != "" && !ok && r.Method != http.MethodGet && r.Method != http.MethodHead {
+				http.Error(w, "forbidden origin", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

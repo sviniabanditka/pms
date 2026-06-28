@@ -19,12 +19,13 @@ var (
 )
 
 type Service struct {
-	db       *bun.DB
-	sessions *SessionStore
+	db            *bun.DB
+	sessions      *SessionStore
+	secureCookies bool
 }
 
-func NewService(db *bun.DB, sessions *SessionStore) *Service {
-	return &Service{db: db, sessions: sessions}
+func NewService(db *bun.DB, sessions *SessionStore, secureCookies bool) *Service {
+	return &Service{db: db, sessions: sessions, secureCookies: secureCookies}
 }
 
 func (s *Service) Register(ctx context.Context, email, name, password string) (*models.User, error) {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { getToken, clearToken } from '~/lib/token'
+import { isAuthed, clearAuth } from '~/lib/token'
 import { fileViewUrl } from '~/lib/upload'
 import { useAppStore } from '~/stores/app'
 
@@ -348,6 +348,31 @@ function onDropOnCard(stateId: string, targetId: string) {
   draggedId.value = ''
 }
 // DnD: бросок в пустую часть колонки → в конец.
+// Клавиатурный реордер борда (a11y, D19): Alt+↑/↓ — внутри колонки, Alt+←/→ — между колонками.
+function boardKey(e: KeyboardEvent, stateId: string, id: string) {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openIssue(id); return }
+  if (!e.altKey) return
+  const states = store.teamStates(selectedTeamId.value)
+  const colIdx = states.findIndex((s: any) => s.id === stateId)
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    e.preventDefault()
+    const list = store.issuesFor(selectedTeamId.value, stateId)
+    const idx = list.findIndex((x: any) => x.id === id)
+    if (e.key === 'ArrowUp' && idx > 0) {
+      const before = idx >= 2 ? list[idx - 2].id : ''
+      wrap(() => store.reorderIssue(id, stateId, before, list[idx - 1].id))
+    } else if (e.key === 'ArrowDown' && idx >= 0 && idx < list.length - 1) {
+      const after = idx + 2 < list.length ? list[idx + 2].id : ''
+      wrap(() => store.reorderIssue(id, stateId, list[idx + 1].id, after))
+    }
+  } else if (e.key === 'ArrowLeft' && colIdx > 0) {
+    e.preventDefault()
+    wrap(() => store.reorderIssue(id, states[colIdx - 1].id, '', ''))
+  } else if (e.key === 'ArrowRight' && colIdx >= 0 && colIdx < states.length - 1) {
+    e.preventDefault()
+    wrap(() => store.reorderIssue(id, states[colIdx + 1].id, '', ''))
+  }
+}
 function onDropOnColumn(stateId: string) {
   if (!draggedId.value) return
   const list = store.issuesFor(selectedTeamId.value, stateId).filter((x) => x.id !== draggedId.value)
@@ -357,7 +382,7 @@ function onDropOnColumn(stateId: string) {
 }
 
 onMounted(async () => {
-  if (!getToken()) return navigateTo('/login')
+  if (!isAuthed()) return navigateTo('/login')
   await store.loadUser()
   await store.fetchMyWorkspaces()
   // гидратация подняла кэш → показываем сразу (без скелетона), освежаем в фоне.
@@ -384,7 +409,11 @@ function switchWorkspace(id: string) {
 }
 function newWorkspace() { wsMenu.value = false; showCreate.value = true }
 const addTeam = () => wrap(async () => { await store.createTeam(teamKey.value, teamName.value, teamParent.value); teamKey.value = ''; teamName.value = '' })
-function logout() { clearToken(); navigateTo('/login') }
+async function logout() {
+  const base = useRuntimeConfig().public.apiBase as string
+  try { await fetch(`${base}/auth/logout`, { method: 'POST', credentials: 'include' }) } catch {}
+  clearAuth(); navigateTo('/login')
+}
 
 // --- Маршрутизация: путь ↔ состояние (шаренные ссылки) ---
 const route = useRoute()
@@ -788,6 +817,8 @@ function reactionGroups(m: any) {
 function startEdit(m: any) { editingId.value = m.id; editDraft.value = m.body }
 const saveEdit = () => wrap(async () => { if (editDraft.value.trim()) await store.editMessage(editingId.value, editDraft.value); editingId.value = '' })
 const react = (m: any, emoji: string) => { reactPickerId.value = ''; wrap(() => store.toggleReaction(m.id, emoji)) }
+const cReactPickerId = ref('')
+const commentReact = (c: any, emoji: string) => { cReactPickerId.value = ''; if (selectedIssue.value) wrap(() => store.toggleCommentReaction(c.id, selectedIssue.value!.id, emoji)) }
 const sendThread = () => wrap(async () => {
   const b = threadDraft.value.trim()
   if (!b || !store.threadParentId) return
@@ -907,9 +938,18 @@ const paletteOpen = ref(false)
 const paletteQ = ref('')
 const paletteIdx = ref(0)
 const paletteInput = ref<HTMLInputElement | null>(null)
-const paletteResults = computed(() => store.searchAll(paletteQ.value))
+const msgResults = ref<any[]>([])
+let msgSearchTimer: any = null
+watch(paletteQ, (q) => {
+  clearTimeout(msgSearchTimer)
+  if (!q.trim()) { msgResults.value = []; return }
+  msgSearchTimer = setTimeout(async () => {
+    try { msgResults.value = await store.searchMessages(q) } catch { msgResults.value = [] }
+  }, 250)
+})
+const paletteResults = computed(() => [...store.searchAll(paletteQ.value), ...msgResults.value])
 function openPalette() {
-  paletteOpen.value = true; paletteQ.value = ''; paletteIdx.value = 0
+  paletteOpen.value = true; paletteQ.value = ''; paletteIdx.value = 0; msgResults.value = []
   nextTick(() => paletteInput.value?.focus())
 }
 function paletteMove(d: number) {
@@ -924,7 +964,7 @@ function runResult(r: any) {
   else if (r.type === 'dashboard') { activeSection.value = 'dashboard'; selectedDashboardId.value = r.id }
   else if (r.type === 'view') { activeSection.value = 'tasks'; openView(r.id) }
   else if (r.type === 'doc') { selectedTeamId.value = r.teamId; openDoc(r.id) }
-  else if (r.type === 'channel') { openChannel(r.id) }
+  else if (r.type === 'channel' || r.type === 'message') { openChannel(r.id) }
 }
 onMounted(() => {
   window.addEventListener('keydown', (e) => {
@@ -1724,7 +1764,10 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 draggable="true" @dragstart="draggedId = i.id"
                 @dragover.prevent @drop.stop="onDropOnCard(st.id, i.id)"
                 @click="openIssue(i.id)"
-                class="cursor-pointer rounded-lg border border-subtle bg-elevated p-3 hover:bg-hover"
+                tabindex="0" role="button"
+                :aria-label="`${i.identifier} ${i.title}. Alt+стрелки — переместить`"
+                @keydown="boardKey($event, st.id, i.id)"
+                class="cursor-pointer rounded-lg border border-subtle bg-elevated p-3 hover:bg-hover focus:outline-none focus:ring-2 focus:ring-accent"
                 :class="{ '!border-accent': selectedIssueId === i.id }">
                 <div class="mb-1.5 text-xs text-tertiary">{{ i.identifier }}</div>
                 <div class="line-clamp-3 text-sm font-medium leading-snug">{{ i.title }}</div>
@@ -2059,8 +2102,14 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 <span class="text-sm font-medium">{{ store.userName(c.authorId) }}</span>
                 <span class="text-xs text-tertiary">{{ notifTime(c.createdAt) }}</span>
                 <span v-if="c.editedAt" class="text-xs text-tertiary/60">(edited)</span>
+                <div class="relative ml-auto" :class="c.authorId === store.currentUserId ? '' : 'ml-auto'">
+                  <UButton v-if="!c.deletedAt" class="opacity-0 group-hover:opacity-100" icon="i-heroicons-face-smile" color="gray" variant="ghost" size="2xs" square @click="cReactPickerId = cReactPickerId === c.id ? '' : c.id" />
+                  <div v-if="cReactPickerId === c.id" class="absolute right-0 z-20 mt-1 flex gap-0.5 rounded-md border border-subtle bg-elevated p-1 shadow-lg">
+                    <button v-for="e in EMOJIS" :key="e" class="rounded p-1 text-base hover:bg-hover" @click="commentReact(c, e)">{{ e }}</button>
+                  </div>
+                </div>
                 <template v-if="c.authorId === store.currentUserId && !c.deletedAt && editCommentId !== c.id">
-                  <UButton class="ml-auto opacity-0 group-hover:opacity-100" icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square @click="startEditComment(c)" />
+                  <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square @click="startEditComment(c)" />
                   <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square @click="store.deleteComment(c.id, selectedIssue.id)" />
                 </template>
               </div>
@@ -2071,6 +2120,12 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               <div v-else-if="c.deletedAt" class="text-sm italic text-tertiary">(deleted)</div>
               <div v-else class="prose-chat text-sm leading-relaxed" v-html="renderMarkdown(c.body)" />
               <Attachments v-if="store.attachmentsFor('comment', c.id).length" class="mt-1.5" entity-type="comment" :entity-id="c.id" readonly />
+              <div v-if="reactionGroups(c).length" class="mt-1 flex flex-wrap gap-1">
+                <button v-for="g in reactionGroups(c)" :key="g.emoji"
+                  class="rounded-full border px-1.5 py-0.5 text-xs"
+                  :class="g.mine ? 'border-accent bg-accent/15 text-accent' : 'border-subtle text-secondary hover:bg-hover'"
+                  @click="commentReact(c, g.emoji)">{{ g.emoji }} {{ g.count }}</button>
+              </div>
             </div>
           </div>
           <PendingAttachments v-if="commentPending.length" class="mt-2" :files="commentPending" @remove="(i) => commentPending = commentPending.filter((_, j) => j !== i)" />
