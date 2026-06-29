@@ -17,6 +17,7 @@ type Meeting struct {
 	Title       string     `bun:"title" json:"title"`
 	Status      string     `bun:"status" json:"status"`
 	ScheduledAt *time.Time `bun:"scheduled_at" json:"scheduledAt,omitempty"`
+	EndsAt      *time.Time `bun:"ends_at" json:"endsAt,omitempty"`
 	CreatedBy   uuid.UUID  `bun:"created_by" json:"createdBy"`
 	CreatedAt   time.Time  `bun:"created_at,nullzero" json:"createdAt"`
 	UpdatedAt   time.Time  `bun:"updated_at,nullzero" json:"updatedAt"`

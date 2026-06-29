@@ -14,6 +14,7 @@ import (
 	"github.com/pms/backend/internal/config"
 	"github.com/pms/backend/internal/db"
 	"github.com/pms/backend/internal/domain/attachments"
+	"github.com/pms/backend/internal/domain/calendar"
 	"github.com/pms/backend/internal/domain/chats"
 	"github.com/pms/backend/internal/domain/comments"
 	"github.com/pms/backend/internal/domain/customfields"
@@ -27,6 +28,7 @@ import (
 	"github.com/pms/backend/internal/domain/search"
 	syncsvc "github.com/pms/backend/internal/domain/sync"
 	"github.com/pms/backend/internal/domain/teams"
+	"github.com/pms/backend/internal/domain/timetracking"
 	"github.com/pms/backend/internal/domain/views"
 	"github.com/pms/backend/internal/domain/workspaces"
 	"github.com/pms/backend/internal/httpx"
@@ -107,6 +109,8 @@ func main() {
 		Comments:      comments.NewService(bdb, pub),
 		Milestones:    milestones.NewService(bdb, pub),
 		Meetings:      meetings.NewService(bdb, pub, meetings.LiveKit{URL: cfg.LiveKitURL, APIKey: cfg.LiveKitAPIKey, Secret: cfg.LiveKitSecret}),
+		Calendar:      calendar.NewService(bdb, pub, jobsDB),
+		Time:          timetracking.NewService(bdb, pub),
 		Attachments:   attachments.NewService(bdb, pub, store),
 		Search:        search.NewService(bdb),
 		Sync:          syncsvc.NewService(bdb),

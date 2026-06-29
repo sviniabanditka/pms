@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/common.proto";
+
+// Персональный календарь: события/встречи/дни-офф (kind). Видны всем в воркспейсе
+// (free/busy), редактирует владелец.
+service CalendarService {
+  rpc CreateEvent(CreateEventRequest) returns (CommandResult);
+  rpc UpdateEvent(UpdateEventRequest) returns (CommandResult);
+  rpc DeleteEvent(EntityRef) returns (CommandResult);
+}
+
+message CreateEventRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string title = 3;
+  string description = 4;
+  string kind = 5;        // event | dayoff (default event)
+  string starts_at = 6;   // ISO datetime
+  string ends_at = 7;     // ISO datetime
+  bool all_day = 8;
+  string recurrence = 9;        // none|daily|weekly|monthly
+  string recurrence_until = 10; // ISO datetime, опц.
+}
+
+message UpdateEventRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string title = 3;
+  string description = 4;
+  string kind = 5;
+  string starts_at = 6;
+  string ends_at = 7;
+  bool all_day = 8;
+  string recurrence = 9;
+  string recurrence_until = 10;
+}

@@ -133,6 +133,41 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 		_, _ = io.Copy(w, body)
 	})
 
+	// iCal: персональный токен фида (выдать/ротировать) — требует сессии.
+	r.With(auth.RequireAuth).Get("/ical/token", func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := auth.UserID(req.Context())
+		tok, err := svcs.Calendar.EnsureFeedToken(req.Context(), uid)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"token": tok, "url": "/ical/" + tok + ".ics"})
+	})
+	r.With(auth.RequireAuth).Post("/ical/token/rotate", func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := auth.UserID(req.Context())
+		tok, err := svcs.Calendar.RotateFeedToken(req.Context(), uid)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"token": tok, "url": "/ical/" + tok + ".ics"})
+	})
+
+	// iCal-фид (публичный по токену; календарные клиенты не шлют cookie). `.ics` суффикс опционален.
+	r.Get("/ical/{token}", func(w http.ResponseWriter, req *http.Request) {
+		token := strings.TrimSuffix(chi.URLParam(req, "token"), ".ics")
+		ics, err := svcs.Calendar.Feed(req.Context(), token)
+		if err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
+		w.Header().Set("Cache-Control", "private, max-age=300")
+		_, _ = w.Write([]byte(ics))
+	})
+
 	// ConnectRPC-сервисы.
 	rpc.Mount(r, svcs)
 

@@ -9,10 +9,12 @@ const SECTIONS = [
   { key: 'dashboard', label: 'Dashboard', icon: 'i-heroicons-squares-2x2' },
   { key: 'inbox', label: 'Inbox', icon: 'i-heroicons-inbox' },
   { key: 'tasks', label: 'Tasks', icon: 'i-heroicons-queue-list' },
+  { key: 'calendar', label: 'Calendar', icon: 'i-heroicons-calendar-days' },
+  { key: 'reports', label: 'Reports', icon: 'i-heroicons-chart-bar' },
   { key: 'chats', label: 'Chats', icon: 'i-heroicons-chat-bubble-left-right' },
   { key: 'meetings', label: 'Meetings', icon: 'i-heroicons-video-camera' },
 ]
-const activeSection = ref<'dashboard' | 'tasks' | 'inbox' | 'chats' | 'meetings'>('tasks')
+const activeSection = ref<'dashboard' | 'tasks' | 'inbox' | 'chats' | 'meetings' | 'calendar' | 'reports'>('tasks')
 // видимые разделы по конфигу пользователя (порядок + видимость); новые — в конец
 const railSections = computed(() => {
   const saved = (store.mySectionsConfig?.sections || []) as { key: string; visible?: boolean }[]
@@ -48,7 +50,7 @@ function moveSection(i: number, dir: number) {
 }
 function toggleSection(i: number) { cfgList.value[i].visible = !cfgList.value[i].visible; saveRailCfg() }
 
-function switchSection(key: 'dashboard' | 'tasks' | 'inbox' | 'chats' | 'meetings') {
+function switchSection(key: 'dashboard' | 'tasks' | 'inbox' | 'chats' | 'meetings' | 'calendar' | 'reports') {
   activeSection.value = key
   if (key === 'dashboard' && !selectedDashboardId.value && store.workspaceDashboards.length) {
     selectedDashboardId.value = store.workspaceDashboards[0].id
@@ -510,13 +512,15 @@ function applyRoute(path: string) {
     case 'chats': activeSection.value = 'chats'; break
     case 'chat': activeSection.value = 'chats'; if (seg[1]) openChannel(seg[1]); break
     case 'meetings': activeSection.value = 'meetings'; break
+    case 'calendar': activeSection.value = 'calendar'; if (seg[1]) calAnchor.value = seg[1]; break
+    case 'reports': activeSection.value = 'reports'; break
     case 'dashboard': activeSection.value = 'dashboard'; if (seg[1]) selectedDashboardId.value = seg[1]; break
     case 'my': activeSection.value = 'tasks'; personalView.value = (seg[1] as any) || 'assigned'; break
     case 'issue': { const i = store.issueByIdentifier(seg[1]); if (i) { activeSection.value = 'tasks'; selectedTeamId.value = i.teamId; openIssue(i.id) } break }
     case 'doc': { activeSection.value = 'tasks'; const d = store.documents[seg[1]]; if (d) selectedTeamId.value = d.teamId; openDoc(seg[1]); break }
     case 'cycle': { activeSection.value = 'tasks'; const c = store.cycles[seg[1]]; if (c) { selectedTeamId.value = c.teamId; openCycle(seg[1]) } break }
     case 'team': { const t = store.teamByKey(seg[1]); if (t) { activeSection.value = 'tasks'; selectedTeamId.value = t.id; if (seg[2]) teamSection.value = seg[2] as any } break }
-    default: activeSection.value = 'tasks'
+    default: activeSection.value = 'tasks'; if (!seg.length) personalView.value = 'assigned' // дефолт-лендинг — My issues
   }
   nextTick(() => { routeSyncing = false })
 }
@@ -525,6 +529,8 @@ function currentPath(): string {
   if (activeSection.value === 'inbox') return '/inbox'
   if (activeSection.value === 'chats') return store.activeChannelId ? `/chat/${store.activeChannelId}` : '/chats'
   if (activeSection.value === 'meetings') return '/meetings'
+  if (activeSection.value === 'calendar') return `/calendar/${calAnchor.value}`
+  if (activeSection.value === 'reports') return '/reports'
   if (activeSection.value === 'dashboard') return selectedDashboardId.value ? `/dashboard/${selectedDashboardId.value}` : '/dashboard'
   if (personalView.value) return `/my/${personalView.value}`
   if (selectedIssueId.value && store.issues[selectedIssueId.value]) return `/issue/${store.issues[selectedIssueId.value].identifier}`
@@ -596,7 +602,7 @@ const CREATE_TYPES = [
 const cTeam = ref(''); const cTitle = ref('')
 const cStart = ref(''); const cEnd = ref(''); const cMsDate = ref(''); const cPrivate = ref(false)
 const cKey = ref(''); const cName = ref(''); const cParent = ref(''); const cSlug = ref('')
-const cMeetAt = ref(''); const cMeetParts = ref<string[]>([])
+const cMeetDate = ref(''); const cMeetStart = ref('09:00'); const cMeetEnd = ref('09:30'); const cMeetParts = ref<string[]>([])
 function openCreate(type: any = 'issue') {
   createType.value = type
   cTeam.value = selectedTeamId.value || store.teamList[0]?.id || ''
@@ -632,14 +638,15 @@ const submitCreate = () => wrap(async () => {
   else if (t === 'cycle' && cTeam.value && cStart.value && cEnd.value) await store.createCycle(cTeam.value, cStart.value, cEnd.value)
   else if (t === 'milestone' && cTeam.value && cTitle.value.trim()) await store.createMilestone(cTeam.value, cTitle.value, cMsDate.value)
   else if (t === 'meeting' && cTitle.value.trim()) {
-    const at = cMeetAt.value ? new Date(cMeetAt.value).toISOString() : ''
-    await store.createMeeting(cTitle.value, at, [...cMeetParts.value]); activeSection.value = 'meetings'
+    const at = cMeetDate.value && cMeetStart.value ? new Date(`${cMeetDate.value}T${cMeetStart.value}:00`).toISOString() : ''
+    const end = at && cMeetEnd.value ? new Date(`${cMeetDate.value}T${cMeetEnd.value}:00`).toISOString() : ''
+    await store.createMeeting(cTitle.value, at, end, [...cMeetParts.value]); activeSection.value = 'meetings'
   }
   else if (t === 'team' && cKey.value && cName.value) await store.createTeam(cKey.value, cName.value, cParent.value)
   else if (t === 'workspace' && cSlug.value && cName.value) await store.createWorkspace(cSlug.value, cName.value)
   else return
-  cTitle.value = cStart.value = cEnd.value = cMsDate.value = cKey.value = cName.value = cSlug.value = cMeetAt.value = ''
-  cMeetParts.value = []
+  cTitle.value = cStart.value = cEnd.value = cMsDate.value = cKey.value = cName.value = cSlug.value = cMeetDate.value = ''
+  cMeetStart.value = '09:00'; cMeetEnd.value = '09:30'; cMeetParts.value = []
   createOpen.value = false
 })
 function selectTeamIssues(t: any) {
@@ -659,6 +666,341 @@ function openPersonal(mode: any) {
   personalView.value = mode; selectedIssueId.value = ''; selectedDocId.value = ''; selectedCycleId.value = ''
   teamSection.value = ''; activeSection.value = 'tasks'
 }
+
+// My issues сгруппированы по дедлайну (effective date = scheduled ?? due).
+function isoAddDays(base: string, n: number) {
+  const t = new Date(base + 'T00:00:00'); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10)
+}
+const personalGroups = computed(() => {
+  const iss = store.personalIssues(personalView.value)
+  const today = d10(new Date().toISOString())
+  const weekEnd = isoAddDays(today, 6)
+  const buckets: Record<string, any[]> = { overdue: [], today: [], week: [], later: [], none: [] }
+  for (const i of iss) {
+    const d = d10(i.scheduledDate) || d10(i.dueDate)
+    if (!d) buckets.none.push(i)
+    else if (d < today) buckets.overdue.push(i)
+    else if (d === today) buckets.today.push(i)
+    else if (d <= weekEnd) buckets.week.push(i)
+    else buckets.later.push(i)
+  }
+  const eff = (i: any) => d10(i.scheduledDate) || d10(i.dueDate) || '9999'
+  for (const k of Object.keys(buckets)) buckets[k].sort((a, b) => eff(a).localeCompare(eff(b)) || (b.priority || 0) - (a.priority || 0))
+  return [
+    { key: 'overdue', label: 'Overdue', color: '#f85149', items: buckets.overdue },
+    { key: 'today', label: 'Today', color: '#d29922', items: buckets.today },
+    { key: 'week', label: 'This week', color: '#3fb950', items: buckets.week },
+    { key: 'later', label: 'Later', color: '#7c828c', items: buckets.later },
+    { key: 'none', label: 'No date', color: '#7c828c', items: buckets.none },
+  ].filter((g) => g.items.length)
+})
+
+// --- Personal Calendar (top-level раздел) ---
+const fmtD = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const parseD = (ds: string) => new Date(ds + 'T00:00:00')
+// ISO (UTC) → локальные дата/время/минуты. События хранятся в UTC, показываем в таймзоне юзера.
+const localDate = (iso: string) => fmtD(new Date(iso))
+const localHM = (iso: string) => { const d = new Date(iso); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` }
+const localMin = (iso: string) => { const d = new Date(iso); return d.getHours() * 60 + d.getMinutes() }
+const calView = ref<'month' | 'week' | 'day'>('month') // вид сетки
+const calAnchor = ref('') // фокус-дата 'YYYY-MM-DD'
+if (!calAnchor.value) calAnchor.value = fmtD(new Date())
+if (import.meta.client) { const v = localStorage.getItem('calView'); if (v === 'week' || v === 'day' || v === 'month') calView.value = v }
+watch(calView, (v) => { if (import.meta.client) localStorage.setItem('calView', v) })
+const HOUR_PX = 44 // высота часа в тайм-сетке (week/day)
+const HOURS = Array.from({ length: 24 }, (_, h) => h)
+// текущее время для «now»-линии (тикает раз в минуту; ponytail: без cleanup — компонент живёт всю сессию)
+const nowTick = ref(0)
+onMounted(() => { setInterval(() => nowTick.value++, 60000) })
+const nowMin = computed(() => { void nowTick.value; const d = new Date(); return d.getHours() * 60 + d.getMinutes() })
+// какие календари показывать (userId). По умолчанию — только мой; чужие включаешь тогглом.
+const calUsers = ref<string[]>([])
+watch(() => store.currentUserId, (id) => { if (id && !calUsers.value.length) calUsers.value = [id] }, { immediate: true })
+function toggleCalUser(id: string) {
+  calUsers.value = calUsers.value.includes(id) ? calUsers.value.filter((x) => x !== id) : [...calUsers.value, id]
+}
+const CAL_PALETTE = ['#5e6ad2', '#3fb950', '#d29922', '#f85149', '#a371f7', '#1f9cf0', '#db61a2', '#3bb2a8']
+function colorForUser(id: string) { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0; return CAL_PALETTE[h % CAL_PALETTE.length] }
+// листание зависит от вида: месяц ±1мес, неделя ±7д, день ±1д
+function shiftRange(n: number) {
+  const d = parseD(calAnchor.value)
+  if (calView.value === 'month') d.setMonth(d.getMonth() + n)
+  else d.setDate(d.getDate() + n * (calView.value === 'week' ? 7 : 1))
+  calAnchor.value = fmtD(d)
+}
+function calToday() { calAnchor.value = fmtD(new Date()) }
+const calTodayStr = computed(() => fmtD(new Date()))
+const calHeaderLabel = computed(() => {
+  const d = parseD(calAnchor.value)
+  if (calView.value === 'month') return d.toLocaleString('en', { month: 'long', year: 'numeric' })
+  if (calView.value === 'day') return d.toLocaleString('en', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+  const w = weekDays.value
+  return `${parseD(w[0]).toLocaleString('en', { month: 'short', day: 'numeric' })} – ${parseD(w[6]).toLocaleString('en', { month: 'short', day: 'numeric' })}`
+})
+// дни недели якоря (Mon..Sun)
+const weekDays = computed(() => {
+  const d = parseD(calAnchor.value); d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+  return Array.from({ length: 7 }, (_, i) => { const x = new Date(d); x.setDate(d.getDate() + i); return fmtD(x) })
+})
+// дни активного диапазона тайм-сетки: week→7, day→1
+const gridDays = computed(() => (calView.value === 'day' ? [calAnchor.value] : weekDays.value))
+// 6×7 сетка месяца
+const calGrid = computed(() => {
+  const a = parseD(calAnchor.value); const m = a.getMonth()
+  const first = new Date(a.getFullYear(), m, 1)
+  const start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7))
+  return Array.from({ length: 42 }, (_, i) => {
+    const d = new Date(start); d.setDate(start.getDate() + i); const ds = fmtD(d)
+    return { ds, day: d.getDate(), inMonth: d.getMonth() === m, isToday: ds === calTodayStr.value }
+  })
+})
+const weekdayLabel = (ds: string) => parseD(ds).toLocaleString('en', { weekday: 'short' })
+// агрегатор на день (месяц-чипы): события + дедлайны + митинги, плоско
+function calItemsForDay(ds: string) {
+  const b = calDayBuckets(ds)
+  return [...b.allDay, ...b.timed].sort((a, c) => (a.allDay === c.allDay ? 0 : a.allDay ? -1 : 1) || (a.sMin ?? -1) - (c.sMin ?? -1))
+}
+// повторяется ли событие в день ds (sd = дата первого вхождения)
+function recursOn(e: any, ds: string, sd: string) {
+  if (ds < sd) return false
+  if (e.recurrenceUntil && ds > localDate(e.recurrenceUntil)) return false
+  const a = parseD(sd), b = parseD(ds)
+  if (e.recurrence === 'daily') return true
+  if (e.recurrence === 'weekly') return a.getDay() === b.getDay()
+  if (e.recurrence === 'monthly') return a.getDate() === b.getDate()
+  return false
+}
+// разделяем на all-day и timed (с минутами) для тайм-сетки
+function calDayBuckets(ds: string) {
+  const allDay: any[] = [], timed: any[] = []
+  for (const e of store.calendarEventsList) {
+    if (!calUsers.value.includes(e.userId)) continue
+    const sd = localDate(e.startsAt), ed = localDate(e.endsAt)
+    const rec = e.recurrence && e.recurrence !== 'none'
+    const onDay = rec ? recursOn(e, ds, sd) : (sd <= ds && ds <= ed)
+    if (!onDay) continue
+    const base = { id: e.id, title: e.title || '(no title)', color: colorForUser(e.userId), ev: e, kind: e.kind === 'dayoff' ? 'dayoff' : 'event', allDay: !!e.allDay }
+    if (e.allDay) { allDay.push(base) } else if (rec) {
+      // повтор: один день, время как у оригинала, длительность та же
+      const sMin = localMin(e.startsAt), dur = Math.max(15, localMin(e.endsAt) - localMin(e.startsAt))
+      timed.push({ ...base, sMin, eMin: Math.min(1440, sMin + dur), time: localHM(e.startsAt) })
+    } else {
+      const sMin = sd === ds ? localMin(e.startsAt) : 0
+      const eMin = ed === ds ? localMin(e.endsAt) : 1440
+      timed.push({ ...base, sMin, eMin: Math.max(eMin, sMin + 15), time: localHM(e.startsAt) })
+    }
+  }
+  for (const m of store.scheduledMeetings) {
+    if (m.scheduledAt && localDate(m.scheduledAt) === ds) { const sMin = localMin(m.scheduledAt); const eMin = m.endsAt && localDate(m.endsAt) === ds ? localMin(m.endsAt) : Math.min(1440, sMin + 30); timed.push({ kind: 'meeting', id: m.id, title: m.title || 'Meeting', color: '#1f9cf0', sMin, eMin: Math.max(eMin, sMin + 15), time: localHM(m.scheduledAt) }) }
+  }
+  for (const i of Object.values(store.issues)) {
+    if (i.archivedAt || i.deletedAt) continue
+    if (i.assigneeId && !calUsers.value.includes(i.assigneeId)) continue
+    if ((d10(i.scheduledDate) || d10(i.dueDate)) === ds) allDay.push({ kind: 'issue', id: i.id, title: i.title, color: '#7c828c', identifier: i.identifier, allDay: true })
+  }
+  // overlap-раскладка: пересекающиеся события делят ширину на колонки (lane/cols)
+  timed.sort((a, b) => a.sMin - b.sMin || a.eMin - b.eMin)
+  let cluster: any[] = [], clusterEnd = -1, lanes: number[] = []
+  const flush = () => { if (cluster.length) { const cols = Math.max(...cluster.map((e) => e.lane)) + 1; cluster.forEach((e) => (e.cols = cols)) } cluster = []; lanes = [] }
+  for (const e of timed) {
+    if (e.sMin >= clusterEnd) flush()
+    let l = lanes.findIndex((end) => end <= e.sMin)
+    if (l === -1) { l = lanes.length; lanes.push(e.eMin) } else lanes[l] = e.eMin
+    e.lane = l; cluster.push(e); clusterEnd = Math.max(clusterEnd, e.eMin)
+  }
+  flush()
+  return { allDay, timed }
+}
+// --- drag-create / drag-move в тайм-сетке ---
+const SNAP = 15 // минут
+const min2hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+// минуты → "1h 15m" / "45m"
+const fmtMin = (m: number) => m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`
+const isoFromLocalMin = (ds: string, min: number) => new Date(`${ds}T${min2hm(Math.max(0, Math.min(1439, min)))}:00`).toISOString()
+const calDrag = reactive({ active: false, mode: '', ds: '', id: '', startMin: 0, curMin: 0 })
+let calDragMoved = false
+function snapY(el: HTMLElement, clientY: number) {
+  const r = el.getBoundingClientRect()
+  return Math.max(0, Math.min(1440, Math.round((clientY - r.top) / HOUR_PX * 60 / SNAP) * SNAP))
+}
+// pointerdown на пустом месте столбца → тянем диапазон → создаём событие
+function dragCreate(ds: string, e: PointerEvent) {
+  if (e.button !== 0) return
+  const col = e.currentTarget as HTMLElement
+  calDragMoved = false
+  Object.assign(calDrag, { active: true, mode: 'create', ds, id: '', startMin: snapY(col, e.clientY) })
+  calDrag.curMin = calDrag.startMin + SNAP
+  const move = (ev: PointerEvent) => { calDrag.curMin = snapY(col, ev.clientY); calDragMoved = true }
+  const up = () => {
+    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up)
+    const a = Math.min(calDrag.startMin, calDrag.curMin), b = Math.max(calDrag.startMin, calDrag.curMin)
+    const dur = b - a < SNAP ? 60 : b - a // клик (без протяжки) → 1 час
+    calDrag.active = false
+    Object.assign(calForm, { id: '', title: '', description: '', kind: 'event', participants: [], date: ds, start: min2hm(a), end: min2hm(Math.min(1440, a + dur)), allDay: false, recurrence: 'none', recUntil: '' })
+    showCalEvent.value = true
+  }
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
+}
+// pointerdown на своём событии → тянем по вертикали → меняем время (тот же день)
+function dragMove(it: any, ds: string, e: PointerEvent) {
+  if (e.button !== 0 || (it.kind !== 'event' && it.kind !== 'dayoff')) return
+  e.stopPropagation()
+  const dur = it.eMin - it.sMin, origStart = it.sMin, startY = e.clientY
+  Object.assign(calDrag, { active: true, mode: 'move', ds, id: it.id, startMin: origStart, curMin: origStart })
+  calDragMoved = false
+  const move = (ev: PointerEvent) => {
+    const delta = Math.round((ev.clientY - startY) / HOUR_PX * 60 / SNAP) * SNAP
+    if (delta !== 0) calDragMoved = true
+    calDrag.curMin = Math.max(0, Math.min(1440 - dur, origStart + delta))
+  }
+  const up = async () => {
+    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up)
+    const ns = calDrag.curMin; calDrag.active = false
+    if (calDragMoved && ns !== origStart) {
+      const ev = store.calendarEvents[it.id]
+      if (ev) await wrap(() => store.updateCalendarEvent(it.id, { title: ev.title, description: ev.description, kind: ev.kind, startsAt: isoFromLocalMin(ds, ns), endsAt: isoFromLocalMin(ds, ns + dur), allDay: false, recurrence: ev.recurrence, recurrenceUntil: ev.recurrenceUntil }))
+    }
+  }
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
+}
+// pointerdown на нижней ручке события → тянем низ → меняем длительность (старт фиксирован)
+function dragResize(it: any, ds: string, e: PointerEvent) {
+  if (e.button !== 0 || (it.kind !== 'event' && it.kind !== 'dayoff')) return
+  e.stopPropagation()
+  const origStart = it.sMin, startY = e.clientY, origEnd = it.eMin
+  Object.assign(calDrag, { active: true, mode: 'resize', ds, id: it.id, startMin: origStart, curMin: origEnd })
+  calDragMoved = false
+  const move = (ev: PointerEvent) => {
+    const delta = Math.round((ev.clientY - startY) / HOUR_PX * 60 / SNAP) * SNAP
+    if (delta !== 0) calDragMoved = true
+    calDrag.curMin = Math.max(origStart + SNAP, Math.min(1440, origEnd + delta))
+  }
+  const up = async () => {
+    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up)
+    const ne = calDrag.curMin; calDrag.active = false
+    if (calDragMoved && ne !== origEnd) {
+      const ev = store.calendarEvents[it.id]
+      if (ev) await wrap(() => store.updateCalendarEvent(it.id, { title: ev.title, description: ev.description, kind: ev.kind, startsAt: isoFromLocalMin(ds, origStart), endsAt: isoFromLocalMin(ds, ne), allDay: false, recurrence: ev.recurrence, recurrenceUntil: ev.recurrenceUntil }))
+    }
+  }
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
+}
+function calClickItem(it: any) {
+  if (calDragMoved) { calDragMoved = false; return } // был drag — не открывать
+  if (it.kind === 'event' || it.kind === 'dayoff') openCalEdit(it.ev)
+  else if (it.kind === 'issue') openIssue(it.id)
+  else activeSection.value = 'meetings'
+}
+// модалка создания/правки события
+const showCalEvent = ref(false)
+const calForm = reactive({ id: '', title: '', description: '', kind: 'event', participants: [] as string[], date: '', start: '09:00', end: '10:00', allDay: false, recurrence: 'none', recUntil: '' })
+function openCalCreate(ds: string) {
+  Object.assign(calForm, { id: '', title: '', description: '', kind: 'event', participants: [], date: ds, start: '09:00', end: '10:00', allDay: false, recurrence: 'none', recUntil: '' })
+  showCalEvent.value = true
+}
+function openCalEdit(ev: any) {
+  Object.assign(calForm, {
+    id: ev.id, title: ev.title, description: ev.description || '', kind: ev.kind || 'event', participants: [],
+    date: localDate(ev.startsAt), start: localHM(ev.startsAt), end: localHM(ev.endsAt), allDay: !!ev.allDay,
+    recurrence: ev.recurrence || 'none', recUntil: ev.recurrenceUntil ? localDate(ev.recurrenceUntil) : '',
+  })
+  showCalEvent.value = true
+}
+const calIsoBounds = () => {
+  // локальные дата+время → ISO. allDay → весь день.
+  const mkLocal = (t: string) => new Date(`${calForm.date}T${t}:00`).toISOString()
+  if (calForm.allDay) return { startsAt: new Date(`${calForm.date}T00:00:00`).toISOString(), endsAt: new Date(`${calForm.date}T23:59:00`).toISOString() }
+  return { startsAt: mkLocal(calForm.start), endsAt: mkLocal(calForm.end) }
+}
+const saveCalEvent = () => wrap(async () => {
+  if (!calForm.title.trim() || !calForm.date) return
+  const { startsAt, endsAt } = calIsoBounds()
+  // kind=meeting → создаём scheduled-митинг (с участниками + концом), не персональное событие
+  if (!calForm.id && calForm.kind === 'meeting') {
+    await store.createMeeting(calForm.title, startsAt, endsAt, [...calForm.participants])
+    showCalEvent.value = false
+    return
+  }
+  const recUntil = calForm.recurrence !== 'none' && calForm.recUntil ? new Date(`${calForm.recUntil}T23:59:00`).toISOString() : ''
+  const p = { title: calForm.title, description: calForm.description, kind: calForm.kind, startsAt, endsAt, allDay: calForm.allDay, recurrence: calForm.recurrence, recurrenceUntil: recUntil }
+  if (calForm.id) await store.updateCalendarEvent(calForm.id, p)
+  else await store.createCalendarEvent(p)
+  showCalEvent.value = false
+})
+const deleteCalEvent = () => wrap(async () => { if (calForm.id) { await store.deleteCalendarEvent(calForm.id); showCalEvent.value = false } })
+
+// --- Ручная запись времени (задним числом) ---
+const showTimeEntry = ref(false)
+const teForm = reactive({ issueId: '', date: '', start: '09:00', end: '10:00', description: '' })
+function openTimeEntry(issueId: string) {
+  Object.assign(teForm, { issueId, date: fmtD(new Date()), start: '09:00', end: '10:00', description: '' })
+  showTimeEntry.value = true
+}
+const saveTimeEntry = () => wrap(async () => {
+  if (!teForm.date) return
+  const s = new Date(`${teForm.date}T${teForm.start}:00`).toISOString()
+  const e = new Date(`${teForm.date}T${teForm.end}:00`).toISOString()
+  if (new Date(e) <= new Date(s)) { err.value = 'End must be after start'; return }
+  await store.addTimeEntry(teForm.issueId, teForm.description, s, e)
+  showTimeEntry.value = false
+})
+
+// --- Time reports ---
+const repGroup = ref<'user' | 'issue' | 'day'>('user')
+const repUser = ref('') // фильтр по участнику (userId или '')
+const repPreset = ref('month')
+const repFrom = ref(''); const repTo = ref('')
+function setRange(preset: string) {
+  repPreset.value = preset
+  const n = new Date(); const to = fmtD(n)
+  if (preset === 'today') { repFrom.value = to; repTo.value = to }
+  else if (preset === 'week') { const d = new Date(n); d.setDate(n.getDate() - ((n.getDay() + 6) % 7)); repFrom.value = fmtD(d); repTo.value = to }
+  else if (preset === 'month') { repFrom.value = fmtD(new Date(n.getFullYear(), n.getMonth(), 1)); repTo.value = to }
+  else if (preset === 'last7') { const d = new Date(n); d.setDate(n.getDate() - 6); repFrom.value = fmtD(d); repTo.value = to }
+  else if (preset === 'last30') { const d = new Date(n); d.setDate(n.getDate() - 29); repFrom.value = fmtD(d); repTo.value = to }
+  // custom — оставляем как есть
+}
+if (!repFrom.value) setRange('month')
+const repRows = ref<any[]>([]); const repTotal = ref(0); const repDaily = ref<any[]>([]); const repLoading = ref(false)
+async function loadReport() {
+  if (!store.activeWorkspaceId) return
+  repLoading.value = true
+  try {
+    const fromIso = new Date(`${repFrom.value}T00:00:00`).toISOString()
+    const toD = new Date(`${repTo.value}T00:00:00`); toD.setDate(toD.getDate() + 1) // конец дня включительно
+    const toIso = toD.toISOString()
+    const uid = repUser.value || undefined
+    const grouped = await store.timeReport({ from: fromIso, to: toIso, groupBy: repGroup.value, userId: uid })
+    repRows.value = grouped.rows; repTotal.value = grouped.total
+    const daily = repGroup.value === 'day' ? grouped : await store.timeReport({ from: fromIso, to: toIso, groupBy: 'day', userId: uid })
+    repDaily.value = [...daily.rows].sort((a, b) => String(a.key).localeCompare(String(b.key)))
+  } catch (e: any) { err.value = e?.message || String(e) } finally { repLoading.value = false }
+}
+function repLabel(key: string) {
+  if (repGroup.value === 'user') return store.userName(key) || key
+  if (repGroup.value === 'issue') return key ? (store.issues[key] ? `${store.issues[key].identifier} ${store.issues[key].title}` : '(unknown)') : 'No task'
+  return key
+}
+const repMax = computed(() => Math.max(1, ...repRows.value.map((r) => r.minutes)))
+const repDailyMax = computed(() => Math.max(1, ...repDaily.value.map((r) => r.minutes)))
+const repEntries = computed(() => repRows.value.reduce((a, r) => a + r.count, 0))
+const repActiveDays = computed(() => repDaily.value.length)
+const repAvgPerDay = computed(() => repActiveDays.value ? Math.round(repTotal.value / repActiveDays.value) : 0)
+function exportReportCsv() {
+  const rows = [['Group', 'Minutes', 'Time', 'Entries'], ...repRows.value.map((r) => [repLabel(r.key), r.minutes, fmtMin(r.minutes), r.count])]
+  const csv = rows.map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' }); const url = URL.createObjectURL(blob)
+  const a = document.createElement('a'); a.href = url; a.download = `time-report-${repFrom.value}_${repTo.value}.csv`; a.click(); URL.revokeObjectURL(url)
+}
+const dayShort = (ds: string) => parseD(ds).toLocaleDateString('en', { month: 'short', day: 'numeric' })
+watch([() => activeSection.value, repFrom, repTo, repGroup, repUser], () => { if (activeSection.value === 'reports') loadReport() }, { immediate: false })
+// iCal-подписка
+const showIcal = ref(false)
+const icalUrl = ref('')
+const icalCopied = ref(false)
+const openIcal = () => wrap(async () => { icalUrl.value = await store.icalFeedUrl(false); showIcal.value = true })
+const rotateIcal = () => wrap(async () => { icalUrl.value = await store.icalFeedUrl(true) })
+function copyIcal() { navigator.clipboard?.writeText(icalUrl.value); icalCopied.value = true; setTimeout(() => (icalCopied.value = false), 1500) }
 
 // страницы-разделы команды (cycles / docs / views)
 const teamSection = ref<'' | 'cycles' | 'docs' | 'views'>('')
@@ -1109,7 +1451,7 @@ const depth = (p: string) => Math.max(0, String(p || '').split('.').length - 1)
 
 // роут-синк (в конце — после объявления всех ref, иначе TDZ)
 // состояние → URL (history.replace, без перерендера и без эха в applyRoute)
-watch(() => [activeSection.value, selectedTeamId.value, selectedIssueId.value, selectedDocId.value, selectedCycleId.value, teamSection.value, personalView.value, store.activeChannelId, selectedDashboardId.value],
+watch(() => [activeSection.value, selectedTeamId.value, selectedIssueId.value, selectedDocId.value, selectedCycleId.value, teamSection.value, personalView.value, store.activeChannelId, selectedDashboardId.value, calAnchor.value],
   () => { if (routeSyncing) return; const p = currentPath(); if (import.meta.client && p !== location.pathname) history.replaceState(history.state, '', p) })
 // URL → состояние только на back/forward (popstate) и при старте; наш replaceState popstate не вызывает
 function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
@@ -1230,6 +1572,47 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         </div>
       </template>
 
+      <!-- CALENDAR section: чьи календари показывать -->
+      <template v-if="store.activeWorkspaceId && activeSection === 'calendar'">
+        <UButton block icon="i-heroicons-plus" color="gray" variant="ghost" size="sm" class="mb-4" @click="openCalCreate(calAnchor)">New event</UButton>
+        <div class="mb-1 px-2 text-xs font-medium uppercase tracking-wider text-tertiary">Calendars</div>
+        <div v-for="u in [store.users[store.currentUserId], ...store.wsUsers].filter(Boolean)" :key="u.id"
+          class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 hover:bg-hover"
+          @click="toggleCalUser(u.id)">
+          <span class="h-3 w-3 shrink-0 rounded-sm ring-1 ring-white/20" :style="{ background: calUsers.includes(u.id) ? colorForUser(u.id) : 'transparent' }" />
+          <span class="flex-1 truncate" :class="calUsers.includes(u.id) ? 'text-white' : 'text-tertiary'">{{ u.id === store.currentUserId ? 'Me' : (u.name || u.email) }}</span>
+        </div>
+      </template>
+
+      <!-- REPORTS section sidebar: диапазон / группировка / участник -->
+      <template v-if="store.activeWorkspaceId && activeSection === 'reports'">
+        <div class="mb-1 px-2 text-xs font-medium uppercase tracking-wider text-tertiary">Date range</div>
+        <div v-for="p in [{ k: 'today', l: 'Today' }, { k: 'week', l: 'This week' }, { k: 'month', l: 'This month' }, { k: 'last7', l: 'Last 7 days' }, { k: 'last30', l: 'Last 30 days' }, { k: 'custom', l: 'Custom' }]" :key="p.k"
+          class="flex h-8 cursor-pointer items-center rounded px-2 text-sm hover:bg-hover"
+          :class="repPreset === p.k ? 'bg-active text-white' : 'text-secondary'"
+          @click="setRange(p.k)">{{ p.l }}</div>
+        <div v-if="repPreset === 'custom'" class="mt-1 space-y-1.5 px-2">
+          <DatePicker v-model="repFrom" block />
+          <DatePicker v-model="repTo" block />
+        </div>
+
+        <div class="mb-1 mt-5 px-2 text-xs font-medium uppercase tracking-wider text-tertiary">Group by</div>
+        <div v-for="g in [{ k: 'user', l: 'Person', i: 'i-heroicons-user' }, { k: 'issue', l: 'Task', i: 'i-heroicons-rectangle-stack' }, { k: 'day', l: 'Day', i: 'i-heroicons-calendar' }]" :key="g.k"
+          class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 text-sm hover:bg-hover"
+          :class="repGroup === g.k ? 'bg-active text-white' : 'text-secondary'"
+          @click="repGroup = g.k as any"><UIcon :name="g.i" class="text-tertiary" /> {{ g.l }}</div>
+
+        <div class="mb-1 mt-5 px-2 text-xs font-medium uppercase tracking-wider text-tertiary">Person</div>
+        <div class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 text-sm hover:bg-hover"
+          :class="!repUser ? 'bg-active text-white' : 'text-secondary'" @click="repUser = ''"><UIcon name="i-heroicons-users" class="text-tertiary" /> Everyone</div>
+        <div v-for="u in [store.users[store.currentUserId], ...store.wsUsers].filter(Boolean)" :key="u.id"
+          class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 text-sm hover:bg-hover"
+          :class="repUser === u.id ? 'bg-active text-white' : 'text-secondary'" @click="repUser = u.id">
+          <Avatar :name="u.name || u.email" :avatar-key="u.avatarKey" :size="18" />
+          <span class="truncate">{{ u.id === store.currentUserId ? 'Me' : (u.name || u.email) }}</span>
+        </div>
+      </template>
+
       <!-- CHATS section: каналы + личные -->
       <template v-if="store.activeWorkspaceId && activeSection === 'chats'">
         <div class="mb-1 flex items-center px-2 text-xs font-medium uppercase tracking-wider text-tertiary">
@@ -1257,7 +1640,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
 
       <!-- MEETINGS section -->
       <template v-if="store.activeWorkspaceId && activeSection === 'meetings'">
-        <UButton block icon="i-heroicons-plus" color="gray" variant="soft" size="sm" class="mb-4" @click="openCreate('meeting')">New meeting</UButton>
+        <UButton block icon="i-heroicons-plus" color="gray" size="sm" class="mb-4" @click="openCreate('meeting')">New meeting</UButton>
         <div v-if="store.liveMeetings.length" class="mb-1 px-2 text-xs font-medium uppercase tracking-wider text-tertiary">Live now</div>
         <div v-for="m in store.liveMeetings" :key="m.id"
           class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 text-secondary hover:bg-hover" @click="joinScheduled(m.id)">
@@ -1362,6 +1745,173 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
       </template>
 
       <!-- DASHBOARD section -->
+      <!-- CALENDAR: месяц-сетка -->
+      <template v-else-if="activeSection === 'calendar'">
+        <ClientOnly>
+        <div class="sticky top-0 z-10 flex items-center gap-2 border-b border-subtle bg-surface px-4 py-2.5 text-sm">
+          <UIcon name="i-heroicons-calendar-days" class="text-tertiary" />
+          <span class="font-medium">{{ calHeaderLabel }}</span>
+          <div class="ml-2 flex items-center gap-1">
+            <UButton icon="i-heroicons-chevron-left" color="gray" variant="ghost" size="xs" square @click="shiftRange(-1)" />
+            <UButton color="gray" variant="ghost" size="xs" @click="calToday">Today</UButton>
+            <UButton icon="i-heroicons-chevron-right" color="gray" variant="ghost" size="xs" square @click="shiftRange(1)" />
+          </div>
+          <div class="ml-2 flex items-center gap-0.5 rounded-md bg-elevated p-0.5">
+            <button v-for="v in ['month','week','day']" :key="v"
+              class="rounded px-2 py-0.5 text-xs capitalize transition-colors"
+              :class="calView === v ? 'bg-active text-white' : 'text-tertiary hover:text-secondary'"
+              @click="calView = v as any">{{ v }}</button>
+          </div>
+          <UButton class="ml-auto" icon="i-heroicons-arrow-top-right-on-square" size="xs" color="gray" variant="ghost" @click="openIcal">Subscribe</UButton>
+          <UButton icon="i-heroicons-plus" size="xs" color="gray" variant="ghost" @click="openCalCreate(calAnchor)">New event</UButton>
+        </div>
+
+        <!-- MONTH -->
+        <template v-if="calView === 'month'">
+          <div class="grid grid-cols-7 border-b border-subtle text-center text-xs font-medium uppercase tracking-wider text-tertiary">
+            <div v-for="wd in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="wd" class="py-1.5">{{ wd }}</div>
+          </div>
+          <div class="grid grid-cols-7" style="grid-auto-rows: minmax(96px, 1fr)">
+            <div v-for="cell in calGrid" :key="cell.ds"
+              class="group/cell relative border-b border-r border-subtle/50 p-1 text-left align-top"
+              :class="cell.inMonth ? '' : 'bg-elevated/30'"
+              @click="openCalCreate(cell.ds)">
+              <div class="flex items-center justify-between px-0.5">
+                <span class="text-xs" :class="cell.isToday ? 'flex h-5 w-5 items-center justify-center rounded-full bg-accent font-semibold text-white' : cell.inMonth ? 'text-secondary' : 'text-tertiary/50'">{{ cell.day }}</span>
+              </div>
+              <div class="mt-0.5 space-y-0.5">
+                <div v-for="it in calItemsForDay(cell.ds).slice(0, 4)" :key="it.kind + it.id"
+                  class="flex cursor-pointer items-center gap-1 truncate rounded px-1 py-0.5 text-[11px] leading-tight transition hover:brightness-125"
+                  :class="it.kind === 'issue' || it.kind === 'meeting' ? 'bg-hover text-secondary hover:bg-active' : 'text-white'"
+                  :style="it.kind === 'event' || it.kind === 'dayoff' ? { background: it.color + '33', borderLeft: `2px solid ${it.color}` } : {}"
+                  @click.stop="calClickItem(it)">
+                  <UIcon v-if="it.kind === 'meeting'" name="i-heroicons-video-camera" class="shrink-0 text-[10px]" />
+                  <UIcon v-else-if="it.kind === 'issue'" name="i-heroicons-flag" class="shrink-0 text-[10px]" />
+                  <UIcon v-else-if="it.kind === 'dayoff'" name="i-heroicons-sun" class="shrink-0 text-[10px]" />
+                  <span v-if="it.time" class="shrink-0 tabular-nums opacity-70">{{ it.time }}</span>
+                  <span class="truncate">{{ it.identifier ? it.identifier + ' ' : '' }}{{ it.title }}</span>
+                </div>
+                <div v-if="calItemsForDay(cell.ds).length > 4" class="px-1 text-[10px] text-tertiary">+{{ calItemsForDay(cell.ds).length - 4 }} more</div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- WEEK / DAY — тайм-сетка -->
+        <template v-else>
+          <!-- шапка дней -->
+          <div class="grid border-b border-subtle" :style="{ gridTemplateColumns: `52px repeat(${gridDays.length}, minmax(0,1fr))` }">
+            <div />
+            <div v-for="ds in gridDays" :key="ds" class="cursor-pointer border-l border-subtle/50 py-1.5 text-center hover:bg-hover" @click="calAnchor = ds; calView = 'day'">
+              <div class="text-[11px] uppercase tracking-wider text-tertiary">{{ weekdayLabel(ds) }}</div>
+              <div class="text-sm" :class="ds === calTodayStr ? 'mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-accent font-semibold text-white' : 'text-secondary'">{{ parseD(ds).getDate() }}</div>
+            </div>
+          </div>
+          <!-- all-day полоса -->
+          <div class="grid border-b border-subtle" :style="{ gridTemplateColumns: `52px repeat(${gridDays.length}, minmax(0,1fr))` }">
+            <div class="py-1 pr-1 text-right text-[10px] uppercase text-tertiary">all-day</div>
+            <div v-for="ds in gridDays" :key="ds" class="min-h-[26px] space-y-0.5 border-l border-subtle/50 p-0.5">
+              <div v-for="it in calDayBuckets(ds).allDay" :key="it.kind + it.id"
+                class="flex cursor-pointer items-center gap-1 truncate rounded px-1 py-0.5 text-[11px] leading-tight transition hover:brightness-125"
+                :class="it.kind === 'issue' ? 'bg-hover text-secondary hover:bg-active' : 'text-white'"
+                :style="it.kind === 'event' || it.kind === 'dayoff' ? { background: it.color + '33', borderLeft: `2px solid ${it.color}` } : {}"
+                @click.stop="calClickItem(it)">
+                <UIcon v-if="it.kind === 'issue'" name="i-heroicons-flag" class="shrink-0 text-[10px]" />
+                <UIcon v-else-if="it.kind === 'dayoff'" name="i-heroicons-sun" class="shrink-0 text-[10px]" />
+                <span class="truncate">{{ it.identifier ? it.identifier + ' ' : '' }}{{ it.title }}</span>
+              </div>
+            </div>
+          </div>
+          <!-- часовая сетка -->
+          <div class="grid" :style="{ gridTemplateColumns: `52px repeat(${gridDays.length}, minmax(0,1fr))`, height: HOUR_PX * 24 + 'px' }">
+            <div class="relative">
+              <div v-for="h in HOURS" :key="h" class="absolute right-1.5 -translate-y-1/2 text-[10px] tabular-nums text-tertiary" :style="{ top: h * HOUR_PX + 'px' }">{{ h > 0 ? String(h).padStart(2, '0') + ':00' : '' }}</div>
+            </div>
+            <div v-for="ds in gridDays" :key="ds" class="relative select-none border-l border-subtle/50" style="cursor: cell" @pointerdown.self="dragCreate(ds, $event)">
+              <div v-for="h in HOURS" :key="h" class="pointer-events-none absolute inset-x-0 border-t border-subtle/25" :style="{ top: h * HOUR_PX + 'px' }" />
+              <!-- now-линия -->
+              <div v-if="ds === calTodayStr" class="pointer-events-none absolute inset-x-0 z-20 border-t border-red-500" :style="{ top: nowMin / 60 * HOUR_PX + 'px' }">
+                <span class="absolute -left-1 -top-1 h-2 w-2 rounded-full bg-red-500" />
+              </div>
+              <!-- drag-create превью -->
+              <div v-if="calDrag.active && calDrag.mode === 'create' && calDrag.ds === ds" class="pointer-events-none absolute inset-x-0.5 z-10 rounded bg-accent/30 ring-1 ring-accent"
+                :style="{ top: Math.min(calDrag.startMin, calDrag.curMin) / 60 * HOUR_PX + 'px', height: Math.max(4, Math.abs(calDrag.curMin - calDrag.startMin) / 60 * HOUR_PX) + 'px' }" />
+              <div v-for="it in calDayBuckets(ds).timed" :key="it.kind + it.id"
+                class="group/ev absolute overflow-hidden rounded px-1 text-[11px] leading-tight ring-1 ring-inset ring-white/10 transition hover:z-10 hover:brightness-125 hover:ring-white/40"
+                :class="(it.kind === 'event' || it.kind === 'dayoff') ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'"
+                :style="{ top: ((calDrag.active && calDrag.mode === 'move' && calDrag.id === it.id ? calDrag.curMin : it.sMin) / 60 * HOUR_PX) + 'px', height: Math.max(16, ((calDrag.active && calDrag.mode === 'resize' && calDrag.id === it.id ? calDrag.curMin - it.sMin : it.eMin - it.sMin)) / 60 * HOUR_PX) + 'px', left: `calc(${(it.lane || 0) / (it.cols || 1) * 100}% + 1px)`, width: `calc(${100 / (it.cols || 1)}% - 2px)`, background: it.color + '33', borderLeft: `2px solid ${it.color}` }"
+                @pointerdown="dragMove(it, ds, $event)" @click.stop="calClickItem(it)">
+                <span class="font-medium tabular-nums">{{ it.time }}</span>
+                <span class="ml-1">{{ it.kind === 'meeting' ? '📹 ' : '' }}{{ it.title }}</span>
+                <div v-if="it.kind === 'event' || it.kind === 'dayoff'" class="absolute inset-x-0 bottom-0 h-1.5 cursor-ns-resize opacity-0 group-hover/ev:opacity-100"
+                  @pointerdown.stop="dragResize(it, ds, $event)" />
+              </div>
+            </div>
+          </div>
+        </template>
+        </ClientOnly>
+      </template>
+
+      <!-- REPORTS: учёт времени -->
+      <template v-else-if="activeSection === 'reports'">
+        <ClientOnly>
+        <div class="mx-auto w-full max-w-4xl px-6 py-6">
+          <div class="mb-4 flex items-center gap-2">
+            <h1 class="text-lg font-semibold text-white">Time report</h1>
+            <span class="text-sm text-tertiary">{{ dayShort(repFrom) }} – {{ dayShort(repTo) }}{{ repUser ? ' · ' + (repUser === store.currentUserId ? 'Me' : store.userName(repUser)) : '' }}</span>
+            <UButton class="ml-auto" icon="i-heroicons-arrow-down-tray" color="gray" size="xs" :disabled="!repRows.length" @click="exportReportCsv">Export CSV</UButton>
+          </div>
+
+          <!-- сводные карточки -->
+          <div class="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div class="rounded-lg border border-subtle bg-elevated p-3">
+              <div class="text-xs text-tertiary">Total</div><div class="text-2xl font-semibold text-white">{{ fmtMin(repTotal) }}</div>
+            </div>
+            <div class="rounded-lg border border-subtle bg-elevated p-3">
+              <div class="text-xs text-tertiary">Entries</div><div class="text-2xl font-semibold text-white">{{ repEntries }}</div>
+            </div>
+            <div class="rounded-lg border border-subtle bg-elevated p-3">
+              <div class="text-xs text-tertiary">Active days</div><div class="text-2xl font-semibold text-white">{{ repActiveDays }}</div>
+            </div>
+            <div class="rounded-lg border border-subtle bg-elevated p-3">
+              <div class="text-xs text-tertiary">Avg / active day</div><div class="text-2xl font-semibold text-white">{{ fmtMin(repAvgPerDay) }}</div>
+            </div>
+          </div>
+
+          <div v-if="repLoading" class="py-10 text-center text-sm text-tertiary">Loading…</div>
+          <div v-else-if="!repRows.length" class="py-16 text-center text-sm text-tertiary">No time tracked in this range.</div>
+          <template v-else>
+            <!-- дневной график -->
+            <div class="mb-6">
+              <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary">Daily</div>
+              <div class="flex items-end gap-1" style="height: 120px">
+                <div v-for="d in repDaily" :key="d.key" class="group/bar relative flex flex-1 flex-col items-center justify-end" :title="`${dayShort(d.key)}: ${fmtMin(d.minutes)}`">
+                  <div class="w-full rounded-t bg-accent/50 transition-colors group-hover/bar:bg-accent" :style="{ height: (d.minutes / repDailyMax * 96) + 'px' }" />
+                </div>
+              </div>
+              <div class="mt-1 flex gap-1 text-[10px] text-tertiary">
+                <div v-for="d in repDaily" :key="d.key" class="flex-1 truncate text-center">{{ parseD(d.key).getDate() }}</div>
+              </div>
+            </div>
+
+            <!-- разбивка по группе -->
+            <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary">By {{ repGroup === 'user' ? 'person' : repGroup === 'issue' ? 'task' : 'day' }}</div>
+            <div class="space-y-1.5">
+              <div v-for="r in repRows" :key="r.key" class="flex items-center gap-3">
+                <div class="w-56 shrink-0 truncate text-sm" :title="repLabel(r.key)">{{ repLabel(r.key) }}</div>
+                <div class="relative h-6 flex-1 overflow-hidden rounded bg-elevated">
+                  <div class="absolute inset-y-0 left-0 rounded bg-accent/40" :style="{ width: (r.minutes / repMax * 100) + '%' }" />
+                </div>
+                <div class="w-12 shrink-0 text-right text-xs text-tertiary">{{ repTotal ? Math.round(r.minutes / repTotal * 100) : 0 }}%</div>
+                <div class="w-20 shrink-0 text-right text-sm tabular-nums text-white">{{ fmtMin(r.minutes) }}</div>
+                <div class="w-10 shrink-0 text-right text-xs text-tertiary">{{ r.count }}</div>
+              </div>
+            </div>
+          </template>
+        </div>
+        </ClientOnly>
+      </template>
+
       <template v-else-if="activeSection === 'dashboard'">
       <template v-if="selectedDashboard">
         <div class="sticky top-0 z-10 flex items-center gap-2 border-b border-subtle bg-surface px-4 py-3 text-sm">
@@ -1537,7 +2087,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         <div class="mx-auto max-w-3xl px-6 py-6">
           <div class="mb-5 flex items-center gap-2">
             <h1 class="text-lg font-semibold text-white">Meetings</h1>
-            <UButton class="ml-auto" icon="i-heroicons-plus" size="sm" @click="openCreate('meeting')">New meeting</UButton>
+            <UButton class="ml-auto" icon="i-heroicons-plus" color="gray" size="sm" @click="openCreate('meeting')">New meeting</UButton>
           </div>
 
           <div v-if="store.liveMeetings.length" class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary">Live now</div>
@@ -1557,13 +2107,13 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <UButton v-else color="gray" size="sm" variant="soft" disabled>In call</UButton>
           </div>
 
-          <div class="mb-2 mt-6 text-xs font-medium uppercase tracking-wider text-tertiary">Upcoming</div>
-          <div v-for="m in store.scheduledMeetings" :key="m.id" class="group mb-2 flex items-center gap-3 rounded-lg border border-subtle bg-elevated p-3">
+          <div v-if="store.upcomingMeetings.length" class="mb-2 mt-6 text-xs font-medium uppercase tracking-wider text-tertiary">Upcoming</div>
+          <div v-for="m in store.upcomingMeetings" :key="m.id" class="group mb-2 flex items-center gap-3 rounded-lg border border-subtle bg-elevated p-3">
             <UIcon name="i-heroicons-calendar" class="shrink-0 text-tertiary" />
             <div class="min-w-0 flex-1">
               <div class="truncate font-medium text-white">{{ m.title || 'Meeting' }}</div>
               <div class="text-xs text-tertiary">
-                <span v-if="m.scheduledAt">{{ new Date(m.scheduledAt).toLocaleString() }} · </span>{{ store.meetingParts(m.id).length }} invited
+                <span v-if="m.scheduledAt">{{ new Date(m.scheduledAt).toLocaleString() }}<span v-if="m.endsAt">–{{ new Date(m.endsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }}</span> · </span>{{ store.meetingParts(m.id).length }} invited
               </div>
             </div>
             <div class="flex -space-x-1.5">
@@ -1572,9 +2122,23 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 {{ store.userName(p.userId).charAt(0).toUpperCase() }}
               </span>
             </div>
-            <UButton size="sm" icon="i-heroicons-video-camera" @click="joinScheduled(m.id)">Start</UButton>
-            <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="xs" square @click="store.endMeeting(m.id)" />
+            <UButton color="gray" size="sm" icon="i-heroicons-video-camera" @click="joinScheduled(m.id)">Start</UButton>
+            <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="xs" square title="Delete" @click="store.endMeeting(m.id)" />
           </div>
+
+          <div v-if="store.pastMeetings.length" class="mb-2 mt-6 text-xs font-medium uppercase tracking-wider text-tertiary">Past</div>
+          <div v-for="m in store.pastMeetings" :key="m.id" class="group mb-2 flex items-center gap-3 rounded-lg border border-subtle/60 bg-elevated/40 p-3">
+            <UIcon name="i-heroicons-clock" class="shrink-0 text-tertiary/60" />
+            <div class="min-w-0 flex-1">
+              <div class="truncate font-medium text-secondary">{{ m.title || 'Meeting' }}</div>
+              <div class="text-xs text-tertiary">
+                <span v-if="m.scheduledAt">{{ new Date(m.scheduledAt).toLocaleString() }}<span v-if="m.endsAt">–{{ new Date(m.endsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }}</span> · </span>{{ store.meetingParts(m.id).length }} invited
+              </div>
+            </div>
+            <UButton color="gray" size="sm" icon="i-heroicons-arrow-path" title="Start again" @click="joinScheduled(m.id)">Restart</UButton>
+            <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="xs" square title="Delete" @click="store.endMeeting(m.id)" />
+          </div>
+
           <div v-if="!store.scheduledMeetings.length && !store.liveMeetings.length" class="py-16 text-center text-sm text-tertiary">
             No meetings yet. Create one or start a huddle from any chat.
           </div>
@@ -1590,16 +2154,25 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <span class="font-medium">{{ PERSONAL.find((p) => p.key === personalView)?.label }}</span>
           <span class="text-tertiary">{{ store.personalIssues(personalView).length }}</span>
         </div>
-        <div v-for="i in store.personalIssues(personalView)" :key="i.id"
-          class="flex cursor-pointer items-center gap-3 border-b border-subtle/40 px-4 py-2.5 hover:bg-hover"
-          :class="{ 'bg-active': selectedIssueId === i.id }" @click="openIssue(i.id)">
-          <UIcon v-if="i.priority" :name="prioIcon(i.priority)" :style="{ color: prioColor(i.priority) }" class="shrink-0" />
-          <UIcon v-else name="i-heroicons-minus" class="shrink-0 text-tertiary/50" />
-          <span class="w-16 shrink-0 text-sm text-tertiary">{{ i.identifier }}</span>
-          <UIcon :name="statusIcon(store.states[i.stateId]?.category)" :style="{ color: statusColor(store.states[i.stateId]?.category) }" class="shrink-0" />
-          <span class="flex-1 truncate">{{ i.title }}</span>
-          <span class="shrink-0 text-xs text-tertiary">{{ store.teams[i.teamId]?.key }}</span>
-        </div>
+        <template v-for="g in personalGroups" :key="g.key">
+          <div class="sticky top-[49px] z-[5] flex items-center gap-2 border-b border-subtle/60 bg-elevated/80 px-4 py-1.5 text-xs font-medium backdrop-blur">
+            <span class="h-2 w-2 rounded-full" :style="{ background: g.color }" />
+            <span class="uppercase tracking-wider" :style="{ color: g.color }">{{ g.label }}</span>
+            <span class="text-tertiary">{{ g.items.length }}</span>
+          </div>
+          <div v-for="i in g.items" :key="i.id"
+            class="flex cursor-pointer items-center gap-3 border-b border-subtle/40 px-4 py-2.5 hover:bg-hover"
+            :class="{ 'bg-active': selectedIssueId === i.id }" @click="openIssue(i.id)">
+            <UIcon v-if="i.priority" :name="prioIcon(i.priority)" :style="{ color: prioColor(i.priority) }" class="shrink-0" />
+            <UIcon v-else name="i-heroicons-minus" class="shrink-0 text-tertiary/50" />
+            <span class="w-16 shrink-0 text-sm text-tertiary">{{ i.identifier }}</span>
+            <UIcon :name="statusIcon(store.states[i.stateId]?.category)" :style="{ color: statusColor(store.states[i.stateId]?.category) }" class="shrink-0" />
+            <span class="flex-1 truncate">{{ i.title }}</span>
+            <span v-if="d10(i.scheduledDate) || d10(i.dueDate)" class="shrink-0 text-xs"
+              :class="g.key === 'overdue' ? 'text-red-400' : 'text-tertiary'">{{ d10(i.scheduledDate) || d10(i.dueDate) }}</span>
+            <span class="shrink-0 text-xs text-tertiary">{{ store.teams[i.teamId]?.key }}</span>
+          </div>
+        </template>
         <div v-if="!store.personalIssues(personalView).length" class="px-4 py-8 text-center text-sm text-tertiary">No issues</div>
       </template>
 
@@ -1983,8 +2556,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
       <div v-if="cycleEdit" class="mb-4 space-y-2 rounded-lg border border-subtle bg-elevated p-3">
         <UInput v-model="cycleForm.name" size="xs" placeholder="Cycle name (optional)" />
         <div class="flex gap-2">
-          <div class="flex-1"><label class="mb-1 block text-[11px] text-tertiary">Start</label><UInput v-model="cycleForm.startsOn" type="date" size="xs" class="w-full" /></div>
-          <div class="flex-1"><label class="mb-1 block text-[11px] text-tertiary">End</label><UInput v-model="cycleForm.endsOn" type="date" size="xs" class="w-full" /></div>
+          <div class="flex-1"><label class="mb-1 block text-[11px] text-tertiary">Start</label><DatePicker v-model="cycleForm.startsOn" block /></div>
+          <div class="flex-1"><label class="mb-1 block text-[11px] text-tertiary">End</label><DatePicker v-model="cycleForm.endsOn" block /></div>
         </div>
         <div class="flex justify-end gap-2"><UButton size="2xs" color="gray" variant="ghost" @click="cycleEdit = false">Cancel</UButton><UButton size="2xs" @click="saveCycle">Save</UButton></div>
       </div>
@@ -2127,13 +2700,30 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           </div>
           <div class="flex min-h-8 items-center gap-3">
             <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-calendar" /> Due date</span>
-            <UInput class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" type="date" :model-value="selectedIssue.scheduledDate ? String(selectedIssue.scheduledDate).slice(0,10) : ''"
-              @change="(v:any) => store.setIssueSchedule(selectedIssue.id, v)" />
+            <DatePicker class="flex-1" placeholder="No due date" :model-value="selectedIssue.scheduledDate ? String(selectedIssue.scheduledDate).slice(0,10) : ''"
+              @update:model-value="(v:any) => store.setIssueSchedule(selectedIssue.id, v)" />
           </div>
           <div class="flex min-h-8 items-center gap-3">
             <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-scale" /> Estimate</span>
             <UInput class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" type="number" min="0" :model-value="selectedIssue.estimate ?? ''" placeholder="No estimate"
               @change="(v:any) => store.setIssueEstimate(selectedIssue.id, Number(v))" />
+          </div>
+          <!-- Time tracking -->
+          <div class="flex min-h-8 items-center gap-3">
+            <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-clock" /> Time</span>
+            <span class="flex-1 text-sm" :class="store.issueTrackedMin(selectedIssue.id) ? 'text-white' : 'text-tertiary'">{{ store.issueTrackedMin(selectedIssue.id) ? fmtMin(store.issueTrackedMin(selectedIssue.id)) : 'Not tracked' }}</span>
+            <UButton v-if="store.runningTimer?.issueId === selectedIssue.id" color="red" size="2xs" icon="i-heroicons-stop" @click="wrap(() => store.stopTimer())">Stop</UButton>
+            <UButton v-else color="gray" size="2xs" icon="i-heroicons-play" @click="wrap(() => store.startTimer(selectedIssue.id))">Start</UButton>
+            <UButton color="gray" variant="ghost" size="2xs" square icon="i-heroicons-plus" title="Add time manually" @click="openTimeEntry(selectedIssue.id)" />
+          </div>
+          <!-- записи времени -->
+          <div v-for="te in store.timeEntriesForIssue(selectedIssue.id)" :key="te.id" class="group ml-24 flex items-center gap-2 pl-3 text-xs text-tertiary">
+            <UIcon :name="te.endedAt ? 'i-heroicons-check-circle' : 'i-heroicons-play-circle'" :class="te.endedAt ? '' : 'text-green-500'" class="shrink-0" />
+            <span class="tabular-nums">{{ new Date(te.startedAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) }} {{ new Date(te.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</span>
+            <span class="flex-1 truncate">{{ te.description }}</span>
+            <span v-if="te.endedAt" class="tabular-nums">{{ fmtMin(Math.max(0, Math.round((new Date(te.endedAt).getTime() - new Date(te.startedAt).getTime()) / 60000))) }}</span>
+            <span v-else class="text-green-500">running</span>
+            <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="wrap(() => store.deleteTimeEntry(te.id))" />
           </div>
           <!-- Custom fields -->
           <div v-for="f in store.fieldsForTeam(selectedIssue.teamId)" :key="f.id" class="flex min-h-8 items-center gap-3">
@@ -2356,8 +2946,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <USelectMenu v-model="cTeam" class="w-full" value-attribute="value" option-attribute="label"
               :options="store.teamList.map((t) => ({ label: `${t.key} · ${t.name}`, value: t.id }))" /></div>
           <div class="flex gap-2">
-            <div class="flex-1"><label class="mb-1 block text-xs text-tertiary">Start</label><UInput v-model="cStart" type="date" class="w-full" /></div>
-            <div class="flex-1"><label class="mb-1 block text-xs text-tertiary">End</label><UInput v-model="cEnd" type="date" class="w-full" /></div>
+            <div class="flex-1"><label class="mb-1 block text-xs text-tertiary">Start</label><DatePicker v-model="cStart" block /></div>
+            <div class="flex-1"><label class="mb-1 block text-xs text-tertiary">End</label><DatePicker v-model="cEnd" block /></div>
           </div>
         </div>
 
@@ -2369,7 +2959,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <div><label class="mb-1 block text-xs text-tertiary">Name</label>
             <UInput v-model="cTitle" placeholder="Milestone name" autofocus @keyup.enter="submitCreate" /></div>
           <div><label class="mb-1 block text-xs text-tertiary">Target date</label>
-            <UInput v-model="cMsDate" type="date" class="w-full" /></div>
+            <DatePicker v-model="cMsDate" block /></div>
         </div>
 
         <!-- MEETING -->
@@ -2377,7 +2967,13 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <div><label class="mb-1 block text-xs text-tertiary">Title</label>
             <UInput v-model="cTitle" placeholder="Meeting title" autofocus @keyup.enter="submitCreate" /></div>
           <div><label class="mb-1 block text-xs text-tertiary">When (optional)</label>
-            <UInput v-model="cMeetAt" type="datetime-local" class="w-full" /></div>
+            <div class="flex items-center gap-2">
+              <DatePicker v-model="cMeetDate" block class="flex-1" placeholder="Pick a date" />
+              <TimePicker v-model="cMeetStart" class="w-28" />
+              <span class="text-tertiary">–</span>
+              <TimePicker v-model="cMeetEnd" :from="cMeetStart" class="w-28" />
+            </div>
+          </div>
           <div><label class="mb-1 block text-xs text-tertiary">Participants</label>
             <USelectMenu v-model="cMeetParts" multiple searchable searchable-placeholder="Search people…" placeholder="Select participants" class="w-full"
               value-attribute="value" option-attribute="label"
@@ -2440,6 +3036,78 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         <div class="flex justify-end gap-2 pt-1">
           <UButton color="gray" variant="ghost" @click="showWidget = false">Cancel</UButton>
           <UButton icon="i-heroicons-plus" @click="addWidget(); showWidget = false">Add</UButton>
+        </div>
+      </div>
+    </UModal>
+
+    <!-- Calendar event модалка -->
+    <UModal v-model="showCalEvent">
+      <div class="space-y-3 p-4">
+        <span class="text-sm font-semibold text-white">{{ calForm.id ? 'Edit event' : calForm.kind === 'meeting' ? 'New meeting' : 'New event' }}</span>
+        <UInput v-model="calForm.title" placeholder="Title" autofocus @keydown.enter="saveCalEvent" />
+        <div class="flex items-center gap-2">
+          <USelectMenu v-model="calForm.kind" class="w-32" :disabled="!!calForm.id" :options="calForm.id ? [{ label: 'Event', value: 'event' }, { label: 'Day off', value: 'dayoff' }] : [{ label: 'Event', value: 'event' }, { label: 'Day off', value: 'dayoff' }, { label: 'Meeting', value: 'meeting' }]" value-attribute="value" option-attribute="label" />
+          <DatePicker v-model="calForm.date" block class="flex-1" />
+        </div>
+        <div v-if="!calForm.allDay || calForm.kind === 'meeting'" class="flex items-center gap-2">
+          <TimePicker v-model="calForm.start" class="flex-1" />
+          <span class="text-tertiary">–</span>
+          <TimePicker v-model="calForm.end" :from="calForm.start" class="flex-1" />
+        </div>
+        <UCheckbox v-if="calForm.kind !== 'meeting'" v-model="calForm.allDay" label="All day" />
+        <!-- повтор (не для митинга) -->
+        <div v-if="calForm.kind !== 'meeting'" class="flex items-center gap-2">
+          <USelectMenu v-model="calForm.recurrence" class="w-40"
+            :options="[{ label: 'Does not repeat', value: 'none' }, { label: 'Daily', value: 'daily' }, { label: 'Weekly', value: 'weekly' }, { label: 'Monthly', value: 'monthly' }]"
+            value-attribute="value" option-attribute="label" />
+          <template v-if="calForm.recurrence !== 'none'">
+            <span class="text-xs text-tertiary">until</span>
+            <DatePicker v-model="calForm.recUntil" class="flex-1" placeholder="forever" />
+          </template>
+        </div>
+        <!-- участники митинга (free/busy: видно занятость в сетке через тоггл календарей слева) -->
+        <USelectMenu v-if="calForm.kind === 'meeting'" v-model="calForm.participants" multiple searchable placeholder="Invite participants…"
+          :options="store.wsUsers.map((u) => ({ label: u.name || u.email, value: u.id }))" value-attribute="value" option-attribute="label" />
+        <UTextarea v-if="calForm.kind !== 'meeting'" v-model="calForm.description" placeholder="Notes (optional)" :rows="2" />
+        <div class="flex items-center gap-2 pt-1">
+          <UButton v-if="calForm.id" color="red" variant="ghost" icon="i-heroicons-trash" @click="deleteCalEvent">Delete</UButton>
+          <UButton class="ml-auto" color="gray" variant="ghost" @click="showCalEvent = false">Cancel</UButton>
+          <UButton icon="i-heroicons-check" @click="saveCalEvent">{{ calForm.id ? 'Save' : 'Create' }}</UButton>
+        </div>
+      </div>
+    </UModal>
+
+    <!-- Ручная запись времени -->
+    <UModal v-model="showTimeEntry">
+      <div class="space-y-3 p-4">
+        <span class="text-sm font-semibold text-white">Log time</span>
+        <div class="flex items-center gap-2">
+          <DatePicker v-model="teForm.date" block class="flex-1" />
+          <TimePicker v-model="teForm.start" class="w-28" />
+          <span class="text-tertiary">–</span>
+          <TimePicker v-model="teForm.end" :from="teForm.start" class="w-28" />
+        </div>
+        <UInput v-model="teForm.description" placeholder="What did you work on? (optional)" @keydown.enter="saveTimeEntry" />
+        <div class="flex justify-end gap-2 pt-1">
+          <UButton color="gray" variant="ghost" @click="showTimeEntry = false">Cancel</UButton>
+          <UButton color="gray" icon="i-heroicons-check" @click="saveTimeEntry">Log</UButton>
+        </div>
+      </div>
+    </UModal>
+
+    <!-- iCal subscribe модалка -->
+    <UModal v-model="showIcal">
+      <div class="space-y-3 p-4">
+        <span class="text-sm font-semibold text-white">Subscribe to your calendar</span>
+        <p class="text-xs text-tertiary">Add this URL in Google Calendar / Apple Calendar (subscribe by URL). Read-only: your events, assigned deadlines and meetings. Keep it private — anyone with the link can view.</p>
+        <div class="flex items-center gap-2">
+          <UInput :model-value="icalUrl" readonly class="flex-1" :ui="{ base: 'font-mono text-xs' }" @focus="(e: any) => e.target.select()" />
+          <UButton :icon="icalCopied ? 'i-heroicons-check' : 'i-heroicons-clipboard-document'" color="gray" @click="copyIcal">{{ icalCopied ? 'Copied' : 'Copy' }}</UButton>
+        </div>
+        <div class="flex items-center gap-2 pt-1">
+          <UButton color="gray" variant="ghost" icon="i-heroicons-arrow-path" @click="rotateIcal">Regenerate</UButton>
+          <span class="text-xs text-tertiary">Regenerating invalidates the old link.</span>
+          <UButton class="ml-auto" color="gray" variant="ghost" @click="showIcal = false">Close</UButton>
         </div>
       </div>
     </UModal>

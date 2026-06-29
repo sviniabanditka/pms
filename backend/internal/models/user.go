@@ -17,6 +17,7 @@ type User struct {
 	Name         string          `bun:"name"`
 	PasswordHash *string         `bun:"password_hash"`
 	Preferences  json.RawMessage `bun:"preferences,type:jsonb"`
+	IcalToken    *string         `bun:"ical_token"`
 	CreatedAt    time.Time       `bun:"created_at,nullzero"`
 	UpdatedAt    time.Time       `bun:"updated_at,nullzero"`
 	Version      int64           `bun:"version"`

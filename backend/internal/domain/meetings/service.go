@@ -46,12 +46,17 @@ func (s *Service) delta(ctx context.Context, wsID, id uuid.UUID, op string) {
 }
 
 // CreateMeeting — запланированный митинг с явным кругом участников.
-func (s *Service) CreateMeeting(ctx context.Context, actor, wsID, id uuid.UUID, title string, scheduledAt *time.Time, participantIDs []uuid.UUID, channelID *uuid.UUID) error {
+func (s *Service) CreateMeeting(ctx context.Context, actor, wsID, id uuid.UUID, title string, scheduledAt, endsAt *time.Time, participantIDs []uuid.UUID, channelID *uuid.UUID) error {
 	now := time.Now().UTC()
+	// дефолт: конец = старт +30 мин (если старт задан, а конец нет)
+	if endsAt == nil && scheduledAt != nil {
+		e := scheduledAt.Add(30 * time.Minute)
+		endsAt = &e
+	}
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
 		m := &models.Meeting{
 			ID: id, WorkspaceID: wsID, ChannelID: channelID, Kind: "scheduled",
-			Title: strings.TrimSpace(title), Status: "scheduled", ScheduledAt: scheduledAt,
+			Title: strings.TrimSpace(title), Status: "scheduled", ScheduledAt: scheduledAt, EndsAt: endsAt,
 			CreatedBy: actor, CreatedAt: now, UpdatedAt: now,
 		}
 		if _, err := tx.NewInsert().Model(m).Exec(ctx); err != nil {
@@ -186,8 +191,13 @@ func (s *Service) LeaveMeeting(ctx context.Context, actor, wsID, meetingID uuid.
 			return err
 		}
 		if live == 0 {
+			// huddle (ad-hoc) → ended (исчезает). scheduled (встреча-аппойнтмент) → назад в scheduled,
+			// чтобы оставался в календаре/списке после звонка (прошедшие тоже видны).
 			if _, err := tx.NewUpdate().Model((*models.Meeting)(nil)).
-				Set("status = 'ended'").Set("ended_at = ?", now).Set("updated_at = ?", now).
+				Set("status = CASE WHEN kind = 'huddle' THEN 'ended' ELSE 'scheduled' END").
+				Set("ended_at = CASE WHEN kind = 'huddle' THEN ?::timestamptz ELSE NULL END", now).
+				Set("started_at = CASE WHEN kind = 'huddle' THEN started_at ELSE NULL END").
+				Set("updated_at = ?", now).
 				Where("id = ?", meetingID).Where("status != 'ended'").Exec(ctx); err != nil {
 				return err
 			}

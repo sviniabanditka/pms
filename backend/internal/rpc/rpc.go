@@ -15,6 +15,7 @@ import (
 	"github.com/pms/backend/gen/pms/v1/pmsv1connect"
 	"github.com/pms/backend/internal/auth"
 	"github.com/pms/backend/internal/domain/attachments"
+	"github.com/pms/backend/internal/domain/calendar"
 	"github.com/pms/backend/internal/domain/chats"
 	"github.com/pms/backend/internal/domain/comments"
 	"github.com/pms/backend/internal/domain/customfields"
@@ -28,6 +29,7 @@ import (
 	"github.com/pms/backend/internal/domain/search"
 	syncsvc "github.com/pms/backend/internal/domain/sync"
 	"github.com/pms/backend/internal/domain/teams"
+	"github.com/pms/backend/internal/domain/timetracking"
 	"github.com/pms/backend/internal/domain/views"
 	"github.com/pms/backend/internal/domain/workspaces"
 	"github.com/pms/backend/internal/filter"
@@ -48,6 +50,8 @@ type Services struct {
 	Comments      *comments.Service
 	Milestones    *milestones.Service
 	Meetings      *meetings.Service
+	Calendar      *calendar.Service
+	Time          *timetracking.Service
 	Attachments   *attachments.Service
 	Search        *search.Service
 	Sync          *syncsvc.Service
@@ -69,6 +73,8 @@ func Mount(r chi.Router, svcs Services) {
 	mount(pmsv1connect.NewCommentServiceHandler(&commentHandler{svc: svcs.Comments}))
 	mount(pmsv1connect.NewMilestoneServiceHandler(&milestoneHandler{svc: svcs.Milestones}))
 	mount(pmsv1connect.NewMeetingServiceHandler(&meetingHandler{svc: svcs.Meetings}))
+	mount(pmsv1connect.NewCalendarServiceHandler(&calendarHandler{svc: svcs.Calendar}))
+	mount(pmsv1connect.NewTimeServiceHandler(&timeHandler{svc: svcs.Time}))
 	mount(pmsv1connect.NewAttachmentServiceHandler(&attachmentHandler{svc: svcs.Attachments}))
 	mount(pmsv1connect.NewSyncServiceHandler(&syncHandler{svc: svcs.Sync}))
 	mount(pmsv1connect.NewQueryServiceHandler(&queryHandler{svc: svcs.Search}))
@@ -1489,6 +1495,8 @@ func mapErr(err error) error {
 		errors.Is(err, chats.ErrEmpty),
 		errors.Is(err, comments.ErrEmpty),
 		errors.Is(err, milestones.ErrName),
+		errors.Is(err, calendar.ErrDates),
+		errors.Is(err, timetracking.ErrDates),
 		errors.Is(err, workspaces.ErrEmail):
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	case errors.Is(err, workspaces.ErrSlugTaken),
@@ -1496,7 +1504,8 @@ func mapErr(err error) error {
 		return connect.NewError(connect.CodeAlreadyExists, err)
 	case errors.Is(err, syncsvc.ErrForbidden),
 		errors.Is(err, chats.ErrForbidden),
-		errors.Is(err, comments.ErrForbidden):
+		errors.Is(err, comments.ErrForbidden),
+		errors.Is(err, calendar.ErrNotOwner):
 		return connect.NewError(connect.CodePermissionDenied, err)
 	case errors.Is(err, teams.ErrStateInUse),
 		errors.Is(err, teams.ErrTeamHasIssues):
@@ -1524,10 +1533,15 @@ func (h *meetingHandler) CreateMeeting(ctx context.Context, req *connect.Request
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	var schedAt *time.Time
+	var schedAt, endsAt *time.Time
 	if s := req.Msg.ScheduledAt; s != "" {
 		if t, perr := time.Parse(time.RFC3339, s); perr == nil {
 			schedAt = &t
+		}
+	}
+	if s := req.Msg.EndsAt; s != "" {
+		if t, perr := time.Parse(time.RFC3339, s); perr == nil {
+			endsAt = &t
 		}
 	}
 	parts := make([]uuid.UUID, 0, len(req.Msg.ParticipantIds))
@@ -1537,7 +1551,7 @@ func (h *meetingHandler) CreateMeeting(ctx context.Context, req *connect.Request
 		}
 	}
 	channelID := optUUID(req.Msg.ChannelId)
-	if err := h.svc.CreateMeeting(ctx, actor, wsID, id, req.Msg.Title, schedAt, parts, channelID); err != nil {
+	if err := h.svc.CreateMeeting(ctx, actor, wsID, id, req.Msg.Title, schedAt, endsAt, parts, channelID); err != nil {
 		return nil, mapErr(err)
 	}
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
@@ -1599,6 +1613,173 @@ func (h *meetingHandler) EndMeeting(ctx context.Context, req *connect.Request[pm
 		return nil, mapErr(err)
 	}
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: mid.String()}), nil
+}
+
+type calendarHandler struct {
+	pmsv1connect.UnimplementedCalendarServiceHandler
+	svc *calendar.Service
+}
+
+// parseTS: ISO datetime → time; пустое/невалидное → zero (хендлер решает).
+func parseTS(s string) time.Time {
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UTC()
+	}
+	return time.Time{}
+}
+
+func (h *calendarHandler) CreateEvent(ctx context.Context, req *connect.Request[pmsv1.CreateEventRequest]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wsID, err := uuid.Parse(req.Msg.WorkspaceId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid workspace_id"))
+	}
+	id, err := parseOrNew(req.Msg.Id)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	st, en := parseTS(req.Msg.StartsAt), parseTS(req.Msg.EndsAt)
+	if st.IsZero() || en.IsZero() {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("starts_at and ends_at required"))
+	}
+	var until *time.Time
+	if u := parseTS(req.Msg.RecurrenceUntil); !u.IsZero() {
+		until = &u
+	}
+	if err := h.svc.CreateEvent(ctx, actor, wsID, id, req.Msg.Title, req.Msg.Description, req.Msg.Kind, st, en, req.Msg.AllDay, req.Msg.Recurrence, until); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
+}
+
+func (h *calendarHandler) UpdateEvent(ctx context.Context, req *connect.Request[pmsv1.UpdateEventRequest]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, wsID, id, err := issueRef(ctx, req.Msg.WorkspaceId, req.Msg.Id)
+	if err != nil {
+		return nil, err
+	}
+	st, en := parseTS(req.Msg.StartsAt), parseTS(req.Msg.EndsAt)
+	if st.IsZero() || en.IsZero() {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("starts_at and ends_at required"))
+	}
+	var until *time.Time
+	if u := parseTS(req.Msg.RecurrenceUntil); !u.IsZero() {
+		until = &u
+	}
+	if err := h.svc.UpdateEvent(ctx, actor, wsID, id, req.Msg.Title, req.Msg.Description, req.Msg.Kind, st, en, req.Msg.AllDay, req.Msg.Recurrence, until); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
+}
+
+func (h *calendarHandler) DeleteEvent(ctx context.Context, req *connect.Request[pmsv1.EntityRef]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, wsID, id, err := issueRef(ctx, req.Msg.WorkspaceId, req.Msg.Id)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.DeleteEvent(ctx, actor, wsID, id); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
+}
+
+type timeHandler struct {
+	pmsv1connect.UnimplementedTimeServiceHandler
+	svc *timetracking.Service
+}
+
+func (h *timeHandler) StartTimer(ctx context.Context, req *connect.Request[pmsv1.StartTimerRequest]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wsID, err := uuid.Parse(req.Msg.WorkspaceId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid workspace_id"))
+	}
+	id, err := parseOrNew(req.Msg.Id)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if err := h.svc.StartTimer(ctx, actor, wsID, id, optUUID(req.Msg.IssueId), req.Msg.Description); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
+}
+
+func (h *timeHandler) StopTimer(ctx context.Context, req *connect.Request[pmsv1.EntityRef]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wsID, err := uuid.Parse(req.Msg.WorkspaceId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid workspace_id"))
+	}
+	if err := h.svc.StopTimer(ctx, actor, wsID); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{}), nil
+}
+
+func (h *timeHandler) AddEntry(ctx context.Context, req *connect.Request[pmsv1.AddEntryRequest]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wsID, err := uuid.Parse(req.Msg.WorkspaceId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid workspace_id"))
+	}
+	id, err := parseOrNew(req.Msg.Id)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	st, en := parseTS(req.Msg.StartedAt), parseTS(req.Msg.EndedAt)
+	if st.IsZero() || en.IsZero() {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("started_at and ended_at required"))
+	}
+	if err := h.svc.AddEntry(ctx, actor, wsID, id, optUUID(req.Msg.IssueId), req.Msg.Description, st, en); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
+}
+
+func (h *timeHandler) Report(ctx context.Context, req *connect.Request[pmsv1.ReportRequest]) (*connect.Response[pmsv1.ReportResponse], error) {
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wsID, err := uuid.Parse(req.Msg.WorkspaceId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid workspace_id"))
+	}
+	from, to := parseTS(req.Msg.From), parseTS(req.Msg.To)
+	if from.IsZero() || to.IsZero() {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("from and to required"))
+	}
+	rows, total, err := h.svc.Report(ctx, actor, wsID, from, to, req.Msg.GroupBy, optUUID(req.Msg.IssueId), optUUID(req.Msg.UserId))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := make([]*pmsv1.ReportRow, len(rows))
+	for i, r := range rows {
+		out[i] = &pmsv1.ReportRow{Key: r.Key, Minutes: r.Minutes, Count: r.Count}
+	}
+	return connect.NewResponse(&pmsv1.ReportResponse{Rows: out, TotalMinutes: total}), nil
+}
+
+func (h *timeHandler) DeleteEntry(ctx context.Context, req *connect.Request[pmsv1.EntityRef]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, wsID, id, err := issueRef(ctx, req.Msg.WorkspaceId, req.Msg.Id)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.DeleteEntry(ctx, actor, wsID, id); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
 }
 
 type attachmentHandler struct {

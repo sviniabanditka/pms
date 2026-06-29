@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/common.proto";
+
+// Учёт времени: таймер (start/stop) + ручные записи.
+service TimeService {
+  rpc StartTimer(StartTimerRequest) returns (CommandResult);
+  rpc StopTimer(EntityRef) returns (CommandResult);     // id игнорируется (стопаем бегущий юзера)
+  rpc AddEntry(AddEntryRequest) returns (CommandResult);
+  rpc DeleteEntry(EntityRef) returns (CommandResult);
+  rpc Report(ReportRequest) returns (ReportResponse);   // агрегаты по воркспейсу
+}
+
+message ReportRequest {
+  string workspace_id = 1;
+  string from = 2;        // ISO date/datetime (включительно)
+  string to = 3;          // ISO (исключительно)
+  string group_by = 4;    // user | issue | day
+  string issue_id = 5;    // опц. фильтр
+  string user_id = 6;     // опц. фильтр
+}
+
+message ReportRow {
+  string key = 1;         // userId | issueId | 'YYYY-MM-DD'
+  int64 minutes = 2;
+  int64 count = 3;
+}
+
+message ReportResponse {
+  repeated ReportRow rows = 1;
+  int64 total_minutes = 2;
+}
+
+message StartTimerRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string issue_id = 3;     // опц.
+  string description = 4;
+}
+
+message AddEntryRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string issue_id = 3;     // опц.
+  string description = 4;
+  string started_at = 5;   // ISO
+  string ended_at = 6;     // ISO
+}

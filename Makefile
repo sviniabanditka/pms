@@ -1,4 +1,4 @@
-.PHONY: up down logs migrate run test proto s3-init
+.PHONY: up down logs migrate run test test-integration proto s3-init
 
 # Кодген proto → Go (backend/gen). Требует buf + protoc-gen-go + protoc-gen-connect-go на PATH.
 proto:
@@ -29,6 +29,10 @@ run:
 
 test:
 	cd backend && go test ./...
+
+# Интеграционные тесты (RLS и т.п.) — поднимают Postgres через testcontainers (нужен Docker).
+test-integration:
+	cd backend && go test -tags=integration ./...
 
 # Полный локальный старт: инфра → ожидание готовности → миграции → сервер.
 dev: up

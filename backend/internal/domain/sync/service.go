@@ -255,6 +255,19 @@ func (s *Service) Bootstrap(ctx context.Context, actor, wsID uuid.UUID) ([]Chunk
 		}
 		chunks = append(chunks, Chunk{EntityType: "meeting_participant", Entities: jarr(mtps)})
 
+		var cevs []models.CalendarEvent
+		if err := tx.NewSelect().Model(&cevs).Where("deleted_at IS NULL").Scan(ctx); err != nil {
+			return err
+		}
+		chunks = append(chunks, Chunk{EntityType: "calendar_event", Entities: jarr(cevs)})
+
+		// записи учёта времени — только свои
+		var tes []models.TimeEntry
+		if err := tx.NewSelect().Model(&tes).Where("user_id = ?", actor).Where("deleted_at IS NULL").Scan(ctx); err != nil {
+			return err
+		}
+		chunks = append(chunks, Chunk{EntityType: "time_entry", Entities: jarr(tes)})
+
 		var atts []models.Attachment
 		if err := tx.NewSelect().Model(&atts).Where("deleted_at IS NULL").Scan(ctx); err != nil {
 			return err

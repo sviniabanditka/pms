@@ -23,6 +23,7 @@ message CreateMeetingRequest {
   string scheduled_at = 4;          // ISO datetime, опц.
   repeated string participant_ids = 5;
   string channel_id = 6;            // опц. — привязать к каналу
+  string ends_at = 7;               // ISO datetime, опц. (по умолчанию +30 мин)
 }
 
 message StartHuddleRequest {

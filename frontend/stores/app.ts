@@ -9,7 +9,7 @@ import { match, type FilterNode } from '~/lib/filter'
 
 type Entity = Record<string, any>
 
-const BUCKET: Record<string, 'workspaces' | 'teams' | 'states' | 'issues' | 'views' | 'relations' | 'projects' | 'cycles' | 'customFields' | 'customFieldValues' | 'dashboards' | 'dashboardWidgets' | 'members' | 'notifications' | 'documents' | 'channels' | 'channelMembers' | 'users' | 'labels' | 'issueLabels' | 'invitations' | 'milestones' | 'meetings' | 'meetingParticipants' | 'attachments' | 'channelUnread' | 'cycleSnapshots'> = {
+const BUCKET: Record<string, 'workspaces' | 'teams' | 'states' | 'issues' | 'views' | 'relations' | 'projects' | 'cycles' | 'customFields' | 'customFieldValues' | 'dashboards' | 'dashboardWidgets' | 'members' | 'notifications' | 'documents' | 'channels' | 'channelMembers' | 'users' | 'labels' | 'issueLabels' | 'invitations' | 'milestones' | 'meetings' | 'meetingParticipants' | 'attachments' | 'channelUnread' | 'cycleSnapshots' | 'calendarEvents' | 'timeEntries'> = {
   workspace: 'workspaces',
   team: 'teams',
   workflow_state: 'states',
@@ -33,6 +33,8 @@ const BUCKET: Record<string, 'workspaces' | 'teams' | 'states' | 'issues' | 'vie
   milestone: 'milestones',
   meeting: 'meetings',
   meeting_participant: 'meetingParticipants',
+  calendar_event: 'calendarEvents',
+  time_entry: 'timeEntries',
   attachment: 'attachments',
   channel_unread: 'channelUnread',
   cycle_snapshot: 'cycleSnapshots',
@@ -44,7 +46,7 @@ const FULL_BUCKETS = new Set([
   'issue', 'team', 'workflow_state', 'label', 'issue_label', 'issue_relation', 'cycle',
   'view', 'custom_field', 'custom_field_value', 'dashboard', 'dashboard_widget',
   'document', 'channel', 'channel_member', 'workspace_member', 'user', 'invitation', 'milestone',
-  'meeting', 'meeting_participant', 'attachment', 'channel_unread', 'cycle_snapshot',
+  'meeting', 'meeting_participant', 'calendar_event', 'time_entry', 'attachment', 'channel_unread', 'cycle_snapshot',
 ])
 
 // Метки направления связи (прямое / зеркальное).
@@ -87,6 +89,8 @@ export const useAppStore = defineStore('app', {
     milestones: {} as Record<string, Entity>,
     meetings: {} as Record<string, Entity>,
     meetingParticipants: {} as Record<string, Entity>,
+    calendarEvents: {} as Record<string, Entity>,
+    timeEntries: {} as Record<string, Entity>,
     attachments: {} as Record<string, Entity>,
     channelUnread: {} as Record<string, Entity>, // channelId -> { count, lastReadAt }
     cycleSnapshots: {} as Record<string, Entity>, // "cycleId:day" -> snapshot
@@ -309,6 +313,18 @@ export const useAppStore = defineStore('app', {
     // --- Meetings ---
     scheduledMeetings: (s) => Object.values(s.meetings).filter((m) => !m.deletedAt && m.status === 'scheduled')
       .sort((a, b) => String(a.scheduledAt || '9999').localeCompare(String(b.scheduledAt || '9999'))),
+    // предстоящие: без даты или дата в будущем
+    upcomingMeetings: (s) => {
+      const now = Date.now()
+      return Object.values(s.meetings).filter((m) => !m.deletedAt && m.status === 'scheduled' && (!m.scheduledAt || new Date(m.scheduledAt).getTime() >= now))
+        .sort((a, b) => String(a.scheduledAt || '9999').localeCompare(String(b.scheduledAt || '9999')))
+    },
+    // прошедшие: дата в прошлом (звонок завершён, но встреча остаётся в истории)
+    pastMeetings: (s) => {
+      const now = Date.now()
+      return Object.values(s.meetings).filter((m) => !m.deletedAt && m.status === 'scheduled' && m.scheduledAt && new Date(m.scheduledAt).getTime() < now)
+        .sort((a, b) => String(b.scheduledAt || '').localeCompare(String(a.scheduledAt || '')))
+    },
     liveMeetings: (s) => Object.values(s.meetings).filter((m) => !m.deletedAt && m.status === 'live'),
     meetingById: (s) => (id: string) => s.meetings[id],
     meetingParts: (s) => (meetingId: string) => Object.values(s.meetingParticipants).filter((p) => p.meetingId === meetingId),
@@ -316,6 +332,21 @@ export const useAppStore = defineStore('app', {
       Object.values(s.meetingParticipants).filter((p) => p.meetingId === meetingId && p.state === 'joined'),
     liveHuddleForChannel: (s) => (channelId: string) =>
       Object.values(s.meetings).find((m) => m.channelId === channelId && m.kind === 'huddle' && m.status === 'live' && !m.deletedAt),
+    // --- Calendar ---
+    calendarEventsList: (s) => Object.values(s.calendarEvents).filter((e) => !e.deletedAt),
+    // --- Time tracking ---
+    timeEntriesForIssue: (s) => (issueId: string) => Object.values(s.timeEntries)
+      .filter((e) => !e.deletedAt && e.issueId === issueId)
+      .sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt))),
+    runningTimer: (s) => Object.values(s.timeEntries).find((e) => !e.deletedAt && !e.endedAt),
+    // суммарные минуты по задаче (бегущая запись считается до now)
+    issueTrackedMin: (s) => (issueId: string) => {
+      const now = Date.now()
+      return Object.values(s.timeEntries).filter((e) => !e.deletedAt && e.issueId === issueId).reduce((acc, e) => {
+        const end = e.endedAt ? new Date(e.endedAt).getTime() : now
+        return acc + Math.max(0, Math.round((end - new Date(e.startedAt).getTime()) / 60000))
+      }, 0)
+    },
     // --- Burndown ---
     cycleBurndown: (s) => (cycleId: string) => {
       const snaps = Object.values(s.cycleSnapshots).filter((x: any) => x.cycleId === cycleId)
@@ -963,9 +994,9 @@ export const useAppStore = defineStore('app', {
     },
 
     // --- Meetings ---
-    async createMeeting(title: string, scheduledAt: string, participantIds: string[], channelId = '') {
+    async createMeeting(title: string, scheduledAt: string, endsAt: string, participantIds: string[], channelId = '') {
       const { meetings } = useClients()
-      const res = await meetings.createMeeting({ workspaceId: this.activeWorkspaceId, title, scheduledAt, participantIds, channelId })
+      const res = await meetings.createMeeting({ workspaceId: this.activeWorkspaceId, title, scheduledAt, endsAt, participantIds, channelId })
       await this.bootstrap(this.activeWorkspaceId)
       return res.entityId
     },
@@ -987,6 +1018,52 @@ export const useAppStore = defineStore('app', {
     async endMeeting(meetingId: string) {
       const { meetings } = useClients()
       await meetings.endMeeting({ workspaceId: this.activeWorkspaceId, id: meetingId })
+    },
+
+    // --- Calendar ---
+    async createCalendarEvent(p: { title: string; description?: string; kind?: string; startsAt: string; endsAt: string; allDay?: boolean; recurrence?: string; recurrenceUntil?: string }) {
+      const { calendar } = useClients()
+      const res = await calendar.createEvent({ workspaceId: this.activeWorkspaceId, title: p.title, description: p.description || '', kind: p.kind || 'event', startsAt: p.startsAt, endsAt: p.endsAt, allDay: !!p.allDay, recurrence: p.recurrence || 'none', recurrenceUntil: p.recurrenceUntil || '' })
+      return res.entityId
+    },
+    async updateCalendarEvent(id: string, p: { title: string; description?: string; kind?: string; startsAt: string; endsAt: string; allDay?: boolean; recurrence?: string; recurrenceUntil?: string }) {
+      const { calendar } = useClients()
+      await calendar.updateEvent({ workspaceId: this.activeWorkspaceId, id, title: p.title, description: p.description || '', kind: p.kind || 'event', startsAt: p.startsAt, endsAt: p.endsAt, allDay: !!p.allDay, recurrence: p.recurrence || 'none', recurrenceUntil: p.recurrenceUntil || '' })
+    },
+    async deleteCalendarEvent(id: string) {
+      const { calendar } = useClients()
+      await calendar.deleteEvent({ workspaceId: this.activeWorkspaceId, id })
+    },
+    // --- Time tracking ---
+    async startTimer(issueId = '', description = '') {
+      const { time } = useClients()
+      await time.startTimer({ workspaceId: this.activeWorkspaceId, issueId, description })
+    },
+    async stopTimer() {
+      const { time } = useClients()
+      await time.stopTimer({ workspaceId: this.activeWorkspaceId })
+      await this.bootstrap(this.activeWorkspaceId) // ended_at проставлен на нескольких — перечитать
+    },
+    async addTimeEntry(issueId: string, description: string, startedAt: string, endedAt: string) {
+      const { time } = useClients()
+      await time.addEntry({ workspaceId: this.activeWorkspaceId, issueId, description, startedAt, endedAt })
+    },
+    async deleteTimeEntry(id: string) {
+      const { time } = useClients()
+      await time.deleteEntry({ workspaceId: this.activeWorkspaceId, id })
+    },
+    async timeReport(p: { from: string; to: string; groupBy: string; issueId?: string; userId?: string }) {
+      const { time } = useClients()
+      const r = await time.report({ workspaceId: this.activeWorkspaceId, from: p.from, to: p.to, groupBy: p.groupBy, issueId: p.issueId || '', userId: p.userId || '' })
+      return { rows: r.rows.map((x: any) => ({ key: x.key, minutes: Number(x.minutes), count: Number(x.count) })), total: Number(r.totalMinutes) }
+    },
+    // iCal-фид: вернуть полный URL подписки (создаёт токен при первом вызове).
+    async icalFeedUrl(rotate = false): Promise<string> {
+      const base = useRuntimeConfig().public.apiBase as string
+      const res = await fetch(`${base}/ical/token${rotate ? '/rotate' : ''}`, { method: rotate ? 'POST' : 'GET', credentials: 'include' })
+      if (res.status === 401) { handleUnauthorized(); return '' }
+      const { url } = await res.json()
+      return `${base}${url}`
     },
 
     // --- Attachments / files ---
