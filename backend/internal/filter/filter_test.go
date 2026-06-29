@@ -27,7 +27,7 @@ func TestCompile(t *testing.T) {
 		{"in empty → FALSE", pred("priority", "in", []int{}).ptr(), "FALSE", 0},
 		{"nin empty → TRUE", pred("priority", "nin", []int{}).ptr(), "TRUE", 0},
 		{"nin null-safe", pred("cycle", "nin", []string{"c1"}).ptr(), "(cycle_id IS NULL OR cycle_id::text NOT IN (?))", 1},
-		{"contains text", pred("title", "contains", "bug").ptr(), "title::text ILIKE ?", 1},
+		{"contains text", pred("title", "contains", "bug").ptr(), "title::text ILIKE ? ESCAPE '\\'", 1},
 		{"isSet text", pred("title", "isSet", nil).ptr(), "(title IS NOT NULL AND title <> '')", 0},
 		{"isNotSet ref", pred("assignee", "isNotSet", nil).ptr(), "assignee_id IS NULL", 0},
 		{"and", &Node{Type: "and", Children: []Node{pred("status", "eq", "s1"), pred("priority", "eq", 2)}},

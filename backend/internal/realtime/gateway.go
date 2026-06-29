@@ -24,12 +24,32 @@ type clientMsg struct {
 // Gateway — WS-точка realtime: подписки + поток дельт из Redis pub/sub.
 // Аутентификация — middleware (RequireAuth) выше по стеку.
 type Gateway struct {
-	rdb *redis.Client
-	bdb *bun.DB
+	rdb     *redis.Client
+	bdb     *bun.DB
+	origins []string // host-паттерны для Origin-проверки; пусто = dev (любой origin)
 }
 
-func NewGateway(rdb *redis.Client, bdb *bun.DB) *Gateway {
-	return &Gateway{rdb: rdb, bdb: bdb}
+func NewGateway(rdb *redis.Client, bdb *bun.DB, allowedOrigins []string) *Gateway {
+	return &Gateway{rdb: rdb, bdb: bdb, origins: originHosts(allowedOrigins)}
+}
+
+// originHosts превращает список origin'ов (https://app.example.com) в host-паттерны
+// для websocket.AcceptOptions.OriginPatterns (app.example.com).
+func originHosts(origins []string) []string {
+	out := make([]string, 0, len(origins))
+	for _, o := range origins {
+		h := o
+		if i := strings.Index(h, "://"); i >= 0 {
+			h = h[i+3:]
+		}
+		if i := strings.IndexByte(h, '/'); i >= 0 {
+			h = h[:i]
+		}
+		if h != "" {
+			out = append(out, h)
+		}
+	}
+	return out
 }
 
 // Handle обслуживает одно WS-соединение (goroutine на соединение, §realtime).
@@ -40,8 +60,15 @@ func (g *Gateway) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// InsecureSkipVerify: dev — без проверки Origin; в проде задать OriginPatterns.
-	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+	// Прод (origins заданы): проверяем Origin против allowlist (защита от cross-site WS hijacking).
+	// Dev (пусто): origin не проверяем — клиент с любого порта localhost.
+	opts := &websocket.AcceptOptions{}
+	if len(g.origins) > 0 {
+		opts.OriginPatterns = g.origins
+	} else {
+		opts.InsecureSkipVerify = true
+	}
+	c, err := websocket.Accept(w, r, opts)
 	if err != nil {
 		return
 	}
@@ -88,15 +115,17 @@ func (g *Gateway) forward(ctx context.Context, c *websocket.Conn, pubsub *redis.
 	ticker := time.NewTicker(80 * time.Millisecond)
 	defer ticker.Stop()
 	buf := map[string][]byte{}
-	flush := func() {
+	// flush возвращает ошибку записи, чтобы вызывающий вышел из цикла (не крутиться на мёртвом соединении).
+	flush := func() error {
 		for _, p := range buf {
 			if err := c.Write(ctx, websocket.MessageText, p); err != nil {
-				return
+				return err
 			}
 		}
 		if len(buf) > 0 {
 			buf = map[string][]byte{}
 		}
+		return nil
 	}
 	for {
 		select {
@@ -109,11 +138,13 @@ func (g *Gateway) forward(ctx context.Context, c *websocket.Conn, pubsub *redis.
 			var sm serverMsg
 			if json.Unmarshal([]byte(msg.Payload), &sm) == nil && sm.Type == "delta" && sm.Delta != nil {
 				buf[sm.Delta.EntityID] = []byte(msg.Payload) // последняя по entity побеждает в окне
-			} else {
-				_ = c.Write(ctx, websocket.MessageText, []byte(msg.Payload)) // presence/прочее — сразу
+			} else if err := c.Write(ctx, websocket.MessageText, []byte(msg.Payload)); err != nil {
+				return // presence/прочее — сразу; соединение мертво → выходим
 			}
 		case <-ticker.C:
-			flush()
+			if flush() != nil {
+				return
+			}
 		}
 	}
 }

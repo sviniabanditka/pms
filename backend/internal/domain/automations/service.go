@@ -220,10 +220,14 @@ func applyAction(ctx context.Context, tx bun.Tx, wsID uuid.UUID, iss *models.Iss
 		}
 		q := tx.NewUpdate().Model((*models.Issue)(nil)).Where("id = ?", iss.ID).
 			Set("state_id = ?", sid).Set("updated_at = now()").Set("version = version + 1")
-		if cat == "completed" {
-			q.Set("completed_at = COALESCE(completed_at, now())")
-		} else if cat == "started" {
-			q.Set("started_at = COALESCE(started_at, now())")
+		// зеркалит issues.stateTimestamps: started→clear completed; completed/canceled→set both; backlog/unstarted→clear оба
+		switch cat {
+		case "started":
+			q.Set("started_at = COALESCE(started_at, now())").Set("completed_at = NULL")
+		case "completed", "canceled":
+			q.Set("started_at = COALESCE(started_at, now())").Set("completed_at = COALESCE(completed_at, now())")
+		default: // backlog, unstarted
+			q.Set("started_at = NULL").Set("completed_at = NULL")
 		}
 		if _, err := q.Exec(ctx); err != nil {
 			return uuid.Nil, err

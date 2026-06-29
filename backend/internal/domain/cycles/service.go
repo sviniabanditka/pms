@@ -28,6 +28,10 @@ func (s *Service) CreateCycle(ctx context.Context, actor, wsID, teamID, id uuid.
 	}
 	now := time.Now().UTC()
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		// сериализуем нумерацию по команде на время транзакции (MAX+1 иначе гонка → дубли number)
+		if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(hashtext(?))", "cycle:"+teamID.String()); err != nil {
+			return err
+		}
 		var number int
 		if err := tx.NewSelect().Model((*models.Cycle)(nil)).
 			ColumnExpr("COALESCE(MAX(number), 0) + 1").Where("team_id = ?", teamID).Scan(ctx, &number); err != nil {
@@ -54,6 +58,23 @@ func (s *Service) CreateCycle(ctx context.Context, actor, wsID, teamID, id uuid.
 
 func (s *Service) UpdateCycle(ctx context.Context, actor, wsID, id uuid.UUID, name *string, startsOn, endsOn *time.Time) (int64, error) {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		// при частичном апдейте дат проверяем эффективный интервал (старт не позже конца)
+		if startsOn != nil || endsOn != nil {
+			var cur models.Cycle
+			if err := tx.NewSelect().Model(&cur).Column("starts_on", "ends_on").Where("id = ?", id).Scan(ctx); err != nil {
+				return err
+			}
+			s2, e2 := cur.StartsOn, cur.EndsOn
+			if startsOn != nil {
+				s2 = *startsOn
+			}
+			if endsOn != nil {
+				e2 = *endsOn
+			}
+			if e2.Before(s2) {
+				return ErrDates
+			}
+		}
 		q := tx.NewUpdate().Model((*models.Cycle)(nil)).Where("id = ?", id).
 			Set("updated_at = now()").Set("version = version + 1")
 		if name != nil {

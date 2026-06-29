@@ -2,6 +2,8 @@ package attachments
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,6 +13,8 @@ import (
 	"github.com/pms/backend/internal/storage"
 	"github.com/uptrace/bun"
 )
+
+var ErrForbidden = errors.New("not a workspace member")
 
 type Service struct {
 	db    *bun.DB
@@ -62,8 +66,38 @@ func (s *Service) Delete(ctx context.Context, actor, wsID, id uuid.UUID) error {
 }
 
 // URL — временная presigned-ссылка на объект (для <img>/<a>/скачивания).
-func (s *Service) URL(ctx context.Context, key string) (string, error) {
+// Ключи имеют вид ws/<wsID>/...; выдаём ссылку только члену этого воркспейса (IDOR-защита).
+func (s *Service) URL(ctx context.Context, actor uuid.UUID, key string) (string, error) {
+	wsID, ok := workspaceFromKey(key)
+	if !ok {
+		return "", ErrForbidden
+	}
+	member := false
+	if err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		ex, err := tx.NewSelect().Model((*models.WorkspaceMember)(nil)).
+			Where("workspace_id = ?", wsID).Where("user_id = ?", actor).Exists(ctx)
+		member = ex
+		return err
+	}); err != nil {
+		return "", err
+	}
+	if !member {
+		return "", ErrForbidden
+	}
 	return s.store.PresignGet(ctx, key, time.Hour)
+}
+
+// workspaceFromKey извлекает wsID из ключа объекта ws/<wsID>/<obj>/<name>.
+func workspaceFromKey(key string) (uuid.UUID, bool) {
+	parts := strings.SplitN(key, "/", 3)
+	if len(parts) < 2 || parts[0] != "ws" {
+		return uuid.Nil, false
+	}
+	id, err := uuid.Parse(parts[1])
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return id, true
 }
 
 // SetUserAvatar — ключ объекта аватарки текущего пользователя (users без RLS).

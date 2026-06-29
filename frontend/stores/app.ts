@@ -55,7 +55,7 @@ const REL_FWD: Record<string, string> = { blocks: 'blocks', blocked_by: 'blocked
 const REL_INV: Record<string, string> = { blocks: 'blocked by', blocked_by: 'blocks', related: 'related', duplicate: 'duplicate of', duplicate_of: 'duplicate' }
 
 const IDB_KEY = 'pms-store'
-let ws: WebSocket | null = null
+let ws: { close: () => void } | null = null
 let refreshTimer: any = null
 
 export const useAppStore = defineStore('app', {
@@ -141,7 +141,17 @@ export const useAppStore = defineStore('app', {
     issueGroups: (s) => (teamId: string) => {
       const PL = ['None', 'Low', 'Med', 'High', 'Urgent']
       const lf = s.labelFilter
-      const byLabel = (x: any) => { if (!lf.length) return true; const ids = Object.values(s.issueLabels).filter((il) => il.issueId === x.id).map((il) => il.labelId); return lf.some((id) => ids.includes(id)) }
+      // индексируем метки по issueId один раз (иначе O(issues×labels) при каждом рендере)
+      let labelsByIssue: Map<string, Set<string>> | null = null
+      if (lf.length) {
+        labelsByIssue = new Map()
+        for (const il of Object.values(s.issueLabels) as any[]) {
+          let set = labelsByIssue.get(il.issueId)
+          if (!set) { set = new Set(); labelsByIssue.set(il.issueId, set) }
+          set.add(il.labelId)
+        }
+      }
+      const byLabel = (x: any) => { if (!lf.length) return true; const ids = labelsByIssue!.get(x.id); return !!ids && lf.some((id) => ids!.has(id)) }
       const all = Object.values(s.issues)
         .filter((x) => x.teamId === teamId && !x.archivedAt && match(s.activeFilter, x) && byLabel(x))
         .sort((a, b) => String(a.boardPosition || '').localeCompare(String(b.boardPosition || '')))
@@ -562,6 +572,7 @@ export const useAppStore = defineStore('app', {
       this.issues[res.entityId] = {
         id: res.entityId, teamId, title, stateId, priority: 0, identifier: '…', archivedAt: null,
       }
+      return res.entityId
     },
     async setIssueState(id: string, stateId: string) {
       const { issues } = useClients()

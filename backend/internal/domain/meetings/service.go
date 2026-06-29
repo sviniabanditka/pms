@@ -14,7 +14,10 @@ import (
 	"github.com/uptrace/bun"
 )
 
-var ErrNotFound = errors.New("meeting not found")
+var (
+	ErrNotFound  = errors.New("meeting not found")
+	ErrForbidden = errors.New("not meeting host")
+)
 
 // LiveKit — реквизиты SFU для подписи клиентских токенов.
 type LiveKit struct {
@@ -215,6 +218,15 @@ func (s *Service) LeaveMeeting(ctx context.Context, actor, wsID, meetingID uuid.
 func (s *Service) EndMeeting(ctx context.Context, actor, wsID, meetingID uuid.UUID) error {
 	now := time.Now().UTC()
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		// только создатель митинга может завершить принудительно
+		var createdBy uuid.UUID
+		if err := tx.NewSelect().Model((*models.Meeting)(nil)).Column("created_by").
+			Where("id = ?", meetingID).Scan(ctx, &createdBy); err != nil {
+			return err
+		}
+		if createdBy != actor {
+			return ErrForbidden
+		}
 		_, err := tx.NewUpdate().Model((*models.Meeting)(nil)).
 			Set("status = 'ended'").Set("ended_at = ?", now).Set("updated_at = ?", now).
 			Where("id = ?", meetingID).Exec(ctx)

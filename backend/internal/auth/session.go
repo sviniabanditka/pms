@@ -93,8 +93,8 @@ func (s *SessionStore) CheckLoginRate(ctx context.Context, key string, limit int
 	if err != nil {
 		return false, err
 	}
-	if n == 1 {
-		s.rdb.Expire(ctx, k, window)
-	}
+	// ExpireNX выставляет TTL только если его ещё нет → атомарно и самовосстанавливается,
+	// если процесс упал между Incr и Expire (иначе ключ завис бы навсегда).
+	s.rdb.ExpireNX(ctx, k, window)
 	return n <= int64(limit), nil
 }

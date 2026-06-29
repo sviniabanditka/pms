@@ -74,13 +74,19 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 	// Аплоад идёт через бэкенд → нет CORS-префлайта на Garage; download — presigned GET (RPC GetAttachmentURL).
 	r.With(auth.RequireAuth).Post("/files/upload", func(w http.ResponseWriter, req *http.Request) {
 		uid, _ := auth.UserID(req.Context())
-		if err := req.ParseMultipartForm(64 << 20); err != nil { // до 64MB
+		req.Body = http.MaxBytesReader(w, req.Body, 64<<20) // жёсткий потолок 64MB (не только in-memory буфер)
+		if err := req.ParseMultipartForm(64 << 20); err != nil {
 			http.Error(w, "bad form", http.StatusBadRequest)
 			return
 		}
 		wsID, err := uuid.Parse(req.FormValue("workspace_id"))
 		if err != nil {
 			http.Error(w, "invalid workspace_id", http.StatusBadRequest)
+			return
+		}
+		// загружать в воркспейс может только его участник
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 		file, hdr, err := req.FormFile("file")
@@ -100,7 +106,6 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			http.Error(w, "upload failed: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		_ = uid
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"key": key, "filename": hdr.Filename, "contentType": ct, "size": hdr.Size,
@@ -121,12 +126,21 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			return
 		}
 		defer body.Close()
-		w.Header().Set("Content-Type", ct)
+		// Stored-XSS защита: запретить браузеру угадывать тип и рендерить активный контент
+		// (HTML/SVG) инлайн в origin приложения. Безопасные типы (картинки/видео/pdf) — инлайн,
+		// всё остальное отдаём как attachment + octet-stream.
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		forceDownload := req.URL.Query().Get("dl") != "" || !safeInline(ct)
+		if forceDownload {
+			w.Header().Set("Content-Type", "application/octet-stream")
+		} else {
+			w.Header().Set("Content-Type", ct)
+		}
 		if sz > 0 {
 			w.Header().Set("Content-Length", strconv.FormatInt(sz, 10))
 		}
 		w.Header().Set("Cache-Control", "private, max-age=3600")
-		if req.URL.Query().Get("dl") != "" {
+		if forceDownload {
 			name := path.Base(key)
 			w.Header().Set("Content-Disposition", "attachment; filename=\""+name+"\"")
 		}
@@ -172,6 +186,22 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 	rpc.Mount(r, svcs)
 
 	return r
+}
+
+// safeInline — типы, которые браузер может безопасно показать инлайн (без активного скрипта).
+// image/svg+xml исключён намеренно: SVG может нести <script>.
+func safeInline(ct string) bool {
+	ct = strings.ToLower(strings.TrimSpace(ct))
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = strings.TrimSpace(ct[:i])
+	}
+	switch ct {
+	case "image/svg+xml":
+		return false
+	case "application/pdf", "text/plain":
+		return true
+	}
+	return strings.HasPrefix(ct, "image/") || strings.HasPrefix(ct, "video/") || strings.HasPrefix(ct, "audio/")
 }
 
 func sanitizeName(name string) string {

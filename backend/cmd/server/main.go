@@ -71,7 +71,7 @@ func main() {
 	authSvc := auth.NewService(bdb, sessions, cfg.SecureCookies)
 
 	pub := realtime.NewPublisher(rdb)
-	gw := realtime.NewGateway(rdb, bdb)
+	gw := realtime.NewGateway(rdb, bdb, cfg.AllowedOrigins)
 	store := storage.New(cfg)
 
 	// Фоновые задачи (River): пул на роли-владельце (postgres) для DDL/DML очереди.

@@ -56,6 +56,19 @@ func (s *Service) isMember(ctx context.Context, tx bun.Tx, channelID, userID uui
 		Where("channel_id = ?", channelID).Where("user_id = ?", userID).Exists(ctx)
 }
 
+// canAccess — право читать/писать в канал: публичный канал открыт всем участникам
+// воркспейса (RLS), приватный канал и DM требуют членства.
+func (s *Service) canAccess(ctx context.Context, tx bun.Tx, channelID, userID uuid.UUID) (bool, error) {
+	var ch models.Channel
+	if err := tx.NewSelect().Model(&ch).Column("kind", "private").Where("id = ?", channelID).Scan(ctx); err != nil {
+		return false, err
+	}
+	if ch.Kind == "channel" && !ch.Private {
+		return true, nil
+	}
+	return s.isMember(ctx, tx, channelID, userID)
+}
+
 // AddChannelMember — добавить участника (только член канала может). Идемпотентно.
 func (s *Service) AddChannelMember(ctx context.Context, actor, wsID, channelID, userID uuid.UUID) error {
 	now := time.Now().UTC()
@@ -159,6 +172,13 @@ func (s *Service) CreateDM(ctx context.Context, actor, wsID, id, other uuid.UUID
 func (s *Service) SendMessage(ctx context.Context, actor, wsID, id, channelID uuid.UUID, body string, parent *uuid.UUID) error {
 	// пустое тело допускается, если сообщение несёт вложения (клиент шлёт body="" + attachments)
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		ok, err := s.canAccess(ctx, tx, channelID, actor)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrForbidden
+		}
 		m := &models.Message{ID: id, WorkspaceID: wsID, ChannelID: channelID, AuthorID: actor, ParentID: parent, Body: body, CreatedAt: time.Now().UTC()}
 		if _, err := tx.NewInsert().Model(m).Exec(ctx); err != nil {
 			return err
@@ -292,6 +312,13 @@ func (s *Service) GetMessages(ctx context.Context, actor, wsID, channelID uuid.U
 	var out []byte
 	hasMore := false
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		ok, err := s.canAccess(ctx, tx, channelID, actor)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrForbidden
+		}
 		q := tx.NewSelect().Model(&msgs).Where("channel_id = ?", channelID)
 		if parent != nil {
 			q.Where("parent_id = ?", *parent)

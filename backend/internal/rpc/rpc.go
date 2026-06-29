@@ -1509,6 +1509,9 @@ func mapErr(err error) error {
 	case errors.Is(err, syncsvc.ErrForbidden),
 		errors.Is(err, chats.ErrForbidden),
 		errors.Is(err, comments.ErrForbidden),
+		errors.Is(err, workspaces.ErrForbidden),
+		errors.Is(err, meetings.ErrForbidden),
+		errors.Is(err, attachments.ErrForbidden),
 		errors.Is(err, calendar.ErrNotOwner):
 		return connect.NewError(connect.CodePermissionDenied, err)
 	case errors.Is(err, teams.ErrStateInUse),
@@ -1893,10 +1896,11 @@ func (h *attachmentHandler) DeleteAttachment(ctx context.Context, req *connect.R
 }
 
 func (h *attachmentHandler) GetAttachmentURL(ctx context.Context, req *connect.Request[pmsv1.GetAttachmentURLRequest]) (*connect.Response[pmsv1.URLResponse], error) {
-	if _, err := requireActor(ctx); err != nil {
+	actor, err := requireActor(ctx)
+	if err != nil {
 		return nil, err
 	}
-	url, err := h.svc.URL(ctx, req.Msg.S3Key)
+	url, err := h.svc.URL(ctx, actor, req.Msg.S3Key)
 	if err != nil {
 		return nil, mapErr(err)
 	}

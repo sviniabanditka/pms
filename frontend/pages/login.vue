@@ -2,8 +2,8 @@
 import { useRuntimeConfig } from '#imports'
 import { setUser } from '~/lib/token'
 
-const email = ref('bob@example.com')
-const password = ref('supersecret')
+const email = ref('')
+const password = ref('')
 const mode = ref<'login' | 'register'>('login')
 const error = ref('')
 const busy = ref(false)

@@ -21,6 +21,7 @@ var (
 	ErrInvalidName = errors.New("name required")
 	ErrSlugTaken   = errors.New("slug already taken")
 	ErrEmail       = errors.New("email required")
+	ErrForbidden   = errors.New("insufficient workspace permissions")
 )
 
 var slugRe = regexp.MustCompile(`^[a-z0-9-]{2,40}$`)
@@ -35,6 +36,33 @@ type Service struct {
 
 func NewService(bdb *bun.DB, pub *realtime.Publisher, jobs *bun.DB) *Service {
 	return &Service{db: bdb, pub: pub, jobs: jobs}
+}
+
+// requireRole проверяет, что actor имеет одну из разрешённых ролей в воркспейсе.
+func requireRole(ctx context.Context, tx bun.Tx, wsID, actor uuid.UUID, roles ...string) error {
+	var role string
+	if err := tx.NewSelect().Model((*models.WorkspaceMember)(nil)).Column("role").
+		Where("workspace_id = ?", wsID).Where("user_id = ?", actor).Where("status = 'active'").Scan(ctx, &role); err != nil {
+		return ErrForbidden
+	}
+	for _, r := range roles {
+		if role == r {
+			return nil
+		}
+	}
+	return ErrForbidden
+}
+
+// IsMember — actor является активным участником воркспейса (для проверок вне RPC, напр. upload).
+func (s *Service) IsMember(ctx context.Context, wsID, actor uuid.UUID) (bool, error) {
+	var ok bool
+	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		ex, err := tx.NewSelect().Model((*models.WorkspaceMember)(nil)).
+			Where("workspace_id = ?", wsID).Where("user_id = ?", actor).Where("status = 'active'").Exists(ctx)
+		ok = ex
+		return err
+	})
+	return ok, err
 }
 
 // WorkspaceBrief — элемент списка «мои воркспейсы».
@@ -55,6 +83,9 @@ func (s *Service) InviteMember(ctx context.Context, actor, wsID, id uuid.UUID, e
 	}
 	now := time.Now().UTC()
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireRole(ctx, tx, wsID, actor, "owner", "admin"); err != nil {
+			return err
+		}
 		var u models.User
 		err := tx.NewSelect().Model(&u).Where("email = ?", email).Limit(1).Scan(ctx)
 		if err == nil && u.ID != uuid.Nil {
@@ -82,6 +113,9 @@ func (s *Service) InviteMember(ctx context.Context, actor, wsID, id uuid.UUID, e
 // UpdateMemberRole меняет роль участника.
 func (s *Service) UpdateMemberRole(ctx context.Context, actor, wsID, userID uuid.UUID, role string) error {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireRole(ctx, tx, wsID, actor, "owner", "admin"); err != nil {
+			return err
+		}
 		_, e := tx.NewUpdate().Model((*models.WorkspaceMember)(nil)).
 			Set("role = ?", role).Set("version = version + 1").
 			Where("workspace_id = ?", wsID).Where("user_id = ?", userID).Exec(ctx)
@@ -98,6 +132,9 @@ func (s *Service) UpdateMemberRole(ctx context.Context, actor, wsID, userID uuid
 // UpdateSettings — name и/или settings-jsonb воркспейса.
 func (s *Service) UpdateSettings(ctx context.Context, actor, wsID uuid.UUID, name *string, settings []byte) error {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireRole(ctx, tx, wsID, actor, "owner", "admin"); err != nil {
+			return err
+		}
 		q := tx.NewUpdate().Model((*models.Workspace)(nil)).Where("id = ?", wsID).
 			Set("updated_at = now()").Set("version = version + 1")
 		if name != nil && strings.TrimSpace(*name) != "" {
@@ -119,6 +156,12 @@ func (s *Service) UpdateSettings(ctx context.Context, actor, wsID uuid.UUID, nam
 func (s *Service) RemoveMember(ctx context.Context, actor, wsID, userID uuid.UUID) error {
 	var memberID uuid.UUID
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		// admin/owner может убрать любого; обычный участник — только себя (leave)
+		if actor != userID {
+			if err := requireRole(ctx, tx, wsID, actor, "owner", "admin"); err != nil {
+				return err
+			}
+		}
 		m := new(models.WorkspaceMember)
 		if err := tx.NewSelect().Model(m).Column("id").Where("workspace_id = ?", wsID).Where("user_id = ?", userID).Scan(ctx); err != nil {
 			return err
@@ -137,6 +180,9 @@ func (s *Service) RemoveMember(ctx context.Context, actor, wsID, userID uuid.UUI
 // DeleteWorkspace — мягкое удаление (помечает deleted_at). RLS защищает тенант.
 func (s *Service) DeleteWorkspace(ctx context.Context, actor, wsID uuid.UUID) error {
 	return db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireRole(ctx, tx, wsID, actor, "owner"); err != nil {
+			return err
+		}
 		_, e := tx.NewUpdate().Model((*models.Workspace)(nil)).
 			Set("deleted_at = now()").Set("updated_at = now()").Set("version = version + 1").
 			Where("id = ?", wsID).Exec(ctx)

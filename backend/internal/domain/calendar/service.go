@@ -174,18 +174,24 @@ func (s *Service) Feed(ctx context.Context, token string) (string, error) {
 	}
 
 	var evs []models.CalendarEvent
-	_ = s.jobs.NewSelect().Model(&evs).Where("user_id = ?", u.ID).Where("deleted_at IS NULL").Scan(ctx)
+	if err := s.jobs.NewSelect().Model(&evs).Where("user_id = ?", u.ID).Where("deleted_at IS NULL").Scan(ctx); err != nil {
+		return "", err
+	}
 
 	var iss []models.Issue
-	_ = s.jobs.NewSelect().Model(&iss).
+	if err := s.jobs.NewSelect().Model(&iss).
 		Where("assignee_id = ?", u.ID).Where("archived_at IS NULL").Where("deleted_at IS NULL").
-		Where("due_date IS NOT NULL OR scheduled_date IS NOT NULL").Scan(ctx)
+		Where("due_date IS NOT NULL OR scheduled_date IS NOT NULL").Scan(ctx); err != nil {
+		return "", err
+	}
 
 	var mts []models.Meeting
-	_ = s.jobs.NewSelect().Model(&mts).
+	if err := s.jobs.NewSelect().Model(&mts).
 		Join("JOIN meeting_participants mp ON mp.meeting_id = mt.id").
 		Where("mp.user_id = ?", u.ID).Where("mt.scheduled_at IS NOT NULL").
-		Where("mt.deleted_at IS NULL").Where("mt.status != 'ended'").Scan(ctx)
+		Where("mt.deleted_at IS NULL").Where("mt.status != 'ended'").Scan(ctx); err != nil {
+		return "", err
+	}
 
 	var b strings.Builder
 	b.WriteString("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//PMS//Calendar//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n")

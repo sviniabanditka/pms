@@ -110,8 +110,9 @@ func predicate(n *Node) (string, []any, error) {
 		v := scalar(n.Value)
 		return col + "::text IS DISTINCT FROM ?", []any{v}, nil
 	case "contains":
-		v := scalar(n.Value)
-		return col + "::text ILIKE ?", []any{"%" + toStr(v) + "%"}, nil
+		// экранируем ILIKE-метасимволы (% _ \), чтобы поиск 'test_case' не матчил 'testXcase'
+		v := ilikeEscape(toStr(scalar(n.Value)))
+		return col + "::text ILIKE ? ESCAPE '\\'", []any{"%" + v + "%"}, nil
 	case "in":
 		vals := list(n.Value)
 		if len(vals) == 0 {
@@ -128,6 +129,11 @@ func predicate(n *Node) (string, []any, error) {
 		return "TRUE", nil, nil
 	}
 }
+
+// ilikeEscape экранирует спецсимволы ILIKE (\ % _) для буквального поиска подстроки.
+var ilikeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
+func ilikeEscape(s string) string { return ilikeEscaper.Replace(s) }
 
 // scalar декодирует JSON-значение в строку (или nil для null) — колонки сравниваем как text.
 func scalar(raw json.RawMessage) any {
