@@ -24,7 +24,9 @@ async function submit() {
     if (!res.ok) { error.value = (await res.json()).error || 'failed'; return }
     const data = await res.json()
     setUser(data.id)
-    await navigateTo('/')
+    // вернуться на ?next (напр. /invite/<token>), иначе в приложение
+    const next = String(useRoute().query.next || '')
+    await navigateTo(next.startsWith('/') ? next : '/')
   } catch (e: any) {
     error.value = String(e)
   } finally {

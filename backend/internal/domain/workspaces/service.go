@@ -1,8 +1,8 @@
 package workspaces
 
 import (
-	"encoding/json"
 	"context"
+	"encoding/json"
 	"errors"
 	"regexp"
 	"strings"
@@ -17,11 +17,14 @@ import (
 )
 
 var (
-	ErrInvalidSlug = errors.New("slug must match ^[a-z0-9-]{2,40}$")
-	ErrInvalidName = errors.New("name required")
-	ErrSlugTaken   = errors.New("slug already taken")
-	ErrEmail       = errors.New("email required")
-	ErrForbidden   = errors.New("insufficient workspace permissions")
+	ErrInvalidSlug    = errors.New("slug must match ^[a-z0-9-]{2,40}$")
+	ErrInvalidName    = errors.New("name required")
+	ErrSlugTaken      = errors.New("slug already taken")
+	ErrEmail          = errors.New("email required")
+	ErrForbidden      = errors.New("insufficient workspace permissions")
+	ErrInviteNotFound = errors.New("invitation not found")
+	ErrInviteExpired  = errors.New("invitation expired")
+	ErrInviteEmail    = errors.New("invitation email mismatch")
 )
 
 var slugRe = regexp.MustCompile(`^[a-z0-9-]{2,40}$`)
@@ -72,16 +75,19 @@ type WorkspaceBrief struct {
 	Name string    `bun:"name" json:"name"`
 }
 
-// InviteMember: если юзер с таким email существует — добавляем участником сразу; иначе создаём приглашение.
-func (s *Service) InviteMember(ctx context.Context, actor, wsID, id uuid.UUID, email, role string) error {
+// InviteMember: существующий юзер → сразу участник (token=""); новый → invitation с токеном
+// (token возвращается пригласившему для invite-ссылки /invite/<token>).
+func (s *Service) InviteMember(ctx context.Context, actor, wsID, id uuid.UUID, email, role string) (string, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if email == "" {
-		return ErrEmail
+		return "", ErrEmail
 	}
 	if role == "" {
 		role = "member"
 	}
 	now := time.Now().UTC()
+	token := ""
+	existing := false
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
 		if err := requireRole(ctx, tx, wsID, actor, "owner", "admin"); err != nil {
 			return err
@@ -89,6 +95,7 @@ func (s *Service) InviteMember(ctx context.Context, actor, wsID, id uuid.UUID, e
 		var u models.User
 		err := tx.NewSelect().Model(&u).Where("email = ?", email).Limit(1).Scan(ctx)
 		if err == nil && u.ID != uuid.Nil {
+			existing = true
 			mid, _ := uuid.NewV7()
 			_, e := tx.NewInsert().Model(&models.WorkspaceMember{
 				ID: mid, WorkspaceID: wsID, UserID: u.ID, Role: role, Status: "active",
@@ -97,17 +104,64 @@ func (s *Service) InviteMember(ctx context.Context, actor, wsID, id uuid.UUID, e
 			return e
 		}
 		tok, _ := uuid.NewV7()
+		token = tok.String()
 		_, e := tx.NewInsert().Model(&models.Invitation{
-			ID: id, WorkspaceID: wsID, Email: email, Role: role, TokenHash: tok.String(),
+			ID: id, WorkspaceID: wsID, Email: email, Role: role, TokenHash: token,
 			InvitedBy: actor, ExpiresAt: now.Add(7 * 24 * time.Hour), CreatedAt: now, UpdatedAt: now,
 		}).Exec(ctx)
 		return e
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
-	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "workspace_member", EntityID: id.String(), Op: "create"})
-	return nil
+	if existing {
+		_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "workspace_member", EntityID: id.String(), Op: "create"})
+	} else {
+		_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "invitation", EntityID: id.String(), Op: "create"})
+	}
+	return token, nil
+}
+
+// AcceptInvitation: вошедший юзер принимает приглашение по токену. Токен = авторизация
+// (ищем cross-tenant через jobs/BYPASSRLS, т.к. acceptor ещё не член воркспейса).
+// Требуем совпадения email приглашения с email юзера. Возвращает wsID присоединённого воркспейса.
+func (s *Service) AcceptInvitation(ctx context.Context, actor uuid.UUID, token string) (uuid.UUID, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return uuid.Nil, ErrInviteNotFound
+	}
+	now := time.Now().UTC()
+
+	var u models.User
+	if err := s.jobs.NewSelect().Model(&u).Where("id = ?", actor).Limit(1).Scan(ctx); err != nil {
+		return uuid.Nil, err
+	}
+	var inv models.Invitation
+	if err := s.jobs.NewSelect().Model(&inv).
+		Where("token_hash = ?", token).Where("accepted_at IS NULL").Limit(1).Scan(ctx); err != nil {
+		return uuid.Nil, ErrInviteNotFound
+	}
+	if now.After(inv.ExpiresAt) {
+		return uuid.Nil, ErrInviteExpired
+	}
+	if !strings.EqualFold(strings.TrimSpace(u.Email), inv.Email) {
+		return uuid.Nil, ErrInviteEmail
+	}
+
+	mid, _ := uuid.NewV7()
+	if _, err := s.jobs.NewInsert().Model(&models.WorkspaceMember{
+		ID: mid, WorkspaceID: inv.WorkspaceID, UserID: actor, Role: inv.Role, Status: "active",
+		SectionsConfig: json.RawMessage("{}"), JoinedAt: now, CreatedAt: now, UpdatedAt: now,
+	}).On("CONFLICT DO NOTHING").Exec(ctx); err != nil {
+		return uuid.Nil, err
+	}
+	if _, err := s.jobs.NewUpdate().Model((*models.Invitation)(nil)).
+		Set("accepted_at = ?", now).Set("updated_at = ?", now).Where("id = ?", inv.ID).Exec(ctx); err != nil {
+		return uuid.Nil, err
+	}
+	_ = s.pub.PublishDelta(ctx, inv.WorkspaceID, realtime.Delta{EntityType: "workspace_member", EntityID: mid.String(), Op: "create"})
+	_ = s.pub.PublishDelta(ctx, inv.WorkspaceID, realtime.Delta{EntityType: "invitation", EntityID: inv.ID.String(), Op: "update"})
+	return inv.WorkspaceID, nil
 }
 
 // UpdateMemberRole меняет роль участника.

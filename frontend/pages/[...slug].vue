@@ -1362,7 +1362,15 @@ const showMembers = ref(false)
 const inviteEmail = ref('')
 const inviteRole = ref('member')
 const ROLES = ['member', 'admin', 'guest']
-const doInvite = () => wrap(async () => { if (!inviteEmail.value.trim()) return; await store.inviteMember(inviteEmail.value.trim(), inviteRole.value); inviteEmail.value = '' })
+const inviteLink = ref('')
+const doInvite = () => wrap(async () => {
+  if (!inviteEmail.value.trim()) return
+  const token = await store.inviteMember(inviteEmail.value.trim(), inviteRole.value)
+  inviteEmail.value = ''
+  // новый юзер ещё не зарегистрирован → даём ссылку-приглашение для отправки вручную
+  inviteLink.value = token ? `${location.origin}/invite/${token}` : ''
+})
+const copyInviteLink = () => { if (inviteLink.value) navigator.clipboard?.writeText(inviteLink.value) }
 
 // --- Settings-модалка (workspace) ---
 const showSettings = ref(false)
@@ -3321,6 +3329,11 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               <USelectMenu v-model="inviteRole" :options="labelOpts(ROLES)" value-attribute="value" option-attribute="label" class="w-32" />
               <UButton icon="i-heroicons-paper-airplane" :disabled="!inviteEmail.trim()" @click="doInvite">Invite</UButton>
             </div>
+            <div v-if="inviteLink" class="mb-4 flex items-center gap-2 rounded-md bg-elevated px-2 py-1.5 text-xs">
+              <UIcon name="i-heroicons-link" class="shrink-0 text-tertiary" />
+              <span class="flex-1 truncate font-mono text-tertiary">{{ inviteLink }}</span>
+              <UButton size="2xs" color="gray" @click="copyInviteLink">Copy</UButton>
+            </div>
             <div v-for="m in store.workspaceMembers" :key="m.id" class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
               <span class="flex h-7 w-7 items-center justify-center rounded-full bg-elevated text-xs">{{ (m.name || '?')[0].toUpperCase() }}</span>
               <span class="flex-1 truncate text-sm">{{ m.name }}<span v-if="m.userId === store.currentUserId" class="ml-1 text-xs text-tertiary">(you)</span></span>
@@ -3528,6 +3541,11 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <UInput v-model="inviteEmail" placeholder="email to invite" class="flex-1" @keyup.enter="doInvite" />
           <USelectMenu v-model="inviteRole" :options="labelOpts(ROLES)" value-attribute="value" option-attribute="label" class="w-32" />
           <UButton icon="i-heroicons-paper-airplane" :disabled="!inviteEmail.trim()" @click="doInvite">Invite</UButton>
+        </div>
+        <div v-if="inviteLink" class="flex items-center gap-2 rounded-md bg-elevated px-2 py-1.5 text-xs">
+          <UIcon name="i-heroicons-link" class="shrink-0 text-tertiary" />
+          <span class="flex-1 truncate font-mono text-tertiary">{{ inviteLink }}</span>
+          <UButton size="2xs" color="gray" @click="copyInviteLink">Copy</UButton>
         </div>
         <!-- members list -->
         <div class="max-h-72 overflow-y-auto">

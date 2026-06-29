@@ -333,10 +333,23 @@ func (h *workspaceHandler) InviteMember(ctx context.Context, req *connect.Reques
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if err := h.svc.InviteMember(ctx, actor, wsID, id, req.Msg.Email, req.Msg.Role); err != nil {
+	token, err := h.svc.InviteMember(ctx, actor, wsID, id, req.Msg.Email, req.Msg.Role)
+	if err != nil {
 		return nil, mapErr(err)
 	}
-	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String(), Token: token}), nil
+}
+
+func (h *workspaceHandler) AcceptInvitation(ctx context.Context, req *connect.Request[pmsv1.AcceptInvitationRequest]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wsID, err := h.svc.AcceptInvitation(ctx, actor, req.Msg.Token)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: wsID.String()}), nil
 }
 
 func (h *workspaceHandler) UpdateMemberRole(ctx context.Context, req *connect.Request[pmsv1.UpdateMemberRoleRequest]) (*connect.Response[pmsv1.CommandResult], error) {
@@ -1501,8 +1514,12 @@ func mapErr(err error) error {
 		errors.Is(err, calendar.ErrDates),
 		errors.Is(err, timetracking.ErrDates),
 		errors.Is(err, automations.ErrName),
+		errors.Is(err, workspaces.ErrInviteEmail),
+		errors.Is(err, workspaces.ErrInviteExpired),
 		errors.Is(err, workspaces.ErrEmail):
 		return connect.NewError(connect.CodeInvalidArgument, err)
+	case errors.Is(err, workspaces.ErrInviteNotFound):
+		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, workspaces.ErrSlugTaken),
 		errors.Is(err, teams.ErrKeyTaken):
 		return connect.NewError(connect.CodeAlreadyExists, err)

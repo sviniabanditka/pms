@@ -657,10 +657,18 @@ export const useAppStore = defineStore('app', {
       await workspaces.updateWorkspaceSettings({ workspaceId: this.activeWorkspaceId, name })
     },
     // --- Members / invites ---
-    async inviteMember(email: string, role = 'member') {
+    // inviteMember возвращает invite-токен (непустой только для нового, ещё не зарегистрированного юзера)
+    async inviteMember(email: string, role = 'member'): Promise<string> {
       const { workspaces } = useClients()
-      await workspaces.inviteMember({ workspaceId: this.activeWorkspaceId, email, role })
-      await this.bootstrap(this.activeWorkspaceId)
+      const res = await workspaces.inviteMember({ workspaceId: this.activeWorkspaceId, email, role })
+      await this.catchUp(this.activeWorkspaceId, ['workspace_member', 'invitation'])
+      return res.token || ''
+    },
+    // acceptInvitation — принять приглашение по токену; возвращает wsId присоединённого воркспейса
+    async acceptInvitation(token: string): Promise<string> {
+      const { workspaces } = useClients()
+      const res = await workspaces.acceptInvitation({ token })
+      return res.entityId
     },
     async updateMemberRole(userId: string, role: string) {
       const { workspaces } = useClients()
