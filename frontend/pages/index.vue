@@ -3,8 +3,20 @@ import { isAuthed } from '~/lib/token'
 
 onMounted(() => { if (isAuthed()) navigateTo('/my/assigned') })
 
+const DESC = 'Issues, docs, chat, calendar and meetings in one fast workspace. Local-first and realtime — every change lands instantly for the whole team.'
 useHead({
   title: 'PMS — the workspace that runs at your speed',
+  meta: [
+    { name: 'description', content: DESC },
+    { property: 'og:type', content: 'website' },
+    { property: 'og:title', content: 'PMS — the workspace that runs at your speed' },
+    { property: 'og:description', content: DESC },
+    { property: 'og:image', content: '/og.svg' },
+    { name: 'twitter:card', content: 'summary_large_image' },
+    { name: 'twitter:title', content: 'PMS — the workspace that runs at your speed' },
+    { name: 'twitter:description', content: DESC },
+    { name: 'twitter:image', content: '/og.svg' },
+  ],
   link: [
     { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
     { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
@@ -22,6 +34,7 @@ const onAnchorClick = (e: MouseEvent) => {
   const el = id && document.getElementById(id)
   if (!el) return
   e.preventDefault()
+  menuOpen.value = false
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
   history.replaceState(null, '', `#${id}`)
@@ -73,10 +86,54 @@ const features = [
   { f: 'meet.sfu', d: 'Huddle from any channel. Video built in.' },
   { f: 'time.log', d: 'Track hours, report by person/task/day, export.' },
 ]
+// pricing toggle (annual −20%)
+const billing = ref<'monthly' | 'annual'>('monthly')
 const plans = [
-  { name: 'free', price: '$0', unit: '', blurb: 'Get the team started.', feats: ['10 teammates', 'Issues · board · calendar', 'Realtime sync'], cta: 'start free', accent: false },
-  { name: 'pro', price: '$8', unit: '/user·mo', blurb: 'Ship every week.', feats: ['Unlimited members', 'Automations & cycles', 'Time tracking & reports', 'Meetings & huddles'], cta: 'start trial', accent: true },
-  { name: 'business', price: '$16', unit: '/user·mo', blurb: 'Scale the org.', feats: ['Everything in pro', 'Roles & permissions', 'Audit · SSO', 'Priority support'], cta: 'start trial', accent: false },
+  { name: 'free', m: 0, blurb: 'Get the team started.', feats: ['10 teammates', 'Issues · board · calendar', 'Realtime sync'], cta: 'start free', accent: false },
+  { name: 'pro', m: 8, blurb: 'Ship every week.', feats: ['Unlimited members', 'Automations & cycles', 'Time tracking & reports', 'Meetings & huddles'], cta: 'start trial', accent: true },
+  { name: 'business', m: 16, blurb: 'Scale the org.', feats: ['Everything in pro', 'Roles & permissions', 'Audit · SSO', 'Priority support'], cta: 'start trial', accent: false },
+]
+function priceOf(p: { m: number }) {
+  if (p.m === 0) return { amt: '$0', unit: '' }
+  const v = billing.value === 'annual' ? Math.round(p.m * 0.8) : p.m
+  return { amt: '$' + v, unit: billing.value === 'annual' ? '/user·mo · billed yearly' : '/user·mo' }
+}
+
+// mobile nav
+const menuOpen = ref(false)
+
+// ⌘K command palette demo (real, filterable)
+const kq = ref('')
+const kcmds = [
+  { i: '⌘', t: 'Create issue', s: 'C' },
+  { i: '#', t: 'Go to board', s: 'G B' },
+  { i: '◷', t: 'Start a timer', s: 'T' },
+  { i: '⚡', t: 'New automation', s: '' },
+  { i: '◰', t: 'Open calendar', s: 'G C' },
+  { i: '✎', t: 'New doc', s: '' },
+  { i: '☎', t: 'Start a huddle', s: '' },
+  { i: '@', t: 'Assign to me', s: 'I' },
+]
+const kfiltered = computed(() => {
+  const q = kq.value.trim().toLowerCase()
+  return q ? kcmds.filter((c) => c.t.toLowerCase().includes(q)) : kcmds
+})
+
+const faqs = [
+  { q: 'Is there really a free plan?', a: 'Yes — up to 10 teammates with issues, boards, calendar and realtime sync. No card, no trial clock.' },
+  { q: 'Can we migrate from Jira or Linear?', a: 'Import issues, statuses and assignees from CSV today; native importers are on the way. Your keys and history come along.' },
+  { q: 'How does realtime work offline?', a: 'PMS is local-first: the app reads a local store, so it keeps working when the network drops and resyncs deltas automatically on reconnect.' },
+  { q: 'Where does our data live?', a: 'On our cloud by default, isolated per workspace with row-level security. Prefer your own servers? It self-hosts as a single binary with Postgres + S3.' },
+  { q: 'Do you bill per seat?', a: 'Pro and Business are per active user, monthly or annual (save 20%). Free is flat. Cancel anytime.' },
+]
+
+const cmp = [
+  { f: 'Issues, docs, chat, calendar & meetings in one', pms: true, jira: false, linear: false },
+  { f: 'Local-first, instant realtime', pms: true, jira: false, linear: 'part' },
+  { f: 'Built-in video huddles', pms: true, jira: false, linear: false },
+  { f: 'Time tracking & reports', pms: true, jira: 'part', linear: false },
+  { f: 'Self-hostable', pms: true, jira: true, linear: false },
+  { f: 'Free tier', pms: true, jira: true, linear: true },
 ]
 </script>
 
@@ -97,6 +154,14 @@ const plans = [
           <a href="/login" class="t-quiet">sign in</a>
           <a href="/login" class="t-btn">[ start free ]</a>
         </div>
+        <button class="t-burger" :aria-expanded="menuOpen" aria-label="Menu" @click="menuOpen = !menuOpen">{{ menuOpen ? '✕' : '≡' }}</button>
+      </div>
+      <div v-if="menuOpen" class="t-mobile">
+        <a href="#features">./features</a>
+        <a href="#flow">./how</a>
+        <a href="#pricing">./pricing</a>
+        <a href="/login" class="t-quiet">sign in</a>
+        <a href="/login" class="t-btn t-btn--solid">[ start free ]</a>
       </div>
     </header>
 
@@ -222,6 +287,28 @@ const plans = [
       </div>
     </section>
 
+    <!-- ⌘K palette -->
+    <section class="t-sec">
+      <div class="t-kband">
+        <div class="t-kband__copy" v-reveal>
+          <span class="t-eyebrow"># keyboard-first</span>
+          <h2 class="t-h2">Hit <span class="t-grad">⌘K</span>, do anything.</h2>
+          <p class="t-lead">Every action is a keystroke away. Create, assign, jump, automate — without lifting your hands off the keys. Try the filter →</p>
+        </div>
+        <div class="t-kbar" v-reveal="100">
+          <div class="t-kbar__in">
+            <div class="t-kbar__search"><span class="t-dollar">⌘K</span><input v-model="kq" class="t-kbar__input" placeholder="type a command…" aria-label="Command palette demo" /></div>
+            <ul class="t-kbar__list">
+              <li v-for="c in kfiltered" :key="c.t" class="t-kbar__item">
+                <span class="t-kbar__i">{{ c.i }}</span><span class="t-kbar__t">{{ c.t }}</span><span v-if="c.s" class="t-kbar__s">{{ c.s }}</span>
+              </li>
+              <li v-if="!kfiltered.length" class="t-kbar__empty">no matches</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- HOW IT WORKS -->
     <section id="flow" class="t-sec">
       <header class="t-shead" v-reveal>
@@ -241,18 +328,53 @@ const plans = [
       </div>
     </section>
 
+    <!-- COMPARISON -->
+    <section class="t-sec">
+      <header class="t-shead" v-reveal>
+        <span class="t-eyebrow"># diff — pms vs the rest</span>
+        <h2 class="t-h2"><span class="t-prompt">$</span> pms diff <span class="t-grad">--tools</span></h2>
+      </header>
+      <div class="t-cmp" v-reveal>
+        <div class="t-cmp__head"><span></span><span class="t-cmp__me">pms</span><span>Jira</span><span>Linear</span></div>
+        <div v-for="r in cmp" :key="r.f" class="t-cmp__row">
+          <span class="t-cmp__f">{{ r.f }}</span>
+          <span class="t-cmp__c"><i :class="r.pms === true ? 'ok' : r.pms === 'part' ? 'part' : 'no'">{{ r.pms === true ? '✓' : r.pms === 'part' ? '~' : '·' }}</i></span>
+          <span class="t-cmp__c"><i :class="r.jira === true ? 'ok' : r.jira === 'part' ? 'part' : 'no'">{{ r.jira === true ? '✓' : r.jira === 'part' ? '~' : '·' }}</i></span>
+          <span class="t-cmp__c"><i :class="r.linear === true ? 'ok' : r.linear === 'part' ? 'part' : 'no'">{{ r.linear === true ? '✓' : r.linear === 'part' ? '~' : '·' }}</i></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="t-sec">
+      <header class="t-shead" v-reveal>
+        <span class="t-eyebrow"># faq</span>
+        <h2 class="t-h2"><span class="t-prompt">$</span> pms <span class="t-grad">--help</span></h2>
+      </header>
+      <div class="t-faq" v-reveal>
+        <details v-for="f in faqs" :key="f.q" class="t-faq__i">
+          <summary><span class="t-faq__q">{{ f.q }}</span><span class="t-faq__x">+</span></summary>
+          <p class="t-faq__a">{{ f.a }}</p>
+        </details>
+      </div>
+    </section>
+
     <!-- PRICING -->
     <section id="pricing" class="t-sec">
       <header class="t-shead" v-reveal>
         <span class="t-eyebrow"># pricing — plans that scale with you</span>
         <h2 class="t-h2"><span class="t-prompt">$</span> pms install <span class="t-grad">--plan</span></h2>
         <p class="t-lead t-lead--c">Start free. Upgrade when the team grows. Cancel anytime.</p>
+        <div class="t-toggle" v-reveal>
+          <button :class="{ 'is-on': billing === 'monthly' }" @click="billing = 'monthly'">monthly</button>
+          <button :class="{ 'is-on': billing === 'annual' }" @click="billing = 'annual'">annual <span class="t-toggle__save">−20%</span></button>
+        </div>
       </header>
       <div class="t-plans">
         <article v-for="(p, i) in plans" :key="p.name" class="t-card t-plan" :class="{ 't-plan--accent': p.accent }" v-reveal="i * 80">
           <span v-if="p.accent" class="t-plan__badge">// popular</span>
           <div class="t-plan__name"><span class="t-prompt">--</span>{{ p.name }}</div>
-          <div class="t-plan__price"><span class="t-plan__amt">{{ p.price }}</span><span class="t-plan__unit">{{ p.unit }}</span></div>
+          <div class="t-plan__price"><span class="t-plan__amt">{{ priceOf(p).amt }}</span><span class="t-plan__unit">{{ priceOf(p).unit }}</span></div>
           <p class="t-plan__blurb">{{ p.blurb }}</p>
           <ul class="t-plan__feats"><li v-for="f in p.feats" :key="f"><span class="t-ok">✓</span>{{ f }}</li></ul>
           <a href="/login" class="t-btn" :class="{ 't-btn--solid': p.accent }">[ {{ p.cta }} ]</a>
@@ -368,7 +490,8 @@ const plans = [
 .t-strip { max-width: 1140px; margin: 0 auto; padding: 18px 24px 0; text-align: center; }
 .t-strip__lbl { color: var(--faint); font-size: 13px; }
 .t-strip__tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 16px; }
-.t-strip__tags span { font-size: 13px; color: var(--mut); border: 1px solid var(--line); border-radius: 7px; padding: 5px 11px; background: rgba(255,255,255,.02); }
+.t-strip__tags span { font-size: 13px; color: var(--mut); border: 1px solid var(--line); border-radius: 7px; padding: 5px 11px; background: rgba(255,255,255,.02); transition: color .18s, border-color .18s; }
+.t-strip__tags span:hover { color: var(--blue); border-color: rgba(122,162,247,.4); }
 
 /* sections */
 .t-sec { max-width: 1140px; margin: 0 auto; padding: 120px 24px 0; scroll-margin-top: 82px; }
@@ -461,6 +584,62 @@ const plans = [
 .t-foot__cols a:hover { color: var(--green); }
 .t-foot__base { display: flex; justify-content: space-between; margin-top: 38px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--faint); font-size: 12.5px; }
 
+/* mobile nav */
+.t-burger { display: none; background: none; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font-size: 18px; width: 38px; height: 36px; cursor: pointer; }
+.t-mobile { display: none; }
+@media (max-width: 900px) {
+  .t-nav__cta { display: none; }
+  .t-burger { display: block; }
+  .t-mobile { display: flex; flex-direction: column; gap: 4px; padding: 8px 24px 18px; border-bottom: 1px solid var(--line); background: rgba(11,12,18,.96); backdrop-filter: blur(12px); }
+  .t-mobile a { padding: 11px 4px; text-decoration: none; color: var(--mut); font-size: 14px; }
+  .t-mobile a.t-btn--solid { margin-top: 6px; justify-content: center; }
+}
+
+/* ⌘K band */
+.t-kband { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
+.t-kbar { border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(180deg, #0f1118, #0b0c12); box-shadow: 0 30px 70px -40px rgba(0,0,0,.85); overflow: hidden; }
+.t-kbar__search { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.t-kbar__input { flex: 1; background: none; border: none; outline: none; color: var(--ink); font-family: var(--m); font-size: 14px; }
+.t-kbar__input::placeholder { color: var(--faint); }
+.t-kbar__list { list-style: none; margin: 0; padding: 8px; display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow: auto; }
+.t-kbar__item { display: flex; align-items: center; gap: 12px; padding: 9px 11px; border-radius: 9px; font-size: 13.5px; transition: background .14s; }
+.t-kbar__item:hover { background: rgba(122,162,247,.1); }
+.t-kbar__i { width: 20px; text-align: center; color: var(--purple); }
+.t-kbar__t { flex: 1; color: var(--ink); }
+.t-kbar__s { color: var(--faint); font-size: 11.5px; border: 1px solid var(--line); border-radius: 5px; padding: 1px 7px; }
+.t-kbar__empty { padding: 14px; color: var(--faint); font-size: 13px; text-align: center; }
+
+/* comparison */
+.t-cmp { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.t-cmp__head, .t-cmp__row { display: grid; grid-template-columns: 1fr 84px 84px 84px; align-items: center; }
+.t-cmp__head { padding: 14px 18px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.02); font-size: 12.5px; color: var(--mut); }
+.t-cmp__head span:not(:first-child) { text-align: center; }
+.t-cmp__me { color: var(--blue); font-weight: 700; }
+.t-cmp__row { padding: 13px 18px; border-bottom: 1px solid var(--line); }
+.t-cmp__row:last-child { border-bottom: none; }
+.t-cmp__f { font-size: 13.5px; color: var(--ink); }
+.t-cmp__c { text-align: center; }
+.t-cmp__c i { font-style: normal; font-weight: 700; }
+.t-cmp__c i.ok { color: var(--green); }
+.t-cmp__c i.part { color: var(--orange); }
+.t-cmp__c i.no { color: var(--faint); }
+
+/* faq */
+.t-faq { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+.t-faq__i { border: 1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,.015); overflow: hidden; }
+.t-faq__i summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; cursor: pointer; list-style: none; }
+.t-faq__i summary::-webkit-details-marker { display: none; }
+.t-faq__q { font-size: 14.5px; color: var(--bright); }
+.t-faq__x { color: var(--blue); font-size: 18px; transition: transform .2s; }
+.t-faq__i[open] .t-faq__x { transform: rotate(45deg); }
+.t-faq__a { margin: 0; padding: 0 18px 18px; color: var(--mut); font-size: 14px; line-height: 1.65; }
+
+/* pricing toggle */
+.t-toggle { display: inline-flex; gap: 3px; margin: 22px auto 0; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.02); }
+.t-toggle button { font-family: var(--m); font-size: 13px; color: var(--mut); background: none; border: none; padding: 7px 16px; border-radius: 999px; cursor: pointer; transition: color .15s, background .15s; }
+.t-toggle button.is-on { color: var(--bright); background: rgba(122,162,247,.16); }
+.t-toggle__save { color: var(--green); font-size: 11px; }
+
 /* motion */
 .t-up { opacity: 0; transform: translateY(16px); animation: up .7s cubic-bezier(.22,1,.36,1) forwards; animation-delay: calc(var(--i,0) * 85ms + 100ms); }
 @keyframes up { to { opacity: 1; transform: none; } }
@@ -477,6 +656,9 @@ const plans = [
   .t-spot--rev .t-spot__copy { order: 0; }
   .t-foot__in { grid-template-columns: 1fr; }
   .t-nav__links { display: none; }
+  .t-kband { grid-template-columns: 1fr; gap: 28px; }
+  .t-cmp__head, .t-cmp__row { grid-template-columns: 1fr 52px 52px 52px; }
+  .t-cmp__f { font-size: 12.5px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .t-up, .rv { animation: none !important; opacity: 1 !important; transform: none !important; transition: none !important; }

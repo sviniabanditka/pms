@@ -3,7 +3,7 @@ export default defineNuxtConfig({
   // local-first логика — клиентская (guarded import.meta.client); SSR оставляем дефолтным.
   devtools: { enabled: false },
   colorMode: { preference: 'dark', fallback: 'dark', storageKey: 'pms-theme' },
-  app: { head: { htmlAttrs: { class: 'dark' } } },
+  app: { head: { htmlAttrs: { class: 'dark' }, link: [{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }] } },
   css: ['~/assets/css/main.css'],
   runtimeConfig: {
     public: {
