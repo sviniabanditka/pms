@@ -13,6 +13,9 @@ service SyncService {
 message BootstrapRequest {
   string workspace_id = 1;
   repeated string team_ids = 2;
+  // Пусто → весь срез (initial). Иначе → только chunk'и этих entity_type
+  // (инкрементальный catch-up по WS-дельте, без перекачки всего среза).
+  repeated string types = 3;
 }
 
 message BootstrapChunk {

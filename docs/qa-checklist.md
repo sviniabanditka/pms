@@ -539,3 +539,11 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Automation set_status → Canceled проставляет completed_at; → Backlog очищает started/completed (проверить в Activity/бёрндауне).
 - [ ] Прод (ALLOWED_ORIGINS задан): WS-коннект с чужого Origin отклоняется.
 - [ ] Filter «contains» с `_`/`%` ищет буквально (не как wildcard).
+
+## 71. Incremental delta-sync (type-scoped catch-up)
+- [ ] Правка задачи в одном клиенте → во втором клиенте обновляется (без перезагрузки), DevTools Network: на дельту идёт Bootstrap с `types:[…]`, не полный срез.
+- [ ] Сетевая вкладка: одиночное изменение тянет 1 chunk (тип сущности), не ~29.
+- [ ] Удаление/архив сущности (issue/label/calendar event) исчезает у другого клиента (prune по FULL_BUCKETS работает в catch-up).
+- [ ] Несколько изменений в окне 150мс коалесятся в один catch-up со списком типов.
+- [ ] Initial-загрузка/смена воркспейса по-прежнему тянет полный срез (types пуст).
+- [ ] Чат: сообщение/комментарий/typing идут точечным путём (не catch-up), unread обновляется.

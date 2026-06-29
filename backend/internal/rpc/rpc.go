@@ -211,7 +211,7 @@ func (h *syncHandler) Bootstrap(ctx context.Context, req *connect.Request[pmsv1.
 	if err != nil {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("invalid workspace_id"))
 	}
-	chunks, cursor, err := h.svc.Bootstrap(ctx, actor, wsID)
+	chunks, cursor, err := h.svc.Bootstrap(ctx, actor, wsID, req.Msg.Types)
 	if err != nil {
 		return mapErr(err)
 	}

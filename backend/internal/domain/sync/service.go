@@ -34,10 +34,19 @@ type Service struct{ db *bun.DB }
 
 func NewService(bdb *bun.DB) *Service { return &Service{db: bdb} }
 
-// Bootstrap отдаёт срез воркспейса (справочники) + курсор для последующего Changes.
-func (s *Service) Bootstrap(ctx context.Context, actor, wsID uuid.UUID) ([]Chunk, int64, error) {
+// Bootstrap отдаёт срез воркспейса + курсор. only пуст → весь срез (initial-загрузка);
+// иначе — только chunk'и указанных entity_type. Второе = инкрементальный catch-up:
+// WS-дельта несёт entity_type, клиент перетягивает лишь изменившиеся типы (а не весь срез).
+// Семантика каждого типа идентична полному bootstrap → applyChunk+prune на клиенте те же.
+func (s *Service) Bootstrap(ctx context.Context, actor, wsID uuid.UUID, only []string) ([]Chunk, int64, error) {
 	var chunks []Chunk
 	var cursor int64
+
+	want := map[string]bool{}
+	for _, t := range only {
+		want[t] = true
+	}
+	wants := func(t string) bool { return len(only) == 0 || want[t] }
 
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
 		ok, err := tx.NewSelect().Model((*models.WorkspaceMember)(nil)).
@@ -54,240 +63,205 @@ func (s *Service) Bootstrap(ctx context.Context, actor, wsID uuid.UUID) ([]Chunk
 			return err
 		}
 
-		// Срез: справочники, нужные клиенту сразу.
-		add := func(entityType string, dest any) error {
-			if err := tx.NewSelect().Model(dest).Scan(ctx); err != nil {
+		// emit запускает builder и кладёт chunk, только если тип запрошен (или only пуст).
+		emit := func(entityType string, build func() ([]byte, error)) error {
+			if !wants(entityType) {
+				return nil
+			}
+			raw, err := build()
+			if err != nil {
 				return err
 			}
-			chunks = append(chunks, Chunk{EntityType: entityType, Entities: jarr(dest)})
+			chunks = append(chunks, Chunk{EntityType: entityType, Entities: raw})
 			return nil
 		}
+		// table — простой builder: model-таблица с опциональными where-предикатами.
+		table := func(entityType string, dest any, wheres ...func(*bun.SelectQuery)) error {
+			return emit(entityType, func() ([]byte, error) {
+				q := tx.NewSelect().Model(dest)
+				for _, wf := range wheres {
+					wf(q)
+				}
+				if err := q.Scan(ctx); err != nil {
+					return nil, err
+				}
+				return jarr(dest), nil
+			})
+		}
+		live := func(q *bun.SelectQuery) { q.Where("deleted_at IS NULL") }
 
-		var (
-			ws      []models.Workspace
-			teams   []models.Team
-			states  []models.WorkflowState
-			labels  []models.Label
-			members []models.WorkspaceMember
-			iss     []models.Issue
-		)
-		if err := tx.NewSelect().Model(&ws).Where("deleted_at IS NULL").Scan(ctx); err != nil {
+		if err := table("workspace", &[]models.Workspace{}, live); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "workspace", Entities: jarr(ws)})
-		if err := tx.NewSelect().Model(&teams).Where("deleted_at IS NULL").Scan(ctx); err != nil {
+		if err := table("team", &[]models.Team{}, live); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "team", Entities: jarr(teams)})
-		if err := add("workflow_state", &states); err != nil {
+		if err := table("workflow_state", &[]models.WorkflowState{}); err != nil {
 			return err
 		}
-		if err := add("label", &labels); err != nil {
+		if err := table("label", &[]models.Label{}); err != nil {
 			return err
 		}
-		if err := add("workspace_member", &members); err != nil {
+		if err := table("workspace_member", &[]models.WorkspaceMember{}); err != nil {
 			return err
 		}
 		// issues: только активные (не архив/удаление).
-		if err := tx.NewSelect().Model(&iss).
-			Where("archived_at IS NULL").Where("deleted_at IS NULL").Scan(ctx); err != nil {
+		if err := table("issue", &[]models.Issue{}, func(q *bun.SelectQuery) {
+			q.Where("archived_at IS NULL").Where("deleted_at IS NULL")
+		}); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "issue", Entities: jarr(iss)})
-
-		var issueLabels []models.IssueLabel
-		if err := tx.NewSelect().Model(&issueLabels).Scan(ctx); err != nil {
+		if err := table("issue_label", &[]models.IssueLabel{}); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "issue_label", Entities: jarr(issueLabels)})
-
-		var vws []models.View
-		if err := tx.NewSelect().Model(&vws).Where("deleted_at IS NULL").Scan(ctx); err != nil {
+		if err := table("view", &[]models.View{}, live); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "view", Entities: jarr(vws)})
-
-		var rels []models.IssueRelation
-		if err := tx.NewSelect().Model(&rels).Scan(ctx); err != nil {
+		if err := table("issue_relation", &[]models.IssueRelation{}); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "issue_relation", Entities: jarr(rels)})
-
-		var cyc []models.Cycle
-		if err := tx.NewSelect().Model(&cyc).Scan(ctx); err != nil {
+		if err := table("cycle", &[]models.Cycle{}); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "cycle", Entities: jarr(cyc)})
-
-		var cfs []models.CustomField
-		if err := tx.NewSelect().Model(&cfs).Where("archived_at IS NULL").Scan(ctx); err != nil {
+		if err := table("custom_field", &[]models.CustomField{}, func(q *bun.SelectQuery) {
+			q.Where("archived_at IS NULL")
+		}); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "custom_field", Entities: jarr(cfs)})
-
-		var cfvs []models.CustomFieldValue
-		if err := tx.NewSelect().Model(&cfvs).Scan(ctx); err != nil {
+		if err := table("custom_field_value", &[]models.CustomFieldValue{}); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "custom_field_value", Entities: jarr(cfvs)})
-
-		var dsh []models.Dashboard
-		if err := tx.NewSelect().Model(&dsh).Where("deleted_at IS NULL").Scan(ctx); err != nil {
+		if err := table("dashboard", &[]models.Dashboard{}, live); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "dashboard", Entities: jarr(dsh)})
-
-		var dws []models.DashboardWidget
-		if err := tx.NewSelect().Model(&dws).Scan(ctx); err != nil {
+		if err := table("dashboard_widget", &[]models.DashboardWidget{}); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "dashboard_widget", Entities: jarr(dws)})
-
-		// нотификации — только текущего пользователя
-		var notifs []models.Notification
-		if err := tx.NewSelect().Model(&notifs).Where("user_id = ?", actor).Order("at DESC").Limit(100).Scan(ctx); err != nil {
+		// нотификации — только текущего пользователя (последние 100)
+		if err := table("notification", &[]models.Notification{}, func(q *bun.SelectQuery) {
+			q.Where("user_id = ?", actor).Order("at DESC").Limit(100)
+		}); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "notification", Entities: jarr(notifs)})
-
-		var docsList []models.Document
-		if err := tx.NewSelect().Model(&docsList).Where("deleted_at IS NULL").Scan(ctx); err != nil {
+		if err := table("document", &[]models.Document{}, live); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "document", Entities: jarr(docsList)})
-
 		// чаты: публичные каналы (не приватные) + приватные/dm, где actor участник
-		var channels []models.Channel
-		if err := tx.NewSelect().Model(&channels).
-			Where("deleted_at IS NULL").
-			Where("(kind = 'channel' AND private = false) OR id IN (SELECT channel_id FROM channel_members WHERE user_id = ?)", actor).
-			Scan(ctx); err != nil {
+		if err := table("channel", &[]models.Channel{}, func(q *bun.SelectQuery) {
+			q.Where("deleted_at IS NULL").
+				Where("(kind = 'channel' AND private = false) OR id IN (SELECT channel_id FROM channel_members WHERE user_id = ?)", actor)
+		}); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "channel", Entities: jarr(channels)})
-
 		// участники — только видимых каналов (списки приватных не утекают чужим)
-		var chMembers []models.ChannelMember
-		if err := tx.NewSelect().Model(&chMembers).
-			Where("channel_id IN (SELECT id FROM channels WHERE deleted_at IS NULL AND ((kind = 'channel' AND private = false) OR id IN (SELECT channel_id FROM channel_members WHERE user_id = ?)))", actor).
-			Scan(ctx); err != nil {
+		if err := table("channel_member", &[]models.ChannelMember{}, func(q *bun.SelectQuery) {
+			q.Where("channel_id IN (SELECT id FROM channels WHERE deleted_at IS NULL AND ((kind = 'channel' AND private = false) OR id IN (SELECT channel_id FROM channel_members WHERE user_id = ?)))", actor)
+		}); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "channel_member", Entities: jarr(chMembers)})
-
-		// непрочитанные по каналам для actor: счётчик новых (не своих) сообщений + last_read_at для разделителя
-		type chUnread struct {
-			ChannelID  string     `json:"channelId"`
-			Count      int        `json:"count"`
-			LastReadAt *time.Time `json:"lastReadAt"`
-		}
-		var reads []models.ChannelRead
-		if err := tx.NewSelect().Model(&reads).Where("user_id = ?", actor).Scan(ctx); err != nil {
+		// непрочитанные по каналам (производный chunk: счётчик новых + last_read_at для разделителя)
+		if err := emit("channel_unread", func() ([]byte, error) {
+			return s.unreadChunk(ctx, tx, actor)
+		}); err != nil {
 			return err
 		}
-		readAt := map[uuid.UUID]*time.Time{}
-		for i := range reads {
-			t := reads[i].LastReadAt
-			readAt[reads[i].ChannelID] = &t
-		}
-		var counts []struct {
-			ChannelID uuid.UUID `bun:"channel_id"`
-			Cnt       int       `bun:"cnt"`
-		}
-		if err := tx.NewSelect().TableExpr("messages AS m").
-			ColumnExpr("m.channel_id").ColumnExpr("count(*) AS cnt").
-			Where("m.deleted_at IS NULL").Where("m.author_id != ?", actor).
-			Where("m.created_at > COALESCE((SELECT cr.last_read_at FROM channel_reads cr WHERE cr.channel_id = m.channel_id AND cr.user_id = ?), 'epoch'::timestamptz)", actor).
-			Where("(EXISTS (SELECT 1 FROM channels c WHERE c.id = m.channel_id AND c.kind = 'channel' AND c.private = false AND c.deleted_at IS NULL) OR EXISTS (SELECT 1 FROM channel_members cm WHERE cm.channel_id = m.channel_id AND cm.user_id = ?))", actor).
-			GroupExpr("m.channel_id").Scan(ctx, &counts); err != nil {
-			return err
-		}
-		unreadByCh := map[uuid.UUID]int{}
-		for _, c := range counts {
-			unreadByCh[c.ChannelID] = c.Cnt
-		}
-		seen := map[uuid.UUID]bool{}
-		unread := []chUnread{}
-		for ch, cnt := range unreadByCh {
-			unread = append(unread, chUnread{ChannelID: ch.String(), Count: cnt, LastReadAt: readAt[ch]})
-			seen[ch] = true
-		}
-		for ch, t := range readAt {
-			if !seen[ch] {
-				unread = append(unread, chUnread{ChannelID: ch.String(), Count: 0, LastReadAt: t})
-			}
-		}
-		chunks = append(chunks, Chunk{EntityType: "channel_unread", Entities: jarr(unread)})
-
 		// юзеры воркспейса (имена для чатов/ассайнов)
-		var users []models.PublicUser
-		if err := tx.NewSelect().Model(&users).
-			Where("id IN (SELECT user_id FROM workspace_members WHERE workspace_id = ?)", wsID).
-			Scan(ctx); err != nil {
+		if err := table("user", &[]models.PublicUser{}, func(q *bun.SelectQuery) {
+			q.Where("id IN (SELECT user_id FROM workspace_members WHERE workspace_id = ?)", wsID)
+		}); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "user", Entities: jarr(users)})
-
-		var invites []models.Invitation
-		if err := tx.NewSelect().Model(&invites).Where("accepted_at IS NULL").Scan(ctx); err != nil {
+		if err := table("invitation", &[]models.Invitation{}, func(q *bun.SelectQuery) {
+			q.Where("accepted_at IS NULL")
+		}); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "invitation", Entities: jarr(invites)})
-
-		var mss []models.Milestone
-		if err := tx.NewSelect().Model(&mss).Where("deleted_at IS NULL").Scan(ctx); err != nil {
+		if err := table("milestone", &[]models.Milestone{}, live); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "milestone", Entities: jarr(mss)})
-
-		// митинги: только активные (scheduled/live), завершённые не тянем в bootstrap.
-		var mts []models.Meeting
-		if err := tx.NewSelect().Model(&mts).Where("deleted_at IS NULL").Where("status != 'ended'").Scan(ctx); err != nil {
+		// митинги: только активные (scheduled/live), завершённые не тянем.
+		if err := table("meeting", &[]models.Meeting{}, func(q *bun.SelectQuery) {
+			q.Where("deleted_at IS NULL").Where("status != 'ended'")
+		}); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "meeting", Entities: jarr(mts)})
-
-		var mtps []models.MeetingParticipant
-		if err := tx.NewSelect().Model(&mtps).
-			Join("JOIN meetings m ON m.id = mtp.meeting_id").
-			Where("m.deleted_at IS NULL").Where("m.status != 'ended'").Scan(ctx); err != nil {
+		if err := emit("meeting_participant", func() ([]byte, error) {
+			var mtps []models.MeetingParticipant
+			if err := tx.NewSelect().Model(&mtps).
+				Join("JOIN meetings m ON m.id = mtp.meeting_id").
+				Where("m.deleted_at IS NULL").Where("m.status != 'ended'").Scan(ctx); err != nil {
+				return nil, err
+			}
+			return jarr(mtps), nil
+		}); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "meeting_participant", Entities: jarr(mtps)})
-
-		var cevs []models.CalendarEvent
-		if err := tx.NewSelect().Model(&cevs).Where("deleted_at IS NULL").Scan(ctx); err != nil {
+		if err := table("calendar_event", &[]models.CalendarEvent{}, live); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "calendar_event", Entities: jarr(cevs)})
-
 		// записи учёта времени — только свои
-		var tes []models.TimeEntry
-		if err := tx.NewSelect().Model(&tes).Where("user_id = ?", actor).Where("deleted_at IS NULL").Scan(ctx); err != nil {
+		if err := table("time_entry", &[]models.TimeEntry{}, func(q *bun.SelectQuery) {
+			q.Where("user_id = ?", actor).Where("deleted_at IS NULL")
+		}); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "time_entry", Entities: jarr(tes)})
-
-		var autos []models.Automation
-		if err := tx.NewSelect().Model(&autos).Where("deleted_at IS NULL").Scan(ctx); err != nil {
+		if err := table("automation", &[]models.Automation{}, live); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "automation", Entities: jarr(autos)})
-
-		var atts []models.Attachment
-		if err := tx.NewSelect().Model(&atts).Where("deleted_at IS NULL").Scan(ctx); err != nil {
+		if err := table("attachment", &[]models.Attachment{}, live); err != nil {
 			return err
 		}
-		chunks = append(chunks, Chunk{EntityType: "attachment", Entities: jarr(atts)})
-
-		var snaps []models.CycleSnapshot
-		if err := tx.NewSelect().Model(&snaps).OrderExpr("day").Scan(ctx); err != nil {
-			return err
-		}
-		chunks = append(chunks, Chunk{EntityType: "cycle_snapshot", Entities: jarr(snaps)})
-		return nil
+		return table("cycle_snapshot", &[]models.CycleSnapshot{}, func(q *bun.SelectQuery) {
+			q.OrderExpr("day")
+		})
 	})
 	return chunks, cursor, err
+}
+
+// unreadChunk строит производный chunk непрочитанных каналов для actor.
+func (s *Service) unreadChunk(ctx context.Context, tx bun.Tx, actor uuid.UUID) ([]byte, error) {
+	type chUnread struct {
+		ChannelID  string     `json:"channelId"`
+		Count      int        `json:"count"`
+		LastReadAt *time.Time `json:"lastReadAt"`
+	}
+	var reads []models.ChannelRead
+	if err := tx.NewSelect().Model(&reads).Where("user_id = ?", actor).Scan(ctx); err != nil {
+		return nil, err
+	}
+	readAt := map[uuid.UUID]*time.Time{}
+	for i := range reads {
+		t := reads[i].LastReadAt
+		readAt[reads[i].ChannelID] = &t
+	}
+	var counts []struct {
+		ChannelID uuid.UUID `bun:"channel_id"`
+		Cnt       int       `bun:"cnt"`
+	}
+	if err := tx.NewSelect().TableExpr("messages AS m").
+		ColumnExpr("m.channel_id").ColumnExpr("count(*) AS cnt").
+		Where("m.deleted_at IS NULL").Where("m.author_id != ?", actor).
+		Where("m.created_at > COALESCE((SELECT cr.last_read_at FROM channel_reads cr WHERE cr.channel_id = m.channel_id AND cr.user_id = ?), 'epoch'::timestamptz)", actor).
+		Where("(EXISTS (SELECT 1 FROM channels c WHERE c.id = m.channel_id AND c.kind = 'channel' AND c.private = false AND c.deleted_at IS NULL) OR EXISTS (SELECT 1 FROM channel_members cm WHERE cm.channel_id = m.channel_id AND cm.user_id = ?))", actor).
+		GroupExpr("m.channel_id").Scan(ctx, &counts); err != nil {
+		return nil, err
+	}
+	unreadByCh := map[uuid.UUID]int{}
+	for _, c := range counts {
+		unreadByCh[c.ChannelID] = c.Cnt
+	}
+	seen := map[uuid.UUID]bool{}
+	unread := []chUnread{}
+	for ch, cnt := range unreadByCh {
+		unread = append(unread, chUnread{ChannelID: ch.String(), Count: cnt, LastReadAt: readAt[ch]})
+		seen[ch] = true
+	}
+	for ch, t := range readAt {
+		if !seen[ch] {
+			unread = append(unread, chUnread{ChannelID: ch.String(), Count: 0, LastReadAt: t})
+		}
+	}
+	return jarr(unread), nil
 }
 
 // Changes отдаёт дельты из change_log после курсора (догон).

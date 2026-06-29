@@ -57,6 +57,7 @@ const REL_INV: Record<string, string> = { blocks: 'blocked by', blocked_by: 'blo
 const IDB_KEY = 'pms-store'
 let ws: { close: () => void } | null = null
 let refreshTimer: any = null
+const pendingTypes = new Set<string>() // entity_type'ы, изменённые WS-дельтами в debounce-окне
 
 export const useAppStore = defineStore('app', {
   state: () => ({
@@ -1213,9 +1214,29 @@ export const useAppStore = defineStore('app', {
           if (this.comments[eid] !== undefined) this.loadComments(eid)
           return
         }
+        // прочее: инкрементальный catch-up — копим изменённые типы и тянем только их chunk'и
+        // (а не весь срез). Неизвестный тип → копим как есть; сервер вернёт пустой chunk, если нет builder'а.
+        if (type) pendingTypes.add(type)
         clearTimeout(refreshTimer)
-        refreshTimer = setTimeout(() => this.bootstrap(wsId), 150)
+        refreshTimer = setTimeout(() => {
+          const types = [...pendingTypes]
+          pendingTypes.clear()
+          this.catchUp(wsId, types)
+        }, 150)
       })
+    },
+
+    // catchUp подтягивает текущее состояние только указанных entity_type (инкрементальный синк
+    // по WS-дельте). applyChunk + prune те же, что в bootstrap → удаления/архив исчезают штатно.
+    async catchUp(wsId: string, types: string[]) {
+      if (!types.length || this.activeWorkspaceId !== wsId) return
+      const { sync } = useClients()
+      for await (const chunk of sync.bootstrap({ workspaceId: wsId, types })) {
+        const json = new TextDecoder().decode(chunk.entities) || '[]'
+        this.applyChunk(chunk.entityType, JSON.parse(json))
+        if (Number(chunk.cursor)) this.cursor = Number(chunk.cursor)
+      }
+      this.persist()
     },
 
     // --- IndexedDB-персист (переживает перезагрузку, §7.9/9.7) ---
