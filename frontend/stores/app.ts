@@ -9,7 +9,7 @@ import { match, type FilterNode } from '~/lib/filter'
 
 type Entity = Record<string, any>
 
-const BUCKET: Record<string, 'workspaces' | 'teams' | 'states' | 'issues' | 'views' | 'relations' | 'projects' | 'cycles' | 'customFields' | 'customFieldValues' | 'dashboards' | 'dashboardWidgets' | 'members' | 'notifications' | 'documents' | 'channels' | 'channelMembers' | 'users' | 'labels' | 'issueLabels' | 'invitations' | 'milestones' | 'meetings' | 'meetingParticipants' | 'attachments' | 'channelUnread' | 'cycleSnapshots' | 'calendarEvents' | 'timeEntries'> = {
+const BUCKET: Record<string, 'workspaces' | 'teams' | 'states' | 'issues' | 'views' | 'relations' | 'projects' | 'cycles' | 'customFields' | 'customFieldValues' | 'dashboards' | 'dashboardWidgets' | 'members' | 'notifications' | 'documents' | 'channels' | 'channelMembers' | 'users' | 'labels' | 'issueLabels' | 'invitations' | 'milestones' | 'meetings' | 'meetingParticipants' | 'attachments' | 'channelUnread' | 'cycleSnapshots' | 'calendarEvents' | 'timeEntries' | 'automations'> = {
   workspace: 'workspaces',
   team: 'teams',
   workflow_state: 'states',
@@ -35,6 +35,7 @@ const BUCKET: Record<string, 'workspaces' | 'teams' | 'states' | 'issues' | 'vie
   meeting_participant: 'meetingParticipants',
   calendar_event: 'calendarEvents',
   time_entry: 'timeEntries',
+  automation: 'automations',
   attachment: 'attachments',
   channel_unread: 'channelUnread',
   cycle_snapshot: 'cycleSnapshots',
@@ -46,7 +47,7 @@ const FULL_BUCKETS = new Set([
   'issue', 'team', 'workflow_state', 'label', 'issue_label', 'issue_relation', 'cycle',
   'view', 'custom_field', 'custom_field_value', 'dashboard', 'dashboard_widget',
   'document', 'channel', 'channel_member', 'workspace_member', 'user', 'invitation', 'milestone',
-  'meeting', 'meeting_participant', 'calendar_event', 'time_entry', 'attachment', 'channel_unread', 'cycle_snapshot',
+  'meeting', 'meeting_participant', 'calendar_event', 'time_entry', 'automation', 'attachment', 'channel_unread', 'cycle_snapshot',
 ])
 
 // Метки направления связи (прямое / зеркальное).
@@ -91,6 +92,7 @@ export const useAppStore = defineStore('app', {
     meetingParticipants: {} as Record<string, Entity>,
     calendarEvents: {} as Record<string, Entity>,
     timeEntries: {} as Record<string, Entity>,
+    automations: {} as Record<string, Entity>,
     attachments: {} as Record<string, Entity>,
     channelUnread: {} as Record<string, Entity>, // channelId -> { count, lastReadAt }
     cycleSnapshots: {} as Record<string, Entity>, // "cycleId:day" -> snapshot
@@ -334,6 +336,9 @@ export const useAppStore = defineStore('app', {
       Object.values(s.meetings).find((m) => m.channelId === channelId && m.kind === 'huddle' && m.status === 'live' && !m.deletedAt),
     // --- Calendar ---
     calendarEventsList: (s) => Object.values(s.calendarEvents).filter((e) => !e.deletedAt),
+    // --- Automations ---
+    automationsList: (s) => Object.values(s.automations).filter((a) => !a.deletedAt)
+      .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))),
     // --- Time tracking ---
     timeEntriesForIssue: (s) => (issueId: string) => Object.values(s.timeEntries)
       .filter((e) => !e.deletedAt && e.issueId === issueId)
@@ -1056,6 +1061,23 @@ export const useAppStore = defineStore('app', {
       const { time } = useClients()
       const r = await time.report({ workspaceId: this.activeWorkspaceId, from: p.from, to: p.to, groupBy: p.groupBy, issueId: p.issueId || '', userId: p.userId || '' })
       return { rows: r.rows.map((x: any) => ({ key: x.key, minutes: Number(x.minutes), count: Number(x.count) })), total: Number(r.totalMinutes) }
+    },
+    // --- Automations ---
+    async createAutomation(p: { teamId?: string; name: string; enabled: boolean; trigger: any; actions: any }) {
+      const { automations } = useClients()
+      await automations.createAutomation({ workspaceId: this.activeWorkspaceId, teamId: p.teamId || '', name: p.name, enabled: p.enabled, trigger: JSON.stringify(p.trigger), conditions: '', actions: JSON.stringify(p.actions) })
+    },
+    async updateAutomation(id: string, p: { teamId?: string; name: string; enabled: boolean; trigger: any; actions: any }) {
+      const { automations } = useClients()
+      await automations.updateAutomation({ workspaceId: this.activeWorkspaceId, id, teamId: p.teamId || '', name: p.name, enabled: p.enabled, trigger: JSON.stringify(p.trigger), conditions: '', actions: JSON.stringify(p.actions) })
+    },
+    async toggleAutomation(id: string, enabled: boolean) {
+      const { automations } = useClients()
+      await automations.setAutomationEnabled({ workspaceId: this.activeWorkspaceId, id, enabled })
+    },
+    async deleteAutomation(id: string) {
+      const { automations } = useClients()
+      await automations.deleteAutomation({ workspaceId: this.activeWorkspaceId, id })
     },
     // iCal-фид: вернуть полный URL подписки (создаёт токен при первом вызове).
     async icalFeedUrl(rotate = false): Promise<string> {

@@ -1,9 +1,9 @@
 package issues
 
 import (
-	"encoding/json"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -12,8 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/pms/backend/internal/changelog"
 	"github.com/pms/backend/internal/db"
-	"github.com/pms/backend/internal/frac"
 	"github.com/pms/backend/internal/domain/notifications"
+	"github.com/pms/backend/internal/frac"
 	"github.com/pms/backend/internal/models"
 	"github.com/pms/backend/internal/realtime"
 	"github.com/uptrace/bun"
@@ -29,12 +29,27 @@ var (
 
 var relTypes = map[string]bool{"blocks": true, "blocked_by": true, "related": true, "duplicate": true, "duplicate_of": true}
 
+// AutomationEngine — хук автоматизаций после issue-событий (реализуется automations.Service).
+type AutomationEngine interface {
+	RunForIssue(ctx context.Context, wsID, issueID uuid.UUID, event string, actor uuid.UUID)
+}
+
 type Service struct {
-	db  *bun.DB
-	pub *realtime.Publisher
+	db     *bun.DB
+	pub    *realtime.Publisher
+	engine AutomationEngine
 }
 
 func NewService(bdb *bun.DB, pub *realtime.Publisher) *Service { return &Service{db: bdb, pub: pub} }
+
+// SetEngine подключает движок автоматизаций (опционально, после сборки сервисов).
+func (s *Service) SetEngine(e AutomationEngine) { s.engine = e }
+
+func (s *Service) runAuto(ctx context.Context, wsID, id uuid.UUID, event string, actor uuid.UUID) {
+	if s.engine != nil {
+		s.engine.RunForIssue(ctx, wsID, id, event, actor)
+	}
+}
 
 // stateTimestamps — чистая функция перехода статуса: какие started_at/completed_at
 // должны быть при попадании в category. TDD-узел (§10.1).
@@ -133,6 +148,7 @@ func (s *Service) CreateIssue(ctx context.Context, actor, wsID, teamID, id uuid.
 		return 0, err
 	}
 	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "issue", EntityID: id.String(), Op: "create"})
+	s.runAuto(ctx, wsID, id, "created", actor)
 	return 0, nil
 }
 
@@ -179,7 +195,11 @@ func (s *Service) UpdateIssueState(ctx context.Context, actor, wsID, id uuid.UUI
 		}
 		return nil
 	})
-	return 0, s.afterMutate(ctx, wsID, id, err)
+	if e := s.afterMutate(ctx, wsID, id, err); e != nil {
+		return 0, e
+	}
+	s.runAuto(ctx, wsID, id, "status_changed", actor)
+	return 0, nil
 }
 
 // ReorderIssue: перенос в колонку stateID (если меняется) + позиция между before/after.
@@ -231,7 +251,13 @@ func (s *Service) ReorderIssue(ctx context.Context, actor, wsID, id uuid.UUID, s
 		}
 		return changelog.Record(ctx, tx, wsID, "issue", id, 0, "update", map[string]any{"reorder": true}, actor)
 	})
-	return 0, s.afterMutate(ctx, wsID, id, err)
+	if e := s.afterMutate(ctx, wsID, id, err); e != nil {
+		return 0, e
+	}
+	if stateID != "" {
+		s.runAuto(ctx, wsID, id, "status_changed", actor)
+	}
+	return 0, nil
 }
 
 // AddRelation: типизированная связь source→target. Зеркало выводится в чтении (одна строка).
@@ -307,7 +333,11 @@ func (s *Service) AssignIssue(ctx context.Context, actor, wsID, id uuid.UUID, as
 		}
 		return nil
 	})
-	return 0, s.afterMutate(ctx, wsID, id, err)
+	if e := s.afterMutate(ctx, wsID, id, err); e != nil {
+		return 0, e
+	}
+	s.runAuto(ctx, wsID, id, "assignee_changed", actor)
+	return 0, nil
 }
 
 // SetPriority.
@@ -315,7 +345,11 @@ func (s *Service) SetPriority(ctx context.Context, actor, wsID, id uuid.UUID, pr
 	err := s.simpleUpdate(ctx, actor, wsID, id, func(q *bun.UpdateQuery) {
 		q.Set("priority = ?", int16(priority))
 	})
-	return 0, err
+	if err != nil {
+		return 0, err
+	}
+	s.runAuto(ctx, wsID, id, "priority_changed", actor)
+	return 0, nil
 }
 
 // SetCustomFieldValue: upsert значения; пустой value → снять.

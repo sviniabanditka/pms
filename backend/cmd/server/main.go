@@ -14,6 +14,7 @@ import (
 	"github.com/pms/backend/internal/config"
 	"github.com/pms/backend/internal/db"
 	"github.com/pms/backend/internal/domain/attachments"
+	"github.com/pms/backend/internal/domain/automations"
 	"github.com/pms/backend/internal/domain/calendar"
 	"github.com/pms/backend/internal/domain/chats"
 	"github.com/pms/backend/internal/domain/comments"
@@ -111,10 +112,12 @@ func main() {
 		Meetings:      meetings.NewService(bdb, pub, meetings.LiveKit{URL: cfg.LiveKitURL, APIKey: cfg.LiveKitAPIKey, Secret: cfg.LiveKitSecret}),
 		Calendar:      calendar.NewService(bdb, pub, jobsDB),
 		Time:          timetracking.NewService(bdb, pub),
+		Automations:   automations.NewService(bdb, pub),
 		Attachments:   attachments.NewService(bdb, pub, store),
 		Search:        search.NewService(bdb),
 		Sync:          syncsvc.NewService(bdb),
 	}
+	svcs.Issues.SetEngine(svcs.Automations) // хук автоматизаций после issue-мутаций
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

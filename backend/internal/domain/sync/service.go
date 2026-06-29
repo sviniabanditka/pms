@@ -268,6 +268,12 @@ func (s *Service) Bootstrap(ctx context.Context, actor, wsID uuid.UUID) ([]Chunk
 		}
 		chunks = append(chunks, Chunk{EntityType: "time_entry", Entities: jarr(tes)})
 
+		var autos []models.Automation
+		if err := tx.NewSelect().Model(&autos).Where("deleted_at IS NULL").Scan(ctx); err != nil {
+			return err
+		}
+		chunks = append(chunks, Chunk{EntityType: "automation", Entities: jarr(autos)})
+
 		var atts []models.Attachment
 		if err := tx.NewSelect().Model(&atts).Where("deleted_at IS NULL").Scan(ctx); err != nil {
 			return err

@@ -929,6 +929,79 @@ const saveCalEvent = () => wrap(async () => {
 })
 const deleteCalEvent = () => wrap(async () => { if (calForm.id) { await store.deleteCalendarEvent(calForm.id); showCalEvent.value = false } })
 
+// --- Automations (rule builder) ---
+const showAuto = ref(false)
+const autoForm = reactive({ id: '', name: '', teamId: '', enabled: true, event: 'status_changed', statusTarget: 'cat:completed', actions: [] as any[] })
+const AUTO_EVENTS = [
+  { value: 'created', label: 'Issue created' },
+  { value: 'status_changed', label: 'Status changed' },
+  { value: 'assignee_changed', label: 'Assignee changed' },
+  { value: 'priority_changed', label: 'Priority changed' },
+]
+const ACTION_TYPES = [
+  { value: 'set_status', label: 'Set status' },
+  { value: 'set_assignee', label: 'Set assignee' },
+  { value: 'set_priority', label: 'Set priority' },
+  { value: 'add_label', label: 'Add label' },
+  { value: 'post_message', label: 'Post to channel' },
+]
+const stateOpts = computed(() => Object.values(store.states).filter((s: any) => !s.deletedAt).map((s: any) => ({ value: s.id, label: `${store.teams[s.teamId]?.key || '?'} · ${s.name}` })))
+const statusTargetOpts = computed(() => [
+  { value: '', label: 'Any status' },
+  { value: 'cat:started', label: 'Category: Started' },
+  { value: 'cat:completed', label: 'Category: Completed' },
+  { value: 'cat:canceled', label: 'Category: Canceled' },
+  ...stateOpts.value.map((s) => ({ value: 'state:' + s.value, label: s.label })),
+])
+const assigneeOpts = computed(() => [{ value: 'me', label: 'Me (trigger actor)' }, { value: '', label: 'Unassign' }, ...store.wsUsers.map((u: any) => ({ value: u.id, label: u.name || u.email }))])
+const labelOptsAuto = computed(() => Object.values(store.labels).filter((l: any) => !l.deletedAt).map((l: any) => ({ value: l.id, label: l.name })))
+const channelOptsAuto = computed(() => store.channelList.map((c: any) => ({ value: c.id, label: c.name })))
+function defaultAction(type: string) {
+  if (type === 'set_status') return { type, stateId: '' }
+  if (type === 'set_assignee') return { type, userId: 'me' }
+  if (type === 'set_priority') return { type, priority: 2 }
+  if (type === 'add_label') return { type, labelId: '' }
+  return { type: 'post_message', channelId: '', text: '{issue} updated' }
+}
+function openAutoCreate() {
+  Object.assign(autoForm, { id: '', name: '', teamId: '', enabled: true, event: 'status_changed', statusTarget: 'cat:completed', actions: [defaultAction('set_assignee')] })
+  showAuto.value = true
+}
+function openAutoEdit(a: any) {
+  const t = a.trigger || {}
+  let st = ''
+  if (t.toStateId) st = 'state:' + t.toStateId
+  else if (t.toCategory) st = 'cat:' + t.toCategory
+  Object.assign(autoForm, { id: a.id, name: a.name, teamId: a.teamId || '', enabled: a.enabled, event: t.event || 'status_changed', statusTarget: st, actions: JSON.parse(JSON.stringify(a.actions || [])) })
+  showAuto.value = true
+}
+function addAutoAction() { autoForm.actions.push(defaultAction('set_status')) }
+function onActionType(i: number) { autoForm.actions[i] = defaultAction(autoForm.actions[i].type) }
+const saveAuto = () => wrap(async () => {
+  if (!autoForm.name.trim()) { err.value = 'Name required'; return }
+  const trigger: any = { event: autoForm.event }
+  if (autoForm.event === 'status_changed' && autoForm.statusTarget) {
+    if (autoForm.statusTarget.startsWith('cat:')) trigger.toCategory = autoForm.statusTarget.slice(4)
+    else if (autoForm.statusTarget.startsWith('state:')) trigger.toStateId = autoForm.statusTarget.slice(6)
+  }
+  const p = { teamId: autoForm.teamId, name: autoForm.name, enabled: autoForm.enabled, trigger, actions: autoForm.actions }
+  if (autoForm.id) await store.updateAutomation(autoForm.id, p)
+  else await store.createAutomation(p)
+  showAuto.value = false
+})
+// человекочитаемое описание правила для списка
+function autoSummary(a: any) {
+  const t = a.trigger || {}
+  const ev = AUTO_EVENTS.find((e) => e.value === t.event)?.label || t.event
+  let cond = ''
+  if (t.event === 'status_changed') {
+    if (t.toCategory) cond = ` → ${t.toCategory}`
+    else if (t.toStateId) cond = ` → ${store.states[t.toStateId]?.name || '?'}`
+  }
+  const acts = (a.actions || []).map((x: any) => ACTION_TYPES.find((y) => y.value === x.type)?.label || x.type).join(', ')
+  return `${ev}${cond} ⇒ ${acts}`
+}
+
 // --- Ручная запись времени (задним числом) ---
 const showTimeEntry = ref(false)
 const teForm = reactive({ issueId: '', date: '', start: '09:00', end: '10:00', description: '' })
@@ -1293,12 +1366,13 @@ const doInvite = () => wrap(async () => { if (!inviteEmail.value.trim()) return;
 
 // --- Settings-модалка (workspace) ---
 const showSettings = ref(false)
-const settingsTab = ref<'general' | 'members' | 'teams' | 'labels' | 'sections'>('general')
+const settingsTab = ref<'general' | 'members' | 'teams' | 'labels' | 'automations' | 'sections'>('general')
 const SETTINGS_TABS = [
   { key: 'general', label: 'General', icon: 'i-heroicons-cog-6-tooth', group: 'Workspace' },
   { key: 'members', label: 'Members', icon: 'i-heroicons-user-group', group: 'Workspace' },
   { key: 'teams', label: 'Teams', icon: 'i-heroicons-rectangle-stack', group: 'Workspace' },
   { key: 'labels', label: 'Labels', icon: 'i-heroicons-tag', group: 'Workspace' },
+  { key: 'automations', label: 'Automations', icon: 'i-heroicons-bolt', group: 'Workspace' },
   { key: 'account', label: 'Account', icon: 'i-heroicons-user-circle', group: 'Personal' },
   { key: 'appearance', label: 'Appearance', icon: 'i-heroicons-swatch', group: 'Personal' },
   { key: 'notifications', label: 'Notifications', icon: 'i-heroicons-bell', group: 'Personal' },
@@ -1332,7 +1406,7 @@ const wsNameDraft = ref('')
 function openSettings() {
   wsNameDraft.value = store.activeWorkspace?.name || ''
   openRailCfg() // подготовить cfgList для вкладки Sidebar
-  settingsTab.value = 'general'; showSettings.value = true
+  settingsTab.value = 'general'; showSettings.value = true; showAuto.value = false
 }
 const saveWsName = () => wrap(() => store.renameWorkspace(wsNameDraft.value.trim()))
 // avatar / logo upload
@@ -3189,7 +3263,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     </UModal>
 
     <!-- Workspace Settings (большая модалка с сайдбаром) -->
-    <UModal v-model="showSettings" :ui="{ width: 'sm:max-w-3xl' }">
+    <UModal v-model="showSettings" :prevent-close="showAuto" :ui="{ width: 'sm:max-w-3xl' }">
       <div class="flex h-[34rem]">
         <!-- сайдбар табов -->
         <div class="w-48 shrink-0 overflow-y-auto border-r border-subtle bg-base p-2">
@@ -3301,6 +3375,77 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" @click="store.deleteLabel(l.id)" />
             </div>
             <div v-if="!allLabels.length" class="py-6 text-center text-sm text-tertiary">No labels yet</div>
+          </template>
+
+          <!-- AUTOMATIONS -->
+          <template v-else-if="settingsTab === 'automations'">
+            <!-- редактор правила (inline, без вложенной модалки) -->
+            <template v-if="showAuto">
+              <div class="mb-4 flex items-center gap-2">
+                <UButton icon="i-heroicons-arrow-left" color="gray" variant="ghost" size="xs" square @click="showAuto = false" />
+                <h2 class="text-base font-semibold text-white">{{ autoForm.id ? 'Edit rule' : 'New rule' }}</h2>
+              </div>
+              <div class="space-y-3">
+                <UInput v-model="autoForm.name" placeholder="Rule name" autofocus />
+                <div class="flex items-center gap-2">
+                  <span class="w-16 shrink-0 text-xs text-tertiary">Team</span>
+                  <USelectMenu v-model="autoForm.teamId" class="flex-1" :options="[{ value: '', label: 'All teams' }, ...store.teamList.map((t:any) => ({ value: t.id, label: t.name }))]" value-attribute="value" option-attribute="label" />
+                </div>
+                <div class="rounded-md border border-subtle p-2.5">
+                  <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary">When</div>
+                  <div class="flex items-center gap-2">
+                    <USelectMenu v-model="autoForm.event" class="flex-1" :options="AUTO_EVENTS" value-attribute="value" option-attribute="label" />
+                    <USelectMenu v-if="autoForm.event === 'status_changed'" v-model="autoForm.statusTarget" class="flex-1" :options="statusTargetOpts" value-attribute="value" option-attribute="label" searchable />
+                  </div>
+                </div>
+                <div class="rounded-md border border-subtle p-2.5">
+                  <div class="mb-1.5 flex items-center">
+                    <span class="text-xs font-medium uppercase tracking-wider text-tertiary">Then</span>
+                    <UButton class="ml-auto" icon="i-heroicons-plus" color="gray" variant="ghost" size="2xs" @click="addAutoAction">Add action</UButton>
+                  </div>
+                  <div v-for="(ac, i) in autoForm.actions" :key="i" class="mb-1.5 flex items-center gap-2">
+                    <USelectMenu v-model="ac.type" class="w-36 shrink-0" :options="ACTION_TYPES" value-attribute="value" option-attribute="label" @update:model-value="onActionType(i)" />
+                    <USelectMenu v-if="ac.type === 'set_status'" v-model="ac.stateId" class="flex-1" :options="stateOpts" value-attribute="value" option-attribute="label" searchable placeholder="state" />
+                    <USelectMenu v-else-if="ac.type === 'set_assignee'" v-model="ac.userId" class="flex-1" :options="assigneeOpts" value-attribute="value" option-attribute="label" />
+                    <USelectMenu v-else-if="ac.type === 'set_priority'" v-model="ac.priority" class="flex-1" :options="[0,1,2,3,4].map((p) => ({ value: p, label: PRIO[p] }))" value-attribute="value" option-attribute="label" />
+                    <USelectMenu v-else-if="ac.type === 'add_label'" v-model="ac.labelId" class="flex-1" :options="labelOptsAuto" value-attribute="value" option-attribute="label" searchable placeholder="label" />
+                    <template v-else-if="ac.type === 'post_message'">
+                      <USelectMenu v-model="ac.channelId" class="w-32 shrink-0" :options="channelOptsAuto" value-attribute="value" option-attribute="label" placeholder="channel" />
+                      <UInput v-model="ac.text" class="flex-1" placeholder="Message ({issue})" />
+                    </template>
+                    <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="autoForm.actions.splice(i, 1)" />
+                  </div>
+                  <div v-if="!autoForm.actions.length" class="py-2 text-center text-xs text-tertiary">No actions — add one.</div>
+                </div>
+                <div class="flex items-center gap-2 pt-1">
+                  <UCheckbox v-model="autoForm.enabled" label="Enabled" />
+                  <UButton class="ml-auto" color="gray" variant="ghost" @click="showAuto = false">Cancel</UButton>
+                  <UButton color="gray" icon="i-heroicons-check" @click="saveAuto">{{ autoForm.id ? 'Save' : 'Create' }}</UButton>
+                </div>
+              </div>
+            </template>
+
+            <!-- список правил -->
+            <template v-else>
+              <div class="mb-4 flex items-center justify-between">
+                <h2 class="text-base font-semibold text-white">Automations</h2>
+                <div class="flex items-center gap-2">
+                  <UButton icon="i-heroicons-plus" color="gray" size="xs" @click="openAutoCreate">New rule</UButton>
+                  <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
+                </div>
+              </div>
+              <p class="mb-3 text-xs text-tertiary">When something happens to an issue, run actions automatically.</p>
+              <div v-for="a in store.automationsList" :key="a.id" class="group mb-1.5 flex items-center gap-3 rounded-md border border-subtle px-3 py-2">
+                <UToggle :model-value="a.enabled" @update:model-value="(v:any) => store.toggleAutomation(a.id, v)" />
+                <div class="min-w-0 flex-1 cursor-pointer" @click="openAutoEdit(a)">
+                  <div class="truncate text-sm font-medium" :class="a.enabled ? 'text-white' : 'text-tertiary'">{{ a.name }}</div>
+                  <div class="truncate text-xs text-tertiary">{{ autoSummary(a) }}<span v-if="a.teamId"> · {{ store.teams[a.teamId]?.key }}</span></div>
+                </div>
+                <UButton icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square @click="openAutoEdit(a)" />
+                <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square @click="store.deleteAutomation(a.id)" />
+              </div>
+              <div v-if="!store.automationsList.length" class="py-6 text-center text-sm text-tertiary">No automations yet. Create your first rule.</div>
+            </template>
           </template>
 
           <!-- ACCOUNT -->

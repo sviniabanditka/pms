@@ -15,6 +15,7 @@ import (
 	"github.com/pms/backend/gen/pms/v1/pmsv1connect"
 	"github.com/pms/backend/internal/auth"
 	"github.com/pms/backend/internal/domain/attachments"
+	"github.com/pms/backend/internal/domain/automations"
 	"github.com/pms/backend/internal/domain/calendar"
 	"github.com/pms/backend/internal/domain/chats"
 	"github.com/pms/backend/internal/domain/comments"
@@ -52,6 +53,7 @@ type Services struct {
 	Meetings      *meetings.Service
 	Calendar      *calendar.Service
 	Time          *timetracking.Service
+	Automations   *automations.Service
 	Attachments   *attachments.Service
 	Search        *search.Service
 	Sync          *syncsvc.Service
@@ -75,6 +77,7 @@ func Mount(r chi.Router, svcs Services) {
 	mount(pmsv1connect.NewMeetingServiceHandler(&meetingHandler{svc: svcs.Meetings}))
 	mount(pmsv1connect.NewCalendarServiceHandler(&calendarHandler{svc: svcs.Calendar}))
 	mount(pmsv1connect.NewTimeServiceHandler(&timeHandler{svc: svcs.Time}))
+	mount(pmsv1connect.NewAutomationServiceHandler(&automationHandler{svc: svcs.Automations}))
 	mount(pmsv1connect.NewAttachmentServiceHandler(&attachmentHandler{svc: svcs.Attachments}))
 	mount(pmsv1connect.NewSyncServiceHandler(&syncHandler{svc: svcs.Sync}))
 	mount(pmsv1connect.NewQueryServiceHandler(&queryHandler{svc: svcs.Search}))
@@ -1497,6 +1500,7 @@ func mapErr(err error) error {
 		errors.Is(err, milestones.ErrName),
 		errors.Is(err, calendar.ErrDates),
 		errors.Is(err, timetracking.ErrDates),
+		errors.Is(err, automations.ErrName),
 		errors.Is(err, workspaces.ErrEmail):
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	case errors.Is(err, workspaces.ErrSlugTaken),
@@ -1780,6 +1784,73 @@ func (h *timeHandler) DeleteEntry(ctx context.Context, req *connect.Request[pmsv
 		return nil, mapErr(err)
 	}
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
+}
+
+type automationHandler struct {
+	pmsv1connect.UnimplementedAutomationServiceHandler
+	svc *automations.Service
+}
+
+func (h *automationHandler) CreateAutomation(ctx context.Context, req *connect.Request[pmsv1.CreateAutomationRequest]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wsID, err := uuid.Parse(req.Msg.WorkspaceId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid workspace_id"))
+	}
+	id, err := parseOrNew(req.Msg.Id)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if err := h.svc.Create(ctx, actor, wsID, id, optUUID(req.Msg.TeamId), req.Msg.Name, req.Msg.Enabled,
+		jsonRaw(req.Msg.Trigger), jsonRaw(req.Msg.Conditions), jsonRaw(req.Msg.Actions)); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
+}
+
+func (h *automationHandler) UpdateAutomation(ctx context.Context, req *connect.Request[pmsv1.UpdateAutomationRequest]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, wsID, id, err := issueRef(ctx, req.Msg.WorkspaceId, req.Msg.Id)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.Update(ctx, actor, wsID, id, optUUID(req.Msg.TeamId), req.Msg.Name, req.Msg.Enabled,
+		jsonRaw(req.Msg.Trigger), jsonRaw(req.Msg.Conditions), jsonRaw(req.Msg.Actions)); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
+}
+
+func (h *automationHandler) SetAutomationEnabled(ctx context.Context, req *connect.Request[pmsv1.SetAutomationEnabledRequest]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, wsID, id, err := issueRef(ctx, req.Msg.WorkspaceId, req.Msg.Id)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.SetEnabled(ctx, actor, wsID, id, req.Msg.Enabled); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
+}
+
+func (h *automationHandler) DeleteAutomation(ctx context.Context, req *connect.Request[pmsv1.EntityRef]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, wsID, id, err := issueRef(ctx, req.Msg.WorkspaceId, req.Msg.Id)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.Delete(ctx, actor, wsID, id); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
+}
+
+// jsonRaw: пустая строка → nil, иначе json.RawMessage.
+func jsonRaw(s string) json.RawMessage {
+	if s == "" {
+		return nil
+	}
+	return json.RawMessage(s)
 }
 
 type attachmentHandler struct {

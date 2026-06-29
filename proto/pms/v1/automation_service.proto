@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+import "pms/v1/common.proto";
+
+// Автоматизации: триггер (issue-событие) → действия.
+service AutomationService {
+  rpc CreateAutomation(CreateAutomationRequest) returns (CommandResult);
+  rpc UpdateAutomation(UpdateAutomationRequest) returns (CommandResult);
+  rpc SetAutomationEnabled(SetAutomationEnabledRequest) returns (CommandResult);
+  rpc DeleteAutomation(EntityRef) returns (CommandResult);
+}
+
+message CreateAutomationRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string team_id = 3;       // '' = все команды
+  string name = 4;
+  bool enabled = 5;
+  string trigger = 6;       // JSON
+  string conditions = 7;    // JSON (опц.)
+  string actions = 8;       // JSON
+}
+
+message UpdateAutomationRequest {
+  string workspace_id = 1;
+  string id = 2;
+  string team_id = 3;
+  string name = 4;
+  bool enabled = 5;
+  string trigger = 6;
+  string conditions = 7;
+  string actions = 8;
+}
+
+message SetAutomationEnabledRequest {
+  string workspace_id = 1;
+  string id = 2;
+  bool enabled = 3;
+}

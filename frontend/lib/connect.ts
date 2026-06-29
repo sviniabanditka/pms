@@ -18,6 +18,7 @@ import { MilestoneService } from '~/gen/pms/v1/milestone_service_pb'
 import { MeetingService } from '~/gen/pms/v1/meeting_service_pb'
 import { CalendarService } from '~/gen/pms/v1/calendar_service_pb'
 import { TimeService } from '~/gen/pms/v1/time_service_pb'
+import { AutomationService } from '~/gen/pms/v1/automation_service_pb'
 import { AttachmentService } from '~/gen/pms/v1/attachment_service_pb'
 import { QueryService } from '~/gen/pms/v1/query_service_pb'
 
@@ -55,6 +56,7 @@ export function useClients() {
     meetings: createClient(MeetingService, transport),
     calendar: createClient(CalendarService, transport),
     time: createClient(TimeService, transport),
+    automations: createClient(AutomationService, transport),
     attachments: createClient(AttachmentService, transport),
     query: createClient(QueryService, transport),
   }
