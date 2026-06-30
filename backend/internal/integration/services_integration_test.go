@@ -8,6 +8,7 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -22,15 +23,20 @@ import (
 
 	"github.com/pms/backend/internal/authz"
 	"github.com/pms/backend/internal/db"
+	"github.com/pms/backend/internal/domain/automations"
 	"github.com/pms/backend/internal/domain/calendar"
 	"github.com/pms/backend/internal/domain/chats"
 	"github.com/pms/backend/internal/domain/comments"
 	"github.com/pms/backend/internal/domain/customfields"
 	"github.com/pms/backend/internal/domain/cycles"
+	"github.com/pms/backend/internal/domain/dashboards"
+	"github.com/pms/backend/internal/domain/docs"
 	"github.com/pms/backend/internal/domain/issues"
 	"github.com/pms/backend/internal/domain/milestones"
+	"github.com/pms/backend/internal/domain/search"
 	"github.com/pms/backend/internal/domain/teams"
 	"github.com/pms/backend/internal/domain/timetracking"
+	"github.com/pms/backend/internal/domain/views"
 	"github.com/pms/backend/internal/realtime"
 )
 
@@ -477,5 +483,99 @@ func TestCalendar_OwnerGuard(t *testing.T) {
 	// конец раньше начала → ErrDates
 	if err := svc.CreateEvent(ctx, actorA, ws, uuid.New(), "bad", "", "event", now, now.Add(-time.Hour), false, "none", nil); err != calendar.ErrDates {
 		t.Errorf("bad dates: got %v, want ErrDates", err)
+	}
+}
+
+// memberCtx — ctx с member-ролью (не admin → форсим owner/object-проверки).
+func memberCtx() context.Context { return authz.WithRole(context.Background(), authz.RoleMember) }
+
+func TestDocs_DeleteOwnerOrAdmin(t *testing.T) {
+	ws, actorA := newWS(t)
+	svc := docs.NewService(appDB, pub)
+	d := uuid.New()
+	if _, err := svc.CreateDoc(adminCtx(), actorA, ws, d, nil, "spec", nil); err != nil {
+		t.Fatalf("create doc: %v", err)
+	}
+	other := newUser(t)
+	// чужой member не может удалить
+	if _, err := svc.DeleteDoc(memberCtx(), other, ws, d); err != authz.ErrForbidden {
+		t.Errorf("non-owner delete: got %v, want ErrForbidden", err)
+	}
+	// автор может (даже member-ролью)
+	if _, err := svc.DeleteDoc(memberCtx(), actorA, ws, d); err != nil {
+		t.Errorf("author delete: %v", err)
+	}
+}
+
+func TestViews_DeleteOwnerOrAdmin(t *testing.T) {
+	ws, actorA := newWS(t)
+	svc := views.NewService(appDB, pub)
+	v := uuid.New()
+	if _, err := svc.CreateView(adminCtx(), actorA, ws, views.CreateInput{ID: v, Name: "V"}); err != nil {
+		t.Fatalf("create view: %v", err)
+	}
+	other := newUser(t)
+	if _, err := svc.DeleteView(memberCtx(), other, ws, v); err != authz.ErrForbidden {
+		t.Errorf("non-owner delete view: got %v, want ErrForbidden", err)
+	}
+	// admin может удалить чужой
+	if _, err := svc.DeleteView(adminCtx(), other, ws, v); err != nil {
+		t.Errorf("admin delete view: %v", err)
+	}
+}
+
+func TestDashboards_WidgetOwnerOrAdmin(t *testing.T) {
+	ws, actorA := newWS(t)
+	svc := dashboards.NewService(appDB, pub)
+	dash := uuid.New()
+	if _, err := svc.CreateDashboard(adminCtx(), actorA, ws, dash, "Board"); err != nil {
+		t.Fatalf("create dashboard: %v", err)
+	}
+	other := newUser(t)
+	// чужой member не может добавить виджет в чужой дашборд
+	if _, err := svc.AddWidget(memberCtx(), other, ws, uuid.New(), dash, "note", "n", []byte(`{}`)); err != authz.ErrForbidden {
+		t.Errorf("non-owner add widget: got %v, want ErrForbidden", err)
+	}
+	// владелец может
+	if _, err := svc.AddWidget(memberCtx(), actorA, ws, uuid.New(), dash, "note", "n", []byte(`{}`)); err != nil {
+		t.Errorf("owner add widget: %v", err)
+	}
+}
+
+func TestSearch_FindsIssue(t *testing.T) {
+	ws, actor := newWS(t)
+	isvc := issues.NewService(appDB, pub)
+	teamID := makeTeam(t, ws, actor, "SR")
+	if _, err := isvc.CreateIssue(adminCtx(), actor, ws, teamID, uuid.New(), "needle in haystack", "", 0, nil, nil); err != nil {
+		t.Fatalf("create issue: %v", err)
+	}
+	raw, err := search.NewService(appDB).Search(context.Background(), actor, ws, "needle")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if !strings.Contains(string(raw), "needle") {
+		t.Errorf("search must find the issue, got: %s", raw)
+	}
+}
+
+func TestAutomations_EngineFires(t *testing.T) {
+	ws, actor := newWS(t)
+	isvc := issues.NewService(appDB, pub)
+	asvc := automations.NewService(appDB, pub)
+	isvc.SetEngine(asvc) // движок прогоняется после issue-событий
+	teamID := makeTeam(t, ws, actor, "AU")
+
+	// правило: при создании issue → выставить priority=4
+	if err := asvc.Create(adminCtx(), actor, ws, uuid.New(), nil, "urgent-on-create", true,
+		json.RawMessage(`{"event":"created"}`), json.RawMessage(`{}`),
+		json.RawMessage(`[{"type":"set_priority","priority":4}]`)); err != nil {
+		t.Fatalf("create automation: %v", err)
+	}
+	iss := uuid.New()
+	if _, err := isvc.CreateIssue(adminCtx(), actor, ws, teamID, iss, "x", "", 0, nil, nil); err != nil {
+		t.Fatalf("create issue: %v", err)
+	}
+	if p := scalar[int](t, `SELECT priority FROM issues WHERE id = ?`, iss); p != 4 {
+		t.Errorf("automation must set priority=4, got %d", p)
 	}
 }
