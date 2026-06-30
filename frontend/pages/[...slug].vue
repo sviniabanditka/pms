@@ -505,14 +505,6 @@ async function wrap(fn: () => Promise<any>) {
 }
 const showCreate = ref(false)
 const wsMenu = ref(false)
-// --- Mobile: off-canvas рейл+сайдбар, fullscreen-панели ---
-const mobileNav = ref(false)
-const isMobile = ref(false)
-onMounted(() => {
-  const mq = window.matchMedia('(max-width: 767px)')
-  isMobile.value = mq.matches
-  mq.addEventListener('change', (e) => { isMobile.value = e.matches; if (!e.matches) mobileNav.value = false })
-})
 const wsInitial = computed(() => (store.activeWorkspace?.name || 'P')[0].toUpperCase())
 const createWs = () => wrap(async () => {
   await store.createWorkspace(slug.value, name.value)
@@ -1698,19 +1690,12 @@ const pageTitle = computed(() => {
   return SECTION_TITLES[sec] || 'stdtask'
 })
 useHead({ title: () => pageTitle.value })
-
-// Mobile: навигация из off-canvas drawer закрывает его (смена секции/выбор сущности).
-watch(() => [activeSection.value, selectedTeamId.value, selectedDocId.value, selectedDashboardId.value, selectedMsId.value, store.activeChannelId, selectedIssueId.value], () => { mobileNav.value = false })
-// Mobile: week-вид календаря недоступен (тесно) → day.
-watch(isMobile, (m) => { if (m && calView.value === 'week') calView.value = 'day' })
 </script>
 
 <template>
   <div class="flex h-screen flex-col">
     <!-- ⓪ Top bar -->
     <header class="flex h-14 shrink-0 items-center gap-3 bg-base px-3 text-sm">
-      <!-- mobile: гамбургер off-canvas drawer -->
-      <UButton class="md:hidden" icon="i-heroicons-bars-3" color="gray" variant="ghost" square title="Menu" @click="mobileNav = !mobileNav" />
       <!-- workspace switcher -->
       <div class="relative">
         <UButton color="gray" variant="ghost" trailing-icon="i-heroicons-chevron-down" @click="wsMenu = !wsMenu">
@@ -1730,15 +1715,15 @@ watch(isMobile, (m) => { if (m && calView.value === 'week') calView.value = 'day
         </div>
       </div>
 
-      <!-- глобальное создание (на мобиле — через палитру/рейл) -->
-      <UDropdown class="hidden md:block" :items="createMenu" :popper="{ placement: 'bottom-start' }">
+      <!-- глобальное создание -->
+      <UDropdown :items="createMenu" :popper="{ placement: 'bottom-start' }">
         <UButton icon="i-heroicons-plus" color="gray" variant="ghost" square title="Create… (⌘N)" />
       </UDropdown>
 
       <!-- search -->
-      <UButton color="gray" variant="ghost" class="mx-auto w-full min-w-0 ring-1 ring-subtle md:w-96" @click="openPalette">
-        <span class="flex-1 truncate text-left text-tertiary"><span class="text-ok">$</span> search…</span>
-        <template #trailing><UKbd class="hidden sm:inline-flex">⌘K</UKbd></template>
+      <UButton color="gray" variant="ghost" class="mx-auto w-96 ring-1 ring-subtle" @click="openPalette">
+        <span class="flex-1 text-left text-tertiary"><span class="text-ok">$</span> search…</span>
+        <template #trailing><UKbd>⌘K</UKbd></template>
       </UButton>
 
       <!-- notifications -->
@@ -1764,10 +1749,6 @@ watch(isMobile, (m) => { if (m && calView.value === 'week') calView.value = 'day
     </header>
 
     <div class="flex flex-1 overflow-hidden bg-base" @click="onRefClick">
-    <!-- mobile backdrop -->
-    <div v-if="mobileNav" class="fixed inset-0 top-14 z-40 bg-black/60 md:hidden" @click="mobileNav = false" />
-    <!-- ②③ Рейл + сайдбар: off-canvas drawer на мобиле, статичные на десктопе -->
-    <div class="fixed inset-y-0 left-0 top-14 z-50 flex -translate-x-full bg-base transition-transform md:static md:top-0 md:z-auto md:translate-x-0" :class="{ 'translate-x-0': mobileNav }">
     <!-- ② Left rail -->
     <aside class="flex w-16 flex-col items-center gap-2 bg-base py-3">
       <div v-for="s in railSections" :key="s.key" class="relative">
@@ -1983,8 +1964,6 @@ watch(isMobile, (m) => { if (m && calView.value === 'week') calView.value = 'day
 
       <p v-if="err" class="mt-3 text-xs text-danger">{{ err }}</p>
     </aside>
-    </div>
-    <!-- /off-canvas drawer -->
 
     <!-- Контент-область: отдельные плавающие панели -->
     <div class="flex flex-1 gap-2 overflow-hidden p-2">
@@ -2013,7 +1992,7 @@ watch(isMobile, (m) => { if (m && calView.value === 'week') calView.value = 'day
             <UButton icon="i-heroicons-chevron-right" color="gray" variant="ghost" size="xs" square @click="shiftRange(1)" />
           </div>
           <div class="ml-2 flex items-center gap-0.5 rounded-md bg-elevated p-0.5">
-            <button v-for="v in ['month','week','day']" v-show="!(isMobile && v === 'week')" :key="v"
+            <button v-for="v in ['month','week','day']" :key="v"
               class="rounded px-2 py-0.5 text-xs capitalize transition-colors"
               :class="calView === v ? 'bg-active text-white' : 'text-tertiary hover:text-secondary'"
               @click="calView = v as any">{{ v }}</button>
@@ -2027,20 +2006,15 @@ watch(isMobile, (m) => { if (m && calView.value === 'week') calView.value = 'day
           <div class="grid grid-cols-7 border-b border-subtle text-center text-xs font-medium uppercase tracking-wider text-tertiary">
             <div v-for="wd in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="wd" class="py-1.5">{{ wd }}</div>
           </div>
-          <div class="grid grid-cols-7 [grid-auto-rows:minmax(96px,1fr)] max-md:[grid-auto-rows:minmax(58px,1fr)]">
+          <div class="grid grid-cols-7" style="grid-auto-rows: minmax(96px, 1fr)">
             <div v-for="cell in calGrid" :key="cell.ds"
-              class="group/cell relative min-w-0 cursor-pointer border-b border-r border-subtle/50 p-1 text-left align-top transition hover:bg-hover/40"
+              class="group/cell relative cursor-pointer border-b border-r border-subtle/50 p-1 text-left align-top transition hover:bg-hover/40"
               :class="cell.inMonth ? '' : 'bg-elevated/30'"
               @click="openCalCreate(cell.ds)">
               <div class="flex items-center justify-between px-0.5">
                 <span class="text-xs" :class="cell.isToday ? 'flex h-5 w-5 items-center justify-center rounded bg-accent font-semibold text-base' : cell.inMonth ? 'text-secondary' : 'text-tertiary/50'">{{ cell.day }}</span>
               </div>
-              <!-- mobile: точки вместо текста (узкие ячейки) -->
-              <div v-if="calItemsForDay(cell.ds).length" class="mt-1 flex flex-wrap gap-0.5 px-0.5 md:hidden">
-                <span v-for="it in calItemsForDay(cell.ds).slice(0, 6)" :key="'d' + it.kind + it.id" class="h-1.5 w-1.5 rounded-full"
-                  :style="{ background: (it.kind === 'event' || it.kind === 'dayoff') ? it.color : '#7aa2f7' }" />
-              </div>
-              <div class="mt-0.5 space-y-0.5 max-md:hidden">
+              <div class="mt-0.5 space-y-0.5">
                 <div v-for="it in calItemsForDay(cell.ds).slice(0, 4)" :key="it.kind + it.id"
                   class="flex cursor-pointer items-center gap-1 truncate rounded px-1 py-0.5 text-[11px] leading-tight transition hover:brightness-125"
                   :class="it.kind === 'issue' || it.kind === 'meeting' ? 'bg-hover text-secondary hover:bg-active' : 'text-white'"
@@ -2728,16 +2702,12 @@ watch(isMobile, (m) => { if (m && calView.value === 'week') calView.value = 'day
           <div class="grid grid-cols-7 gap-px text-xs">
             <div v-for="w in WEEKDAYS" :key="w" class="px-1 py-1 text-tertiary">{{ w }}</div>
             <div v-for="c in calCells" :key="c.date"
-              :class="[calMode === 'week' ? 'min-h-[360px]' : 'min-h-[88px] max-md:min-h-[52px]', 'min-w-0 rounded-sm border p-1', c.inMonth ? 'border-subtle bg-surface' : 'border-transparent bg-base opacity-40', c.date === todayStr ? '!border-accent' : '']"
+              :class="[calMode === 'week' ? 'min-h-[360px]' : 'min-h-[88px]', 'rounded-sm border p-1', c.inMonth ? 'border-subtle bg-surface' : 'border-transparent bg-base opacity-40', c.date === todayStr ? '!border-accent' : '']"
               @dragover.prevent @drop="dropOnDay(c.date)">
               <div class="mb-1 text-tertiary">{{ c.day }}</div>
-              <!-- mobile: точки -->
-              <div v-if="store.calendarIssues(selectedTeamId, c.date).length" class="flex flex-wrap gap-0.5 md:hidden">
-                <span v-for="i in store.calendarIssues(selectedTeamId, c.date).slice(0, 6)" :key="'d' + i.id" class="h-1.5 w-1.5 rounded-full bg-accent2" />
-              </div>
               <div v-for="i in store.calendarIssues(selectedTeamId, c.date)" :key="i.id"
                 draggable="true" @dragstart="draggedId = i.id" @click="openIssue(i.id)"
-                class="mb-0.5 cursor-pointer truncate rounded-sm bg-elevated px-1 py-0.5 hover:bg-hover max-md:hidden"
+                class="mb-0.5 cursor-pointer truncate rounded-sm bg-elevated px-1 py-0.5 hover:bg-hover"
                 :title="i.identifier + ' ' + i.title">
                 <span class="text-accent2">{{ i.identifier }}</span> {{ i.title }}
               </div>
@@ -2799,7 +2769,7 @@ watch(isMobile, (m) => { if (m && calView.value === 'week') calView.value = 'day
 
     <!-- Cycle insights panel (когда выбран цикл и не открыт issue) -->
     <ResizeHandle v-if="cycleBurndown && !selectedIssue" @down="cyclePanel.onResizeStart" />
-    <aside v-if="cycleBurndown && !selectedIssue" :style="isMobile ? {} : { width: cyclePanel.w.value + 'px' }" class="shrink-0 max-md:fixed max-md:inset-0 max-md:top-14 max-md:z-[60] max-md:w-full max-md:rounded-none overflow-y-auto rounded-xl border border-subtle bg-surface px-4 py-3 text-sm">
+    <aside v-if="cycleBurndown && !selectedIssue" :style="{ width: cyclePanel.w.value + 'px' }" class="shrink-0 overflow-y-auto rounded-xl border border-subtle bg-surface px-4 py-3 text-sm">
       <!-- header: Current pill + range -->
       <div class="mb-3 flex items-center gap-2 text-sm">
         <span class="rounded-md px-2 py-0.5 text-xs font-medium"
@@ -2880,7 +2850,7 @@ watch(isMobile, (m) => { if (m && calView.value === 'week') calView.value = 'day
 
     <!-- Issue detail panel (M4) -->
     <ResizeHandle v-if="selectedIssue" @down="detailPanel.onResizeStart" />
-    <aside v-if="selectedIssue" :style="isMobile ? {} : { width: detailPanel.w.value + 'px' }" class="flex shrink-0 max-md:fixed max-md:inset-0 max-md:top-14 max-md:z-[60] max-md:w-full max-md:rounded-none flex-col overflow-y-auto rounded-xl border border-subtle bg-surface text-sm">
+    <aside v-if="selectedIssue" :style="{ width: detailPanel.w.value + 'px' }" class="flex shrink-0 flex-col overflow-y-auto rounded-xl border border-subtle bg-surface text-sm">
       <!-- top bar -->
       <div class="flex items-center gap-2 border-b border-subtle px-4 py-2.5">
         <span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(store.states[selectedIssue.stateId]?.category) }">{{ statusGlyph(store.states[selectedIssue.stateId]?.category) }}</span>
@@ -3135,7 +3105,7 @@ watch(isMobile, (m) => { if (m && calView.value === 'week') calView.value = 'day
 
     <!-- Thread panel (плавающая) -->
     <ResizeHandle v-if="store.threadParentId && activeSection === 'chats'" @down="threadPanel.onResizeStart" />
-    <aside v-if="store.threadParentId && activeSection === 'chats'" :style="isMobile ? {} : { width: threadPanel.w.value + 'px' }" class="flex shrink-0 max-md:fixed max-md:inset-0 max-md:top-14 max-md:z-[60] max-md:w-full max-md:rounded-none flex-col overflow-hidden rounded-xl border border-subtle bg-surface text-sm">
+    <aside v-if="store.threadParentId && activeSection === 'chats'" :style="{ width: threadPanel.w.value + 'px' }" class="flex shrink-0 flex-col overflow-hidden rounded-xl border border-subtle bg-surface text-sm">
       <div class="flex shrink-0 items-center gap-2 border-b border-subtle px-4 py-3">
         <UIcon name="i-heroicons-chat-bubble-left-right" class="text-tertiary" />
         <span class="font-medium">thread</span>
@@ -3452,7 +3422,7 @@ watch(isMobile, (m) => { if (m && calView.value === 'week') calView.value = 'day
 
     <!-- Workspace Settings (большая модалка с сайдбаром) -->
     <UModal v-model="showSettings" :prevent-close="showAuto" :ui="{ ...modalUi, width: 'sm:max-w-3xl', rounded: 'rounded-xl' }">
-      <div class="flex h-[34rem] max-md:h-[85vh] overflow-hidden rounded-xl">
+      <div class="flex h-[34rem] overflow-hidden rounded-xl">
         <!-- сайдбар табов -->
         <div class="w-48 shrink-0 overflow-y-auto border-r border-subtle bg-base p-2">
           <template v-for="(tabs, grp) in settingsGroups" :key="grp">
@@ -3837,8 +3807,8 @@ watch(isMobile, (m) => { if (m && calView.value === 'week') calView.value = 'day
     </UModal>
 
     <!-- Command palette (Cmd/Ctrl+K) -->
-    <div v-if="paletteOpen" class="fixed inset-0 z-[100] flex items-start justify-center bg-black/40 px-3 pt-20 md:pt-32" @click.self="paletteOpen = false">
-      <div class="w-full max-w-[32rem] rounded-md border border-subtle bg-elevated shadow-xl">
+    <div v-if="paletteOpen" class="fixed inset-0 z-[100] flex items-start justify-center bg-black/40 pt-32" @click.self="paletteOpen = false">
+      <div class="w-[32rem] rounded-md border border-subtle bg-elevated shadow-xl">
         <div class="flex items-center gap-2 border-b border-subtle px-4">
           <span class="text-ok">$</span>
           <input ref="paletteInput" v-model="paletteQ" placeholder="search issues, teams, dashboards, views…"
