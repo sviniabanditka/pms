@@ -17,6 +17,7 @@ type APIToken struct {
 	Name        string     `bun:"name" json:"name"`
 	TokenHash   string     `bun:"token_hash" json:"-"`
 	Prefix      string     `bun:"prefix" json:"prefix"`
+	ReadOnly    bool       `bun:"read_only" json:"readOnly"`
 	LastUsedAt  *time.Time `bun:"last_used_at" json:"lastUsedAt,omitempty"`
 	ExpiresAt   *time.Time `bun:"expires_at" json:"expiresAt,omitempty"`
 	RevokedAt   *time.Time `bun:"revoked_at" json:"revokedAt,omitempty"`

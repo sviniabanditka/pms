@@ -71,6 +71,9 @@ func newWorkspaceAuthInterceptor(lookup roleLookup) connect.UnaryInterceptorFunc
 			}
 			role := authz.Role(roleStr)
 			proc := req.Spec().Procedure
+			if auth.IsReadOnly(ctx) && !isReadProcedure(proc) {
+				return nil, connect.NewError(connect.CodePermissionDenied, errors.New("read-only API token"))
+			}
 			if role == authz.RoleGuest && !isReadProcedure(proc) {
 				return nil, connect.NewError(connect.CodePermissionDenied, errors.New("guests are read-only"))
 			}

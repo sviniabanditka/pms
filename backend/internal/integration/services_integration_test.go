@@ -615,7 +615,7 @@ func TestApiTokens_CreateResolveRevoke(t *testing.T) {
 	ws, actor := newWS(t)
 	svc := apitokens.NewService(appDB)
 
-	raw, err := svc.Create(context.Background(), actor, ws, uuid.New(), "ci-bot", nil)
+	raw, err := svc.Create(context.Background(), actor, ws, uuid.New(), "ci-bot", false, nil)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -627,7 +627,7 @@ func TestApiTokens_CreateResolveRevoke(t *testing.T) {
 		t.Error("token must be stored by sha256 hash")
 	}
 	// пустое имя → ErrName
-	if _, err := svc.Create(context.Background(), actor, ws, uuid.New(), "  ", nil); err != apitokens.ErrName {
+	if _, err := svc.Create(context.Background(), actor, ws, uuid.New(), "  ", false, nil); err != apitokens.ErrName {
 		t.Errorf("empty name: got %v, want ErrName", err)
 	}
 	// list (без секрета)

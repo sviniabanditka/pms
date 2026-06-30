@@ -166,3 +166,11 @@ func (w *WebhookDeliverWorker) markSuccess(ctx context.Context, id uuid.UUID, co
 		Set("attempts = attempts + 1").Set("status = 'success'").Set("response_code = ?", code).
 		Set("delivered_at = now()").Where("id = ?", id).Exec(ctx)
 }
+
+// NewWebhookDispatchWorker / NewWebhookDeliverWorker — конструкторы для тестов/обвязки.
+func NewWebhookDispatchWorker(db *bun.DB) *WebhookDispatchWorker {
+	return &WebhookDispatchWorker{db: db}
+}
+func NewWebhookDeliverWorker(db *bun.DB, httpc *http.Client) *WebhookDeliverWorker {
+	return &WebhookDeliverWorker{db: db, http: httpc}
+}

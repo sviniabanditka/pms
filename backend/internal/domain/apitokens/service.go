@@ -22,14 +22,14 @@ type Service struct{ db *bun.DB }
 func NewService(bdb *bun.DB) *Service { return &Service{db: bdb} }
 
 // Create выпускает токен, возвращает RAW-секрет (показывается один раз) + id.
-func (s *Service) Create(ctx context.Context, actor, wsID, id uuid.UUID, name string, expiresAt *time.Time) (string, error) {
+func (s *Service) Create(ctx context.Context, actor, wsID, id uuid.UUID, name string, readOnly bool, expiresAt *time.Time) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return "", ErrName
 	}
 	raw, hash := token.Generate("pms_")
 	at := &models.APIToken{
-		ID: id, WorkspaceID: wsID, UserID: actor, Name: name,
+		ID: id, WorkspaceID: wsID, UserID: actor, Name: name, ReadOnly: readOnly,
 		TokenHash: hash, Prefix: raw[:12], ExpiresAt: expiresAt, CreatedAt: time.Now().UTC(),
 	}
 	if _, err := s.db.NewInsert().Model(at).Exec(ctx); err != nil {

@@ -190,6 +190,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			WorkspaceID   string `json:"workspaceId"`
 			Name          string `json:"name"`
 			ExpiresInDays int    `json:"expiresInDays"`
+			ReadOnly      bool   `json:"readOnly"`
 		}
 		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -210,7 +211,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			exp = &t
 		}
 		id, _ := uuid.NewV7()
-		raw, err := svcs.ApiTokens.Create(req.Context(), uid, wsID, id, body.Name, exp)
+		raw, err := svcs.ApiTokens.Create(req.Context(), uid, wsID, id, body.Name, body.ReadOnly, exp)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -362,6 +363,31 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	})
+
+	r.With(auth.RequireAuth).Get("/api/webhooks/{id}/deliveries", func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := auth.UserID(req.Context())
+		id, err := uuid.Parse(chi.URLParam(req, "id"))
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+		wsID, err := uuid.Parse(req.URL.Query().Get("workspaceId"))
+		if err != nil {
+			http.Error(w, "invalid workspace_id", http.StatusBadRequest)
+			return
+		}
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		list, err := svcs.Webhooks.Deliveries(req.Context(), wsID, id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(list)
 	})
 
 	// ConnectRPC-сервисы. Streaming-ответы (bootstrap) жмём gzip на HTTP-уровне

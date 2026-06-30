@@ -1462,6 +1462,7 @@ const settingsGroups = computed(() => {
 const apiTokens = ref<any[]>([])
 const newTokenName = ref('')
 const newTokenExpiry = ref(0) // дней; 0 = бессрочно
+const newTokenReadOnly = ref(false)
 const revealedToken = ref('')
 const apiBase = () => (useRuntimeConfig().public.apiBase as string) || ''
 async function loadApiTokens() {
@@ -1474,7 +1475,7 @@ async function createApiToken() {
   if (!name) return
   const r = await fetch(`${apiBase()}/api/tokens`, {
     method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ workspaceId: store.activeWorkspaceId, name, expiresInDays: newTokenExpiry.value || 0 }),
+    body: JSON.stringify({ workspaceId: store.activeWorkspaceId, name, expiresInDays: newTokenExpiry.value || 0, readOnly: newTokenReadOnly.value }),
   })
   if (r.ok) { revealedToken.value = (await r.json()).token; newTokenName.value = ''; await loadApiTokens() }
 }
@@ -1515,6 +1516,12 @@ async function deleteWebhook(id: string) {
   if (import.meta.client && !confirm('Delete this webhook?')) return
   await fetch(`${apiBase()}/api/webhooks/${id}?workspaceId=${store.activeWorkspaceId}`, { method: 'DELETE', credentials: 'include' })
   await loadWebhooks()
+}
+const deliveriesByHook = ref<Record<string, any[]>>({})
+async function toggleDeliveries(id: string) {
+  if (deliveriesByHook.value[id]) { const { [id]: _drop, ...rest } = deliveriesByHook.value; deliveriesByHook.value = rest; return }
+  const r = await fetch(`${apiBase()}/api/webhooks/${id}/deliveries?workspaceId=${store.activeWorkspaceId}`, { credentials: 'include' })
+  deliveriesByHook.value = { ...deliveriesByHook.value, [id]: r.ok ? await r.json() : [] }
 }
 watch(settingsTab, (t) => { if (t === 'webhooks') { revealedSecret.value = ''; loadWebhooks() } })
 // appearance (клиентское, localStorage)
@@ -3635,6 +3642,7 @@ useHead({ title: () => pageTitle.value })
               <USelectMenu v-model="newTokenExpiry" :options="[{ label: 'never', value: 0 }, { label: '30d', value: 30 }, { label: '90d', value: 90 }, { label: '1y', value: 365 }]" value-attribute="value" option-attribute="label" class="w-24" />
               <UButton :disabled="!newTokenName.trim()" @click="createApiToken">[ create ]</UButton>
             </div>
+            <div class="mb-3"><TermCheck v-model="newTokenReadOnly" label="read-only (only read endpoints)" /></div>
             <div v-if="revealedToken" class="mb-3 rounded-md border border-ok/40 bg-elevated px-3 py-2">
               <div class="mb-1 text-xs text-ok">Copy now — shown once:</div>
               <div class="flex items-center gap-2">
@@ -3645,6 +3653,7 @@ useHead({ title: () => pageTitle.value })
             <div v-for="t in apiTokens" :key="t.id" class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
               <UIcon name="i-heroicons-key" class="shrink-0 text-tertiary" />
               <span class="flex-1 truncate text-sm">{{ t.name }} <span class="ml-1 font-mono text-xs text-tertiary">{{ t.prefix }}…</span></span>
+              <span v-if="t.readOnly" class="shrink-0 rounded bg-elevated px-1 text-[10px] text-tertiary">read-only</span>
               <span class="shrink-0 text-xs text-tertiary">{{ t.lastUsedAt ? 'used ' + d10(t.lastUsedAt) : 'never used' }}</span>
               <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Revoke" @click="revokeApiToken(t.id)" />
             </div>
@@ -3670,11 +3679,23 @@ useHead({ title: () => pageTitle.value })
                 <UButton size="2xs" color="gray" @click="copyText(revealedSecret)">[ copy ]</UButton>
               </div>
             </div>
-            <div v-for="wh in webhooksList" :key="wh.id" class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
-              <span class="h-2 w-2 shrink-0 rounded-full" :class="wh.active ? 'bg-ok' : 'bg-tertiary'" />
-              <span class="min-w-0 flex-1 truncate text-sm">{{ wh.url }}<span class="ml-1 text-xs text-tertiary">{{ (wh.events || []).join(', ') }}</span></span>
-              <UButton size="2xs" color="gray" variant="ghost" @click="toggleWebhook(wh)">{{ wh.active ? 'disable' : 'enable' }}</UButton>
-              <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Delete" @click="deleteWebhook(wh.id)" />
+            <div v-for="wh in webhooksList" :key="wh.id" class="rounded-md px-2 py-1.5 hover:bg-hover">
+              <div class="group flex items-center gap-2">
+                <span class="h-2 w-2 shrink-0 rounded-full" :class="wh.active ? 'bg-ok' : 'bg-tertiary'" />
+                <span class="min-w-0 flex-1 truncate text-sm">{{ wh.url }}<span class="ml-1 text-xs text-tertiary">{{ (wh.events || []).join(', ') }}</span></span>
+                <UButton size="2xs" color="gray" variant="ghost" @click="toggleDeliveries(wh.id)">{{ deliveriesByHook[wh.id] ? 'hide' : 'log' }}</UButton>
+                <UButton size="2xs" color="gray" variant="ghost" @click="toggleWebhook(wh)">{{ wh.active ? 'disable' : 'enable' }}</UButton>
+                <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Delete" @click="deleteWebhook(wh.id)" />
+              </div>
+              <div v-if="deliveriesByHook[wh.id]" class="ml-4 mt-1 space-y-0.5">
+                <div v-for="dlv in deliveriesByHook[wh.id]" :key="dlv.id" class="flex items-center gap-2 text-xs">
+                  <span class="w-14 shrink-0" :class="dlv.status === 'success' ? 'text-ok' : dlv.status === 'failed' ? 'text-danger' : 'text-tertiary'">{{ dlv.status }}</span>
+                  <span class="shrink-0 text-tertiary">{{ dlv.event }}</span>
+                  <span class="shrink-0 text-tertiary">{{ dlv.responseCode || '—' }}</span>
+                  <span class="flex-1 truncate text-right text-tertiary">{{ d10(dlv.createdAt) }} · {{ dlv.attempts }}×</span>
+                </div>
+                <div v-if="!deliveriesByHook[wh.id].length" class="text-xs text-tertiary">// no deliveries yet</div>
+              </div>
             </div>
             <div v-if="!webhooksList.length" class="py-6 text-center text-sm text-tertiary">// no webhooks yet</div>
           </template>

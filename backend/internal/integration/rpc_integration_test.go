@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/go-chi/chi/v5"
@@ -15,6 +16,7 @@ import (
 	pmsv1 "github.com/pms/backend/gen/pms/v1"
 	"github.com/pms/backend/gen/pms/v1/pmsv1connect"
 	"github.com/pms/backend/internal/auth"
+	"github.com/pms/backend/internal/domain/apitokens"
 	"github.com/pms/backend/internal/domain/attachments"
 	"github.com/pms/backend/internal/domain/automations"
 	"github.com/pms/backend/internal/domain/calendar"
@@ -155,6 +157,62 @@ func TestRPC_MembershipInterceptor(t *testing.T) {
 		_, err := ac.CreateAutomation(context.Background(), req)
 		if connect.CodeOf(err) != connect.CodePermissionDenied {
 			t.Fatalf("member admin-proc must be PermissionDenied, got %v (code %v)", err, connect.CodeOf(err))
+		}
+	})
+}
+
+// rpcServerReal монтирует НАСТОЯЩИЙ auth.Authenticator (резолвит Bearer pms_-токены).
+// sessions с nil-redis: для pms_-токенов ветка идёт в resolveAPIToken (db), redis не трогается.
+func rpcServerReal(t *testing.T) *httptest.Server {
+	t.Helper()
+	authSvc := auth.NewService(appDB, auth.NewSessionStore(nil, time.Hour), false)
+	r := chi.NewRouter()
+	r.Use(authSvc.Authenticator)
+	rpc.Mount(r, buildServices())
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestRPC_ApiTokenReadOnly(t *testing.T) {
+	srv := rpcServerReal(t)
+	ws, owner := newWS(t)
+	member := addMember(t, ws, "member")
+	team := makeTeam(t, ws, owner, "RW") // public team → member имеет доступ
+	ats := apitokens.NewService(appDB)
+	rwTok, err := ats.Create(context.Background(), member, ws, uuid.New(), "rw", false, nil)
+	if err != nil {
+		t.Fatalf("create rw: %v", err)
+	}
+	roTok, err := ats.Create(context.Background(), member, ws, uuid.New(), "ro", true, nil)
+	if err != nil {
+		t.Fatalf("create ro: %v", err)
+	}
+
+	qc := pmsv1connect.NewQueryServiceClient(srv.Client(), srv.URL)
+	ic := pmsv1connect.NewIssueServiceClient(srv.Client(), srv.URL)
+	bearer := func(req connect.AnyRequest, tok string) { req.Header().Set("Authorization", "Bearer "+tok) }
+
+	t.Run("read-only token can read", func(t *testing.T) {
+		req := connect.NewRequest(&pmsv1.SearchRequest{WorkspaceId: ws.String(), Query: "x"})
+		bearer(req, roTok)
+		if _, err := qc.Search(context.Background(), req); err != nil {
+			t.Fatalf("ro read must work, got %v", err)
+		}
+	})
+	t.Run("read-only token cannot write", func(t *testing.T) {
+		req := connect.NewRequest(&pmsv1.CreateIssueRequest{WorkspaceId: ws.String(), TeamId: team.String(), Title: "x"})
+		bearer(req, roTok)
+		_, err := ic.CreateIssue(context.Background(), req)
+		if connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Fatalf("ro write must be PermissionDenied, got %v (%v)", err, connect.CodeOf(err))
+		}
+	})
+	t.Run("read-write token can write", func(t *testing.T) {
+		req := connect.NewRequest(&pmsv1.CreateIssueRequest{WorkspaceId: ws.String(), TeamId: team.String(), Title: "ok"})
+		bearer(req, rwTok)
+		if _, err := ic.CreateIssue(context.Background(), req); err != nil {
+			t.Fatalf("rw write must pass, got %v", err)
 		}
 	})
 }
