@@ -24,6 +24,7 @@ import (
 	"github.com/pms/backend/internal/authz"
 	"github.com/pms/backend/internal/db"
 	"github.com/pms/backend/internal/domain/apitokens"
+	"github.com/pms/backend/internal/domain/attachments"
 	"github.com/pms/backend/internal/domain/automations"
 	"github.com/pms/backend/internal/domain/calendar"
 	"github.com/pms/backend/internal/domain/chats"
@@ -33,6 +34,7 @@ import (
 	"github.com/pms/backend/internal/domain/dashboards"
 	"github.com/pms/backend/internal/domain/docs"
 	"github.com/pms/backend/internal/domain/issues"
+	"github.com/pms/backend/internal/domain/meetings"
 	"github.com/pms/backend/internal/domain/milestones"
 	"github.com/pms/backend/internal/domain/notifications"
 	"github.com/pms/backend/internal/domain/search"
@@ -40,6 +42,7 @@ import (
 	"github.com/pms/backend/internal/domain/timetracking"
 	"github.com/pms/backend/internal/domain/views"
 	"github.com/pms/backend/internal/domain/webhooks"
+	"github.com/pms/backend/internal/domain/workspaces"
 	"github.com/pms/backend/internal/realtime"
 	"github.com/pms/backend/internal/token"
 )
@@ -690,5 +693,48 @@ func TestWebhooks_CRUD(t *testing.T) {
 	}
 	if l, _ := svc.List(ctx, ws); len(l) != 0 {
 		t.Error("deleted webhook must not be listed")
+	}
+}
+
+func TestWorkspaces_CreateSeedsOwner(t *testing.T) {
+	actor := newUser(t)
+	svc := workspaces.NewService(appDB, pub, jobsDB)
+	ws := uuid.New()
+	if _, err := svc.CreateWorkspace(context.Background(), actor, ws, "ws-"+ws.String()[:8], "Acme"); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if r := scalar[string](t, `SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?`, ws, actor); r != "owner" {
+		t.Errorf("creator role = %q, want owner", r)
+	}
+}
+
+func TestMeetings_EndHostOnly(t *testing.T) {
+	ws, host := newWS(t)
+	svc := meetings.NewService(appDB, pub, meetings.LiveKit{})
+	id := uuid.New()
+	if err := svc.CreateMeeting(context.Background(), host, ws, id, "standup", nil, nil, nil, nil); err != nil {
+		t.Fatalf("create meeting: %v", err)
+	}
+	other := newUser(t)
+	if err := svc.EndMeeting(context.Background(), other, ws, id); err != meetings.ErrForbidden {
+		t.Errorf("non-host end: got %v, want ErrForbidden", err)
+	}
+	if err := svc.EndMeeting(context.Background(), host, ws, id); err != nil {
+		t.Errorf("host end: %v", err)
+	}
+}
+
+func TestAttachments_URLIDOR(t *testing.T) {
+	ws, _ := newWS(t)
+	outsider := newUser(t) // НЕ член ws
+	svc := attachments.NewService(appDB, pub, nil)
+	// валидный по форме ключ чужого ws → не член → ErrForbidden (до presign)
+	key := "ws/" + ws.String() + "/" + uuid.New().String() + "/secret.png"
+	if _, err := svc.URL(context.Background(), outsider, key); err != attachments.ErrForbidden {
+		t.Errorf("non-member URL: got %v, want ErrForbidden", err)
+	}
+	// мусорный ключ → ErrForbidden
+	if _, err := svc.URL(context.Background(), outsider, "not-a-key"); err != attachments.ErrForbidden {
+		t.Errorf("bad key: got %v, want ErrForbidden", err)
 	}
 }
