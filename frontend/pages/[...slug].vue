@@ -3009,7 +3009,6 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     <UModal v-model="createOpen" :ui="modalUi">
       <div class="p-4">
         <div class="mb-4 flex items-center gap-2">
-          <span class="flex h-7 w-7 items-center justify-center rounded-md bg-elevated"><UIcon :name="createIcon" class="text-secondary" /></span>
           <span class="text-base font-semibold text-white"><span class="text-ok">$</span> New {{ createTypeLabel.toLowerCase() }}</span>
           <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="createOpen = false" />
         </div>
@@ -3208,7 +3207,6 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     <UModal v-model="showLabelModal" :ui="modalUi">
       <div v-if="selectedIssue" class="space-y-4 p-4">
         <div class="flex items-center gap-2">
-          <UIcon name="i-heroicons-tag" class="text-tertiary" />
           <span class="text-base font-semibold text-white"><span class="text-ok">$</span> Add label</span>
           <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showLabelModal = false" />
         </div>
@@ -3237,7 +3235,6 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     <UModal v-model="showRelModal" :ui="modalUi">
       <div v-if="selectedIssue" class="space-y-4 p-4">
         <div class="flex items-center gap-2">
-          <UIcon name="i-heroicons-link" class="text-tertiary" />
           <span class="text-base font-semibold text-white"><span class="text-ok">$</span> Add relation</span>
           <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showRelModal = false" />
         </div>
@@ -3261,7 +3258,6 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     <UModal v-model="showStates" :ui="modalUi">
       <div class="space-y-3 p-4">
         <div class="flex items-center gap-2">
-          <UIcon name="i-heroicons-adjustments-horizontal" class="text-tertiary" />
           <span class="text-base font-semibold text-white"><span class="text-ok">$</span> Workflow statuses · {{ selectedTeam?.key }}</span>
           <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showStates = false" />
         </div>
@@ -3362,7 +3358,10 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <template v-else-if="settingsTab === 'teams'">
             <div class="mb-4 flex items-center justify-between">
               <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> Teams</h2>
-              <UButton size="xs" @click="showSettings = false; openCreate('team')">[ new team ]</UButton>
+              <div class="flex items-center gap-2">
+                <UButton size="xs" @click="showSettings = false; openCreate('team')">[ new team ]</UButton>
+                <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
+              </div>
             </div>
             <div v-for="t in store.teamList" :key="t.id" class="group flex items-center gap-2 rounded-md px-2 py-2 hover:bg-hover">
               <UIcon name="i-heroicons-cube" class="text-tertiary" />
