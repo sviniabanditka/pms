@@ -1419,7 +1419,7 @@ const mentionItems = computed(() => [[...store.wsUsers, store.users[store.curren
 const showMembers = ref(false)
 const inviteEmail = ref('')
 const inviteRole = ref('member')
-const ROLES = ['member', 'admin', 'guest']
+const ROLES = ['owner', 'admin', 'member', 'guest']
 const inviteLink = ref('')
 const doInvite = () => wrap(async () => {
   if (!inviteEmail.value.trim()) return
@@ -3389,7 +3389,7 @@ useHead({ title: () => pageTitle.value })
                 <UInput :model-value="store.activeWorkspace?.slug" disabled />
               </div>
               <div class="text-xs text-tertiary">ID: {{ store.activeWorkspaceId }}</div>
-              <div class="mt-6 rounded-lg border border-danger/30 p-3">
+              <div v-if="store.isWsOwner" class="mt-6 rounded-lg border border-danger/30 p-3">
                 <div class="mb-1 text-sm font-medium text-danger">Danger zone</div>
                 <p class="mb-2 text-xs text-tertiary">Deleting the workspace hides it and all its data. This action is irreversible.</p>
                 <UButton color="red" variant="ghost" @click="confirmDeleteWs">[ delete workspace ]</UButton>
@@ -3403,7 +3403,7 @@ useHead({ title: () => pageTitle.value })
               <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> members</h2>
               <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
             </div>
-            <div class="mb-4 flex gap-2">
+            <div v-if="store.isWsAdmin" class="mb-4 flex gap-2">
               <UInput v-model="inviteEmail" placeholder="email to invite" class="flex-1" @keyup.enter="doInvite" />
               <USelectMenu v-model="inviteRole" :options="labelOpts(ROLES)" value-attribute="value" option-attribute="label" class="w-32" />
               <UButton :disabled="!inviteEmail.trim()" @click="doInvite">[ invite ]</UButton>
@@ -3416,13 +3416,15 @@ useHead({ title: () => pageTitle.value })
             <div v-for="m in store.workspaceMembers" :key="m.id" class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
               <span class="flex h-7 w-7 items-center justify-center rounded-full bg-elevated text-xs">{{ (m.name || '?')[0].toUpperCase() }}</span>
               <span class="flex-1 truncate text-sm">{{ m.name }}<span v-if="m.userId === store.currentUserId" class="ml-1 text-xs text-tertiary">(you)</span></span>
-              <USelectMenu :model-value="m.role" :options="labelOpts(ROLES)" value-attribute="value" option-attribute="label" size="xs" class="w-28" @update:model-value="(r) => store.updateMemberRole(m.userId, r)" />
-              <UButton v-if="m.userId !== store.currentUserId" icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Remove" @click="store.removeMember(m.userId)" />
+              <USelectMenu v-if="store.isWsAdmin" :model-value="m.role" :options="labelOpts(ROLES)" value-attribute="value" option-attribute="label" size="xs" class="w-28" @update:model-value="(r) => store.updateMemberRole(m.userId, r)" />
+              <span v-else class="w-28 text-right text-xs text-tertiary">{{ m.role }}</span>
+              <UButton v-if="store.isWsAdmin && m.userId !== store.currentUserId" icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Remove" @click="store.removeMember(m.userId)" />
             </div>
-            <template v-if="store.pendingInvites.length">
+            <template v-if="store.isWsAdmin && store.pendingInvites.length">
               <div class="mb-1 mt-3 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Pending</div>
-              <div v-for="iv in store.pendingInvites" :key="iv.id" class="flex items-center gap-2 px-2 py-1.5 text-sm text-tertiary">
+              <div v-for="iv in store.pendingInvites" :key="iv.id" class="group flex items-center gap-2 px-2 py-1.5 text-sm text-tertiary">
                 <UIcon name="i-heroicons-envelope" /> <span class="flex-1 truncate">{{ iv.email }}</span><span class="text-xs">{{ iv.role }}</span>
+                <UButton icon="i-heroicons-x-mark" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Revoke" @click="store.revokeInvitation(iv.id)" />
               </div>
             </template>
           </template>
@@ -3432,19 +3434,33 @@ useHead({ title: () => pageTitle.value })
             <div class="mb-4 flex items-center justify-between">
               <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> teams</h2>
               <div class="flex items-center gap-2">
-                <UButton size="xs" @click="showSettings = false; openCreate('team')">[ new team ]</UButton>
+                <UButton v-if="store.isWsAdmin" size="xs" @click="showSettings = false; openCreate('team')">[ new team ]</UButton>
                 <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
               </div>
             </div>
-            <div v-for="t in store.teamList" :key="t.id" class="group flex items-center gap-2 rounded-md px-2 py-2 hover:bg-hover">
-              <UIcon name="i-heroicons-cube" class="text-tertiary" />
-              <UInput :model-value="t.name" variant="none" :padded="false" class="flex-1 font-medium" @change="(v:any) => store.updateTeam(t.id, { name: v })" />
-              <span class="text-xs text-tertiary">{{ t.key }}</span>
-              <USelectMenu :model-value="t.parentId || ''" size="2xs" class="w-32" value-attribute="value" option-attribute="label"
-                :options="[{ label: '— root —', value: '' }, ...store.teamList.filter((x) => x.id !== t.id).map((x) => ({ label: x.key, value: x.id }))]"
-                @update:model-value="(p) => store.moveTeam(t.id, p)" />
-              <UButton icon="i-heroicons-adjustments-horizontal" color="gray" variant="ghost" size="2xs" square title="Statuses" @click="selectedTeamId = t.id; showSettings = false; showStates = true" />
-              <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Delete team" @click="confirmDeleteTeam(t)" />
+            <div v-for="t in store.teamList" :key="t.id" class="rounded-md px-2 py-2 hover:bg-hover">
+              <div class="group flex items-center gap-2">
+                <UIcon :name="t.private ? 'i-heroicons-lock-closed' : 'i-heroicons-cube'" :class="t.private ? 'text-accent2' : 'text-tertiary'" />
+                <UInput :model-value="t.name" variant="none" :padded="false" class="flex-1 font-medium" :disabled="!store.canManageTeam(t.id)" @change="(v:any) => store.updateTeam(t.id, { name: v })" />
+                <span class="text-xs text-tertiary">{{ t.key }}</span>
+                <UButton v-if="store.canManageTeam(t.id)" :icon="t.private ? 'i-heroicons-lock-closed' : 'i-heroicons-lock-open'" :color="t.private ? 'red' : 'gray'" variant="ghost" size="2xs" square :title="t.private ? 'Make public' : 'Make private'" @click="store.updateTeam(t.id, { private: !t.private })" />
+                <USelectMenu v-if="store.canManageTeam(t.id)" :model-value="t.parentId || ''" size="2xs" class="w-32" value-attribute="value" option-attribute="label"
+                  :options="[{ label: '— root —', value: '' }, ...store.teamList.filter((x) => x.id !== t.id).map((x) => ({ label: x.key, value: x.id }))]"
+                  @update:model-value="(p) => store.moveTeam(t.id, p)" />
+                <UButton icon="i-heroicons-adjustments-horizontal" color="gray" variant="ghost" size="2xs" square title="Statuses" @click="selectedTeamId = t.id; showSettings = false; showStates = true" />
+                <UButton v-if="store.canManageTeam(t.id)" icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Delete team" @click="confirmDeleteTeam(t)" />
+              </div>
+              <!-- team membership (управляет lead/ws-admin) -->
+              <div v-if="store.canManageTeam(t.id)" class="ml-6 mt-1.5 flex flex-wrap items-center gap-1.5">
+                <span v-for="tm in store.teamMembersOf(t.id)" :key="tm.id" class="group/m flex items-center gap-1 rounded bg-elevated px-1.5 py-0.5 text-xs">
+                  <span :class="tm.role === 'lead' ? 'text-accent2' : 'text-secondary'">{{ store.users[tm.userId]?.name || store.users[tm.userId]?.email || '—' }}</span>
+                  <span v-if="tm.role === 'lead'" class="text-[10px] text-tertiary">lead</span>
+                  <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square class="opacity-0 group-hover/m:opacity-100" title="Remove from team" @click="store.removeTeamMember(t.id, tm.userId)" />
+                </span>
+                <USelectMenu size="2xs" class="w-40" placeholder="+ add member" value-attribute="value" option-attribute="label"
+                  :options="store.workspaceMembers.filter((m) => !store.teamMembersOf(t.id).some((tm) => tm.userId === m.userId)).map((m) => ({ label: m.name, value: m.userId }))"
+                  @update:model-value="(uid:any) => uid && store.addTeamMember(t.id, uid)" />
+              </div>
             </div>
           </template>
 
@@ -3619,7 +3635,7 @@ useHead({ title: () => pageTitle.value })
           <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showMembers = false" />
         </div>
         <!-- invite -->
-        <div class="flex gap-2">
+        <div v-if="store.isWsAdmin" class="flex gap-2">
           <UInput v-model="inviteEmail" placeholder="email to invite" class="flex-1" @keyup.enter="doInvite" />
           <USelectMenu v-model="inviteRole" :options="labelOpts(ROLES)" value-attribute="value" option-attribute="label" class="w-32" />
           <UButton :disabled="!inviteEmail.trim()" @click="doInvite">[ invite ]</UButton>
@@ -3635,12 +3651,14 @@ useHead({ title: () => pageTitle.value })
           <div v-for="m in store.workspaceMembers" :key="m.id" class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
             <span class="flex h-7 w-7 items-center justify-center rounded-full bg-elevated text-xs">{{ (m.name || '?')[0].toUpperCase() }}</span>
             <span class="flex-1 truncate text-sm">{{ m.name }}</span>
-            <USelectMenu :model-value="m.role" :options="labelOpts(ROLES)" value-attribute="value" option-attribute="label" size="xs" class="w-28" @update:model-value="(r) => store.updateMemberRole(m.userId, r)" />
+            <USelectMenu v-if="store.isWsAdmin" :model-value="m.role" :options="labelOpts(ROLES)" value-attribute="value" option-attribute="label" size="xs" class="w-28" @update:model-value="(r) => store.updateMemberRole(m.userId, r)" />
+            <span v-else class="w-28 text-right text-xs text-tertiary">{{ m.role }}</span>
           </div>
-          <template v-if="store.pendingInvites.length">
+          <template v-if="store.isWsAdmin && store.pendingInvites.length">
             <div class="mb-1 mt-3 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Pending invites</div>
-            <div v-for="iv in store.pendingInvites" :key="iv.id" class="flex items-center gap-2 px-2 py-1.5 text-sm text-tertiary">
+            <div v-for="iv in store.pendingInvites" :key="iv.id" class="group flex items-center gap-2 px-2 py-1.5 text-sm text-tertiary">
               <UIcon name="i-heroicons-envelope" /> <span class="flex-1 truncate">{{ iv.email }}</span><span class="text-xs">{{ iv.role }}</span>
+              <UButton icon="i-heroicons-x-mark" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Revoke" @click="store.revokeInvitation(iv.id)" />
             </div>
           </template>
         </div>

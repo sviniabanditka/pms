@@ -673,3 +673,11 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Токен инвайта в БД хранится хешем (sha256, 64 hex), не плейнтекстом; ссылка `/invite/<token>` с raw-токеном принимается (accept хеширует и матчит).
 - [ ] Pending-инвайты (список приглашённых email/role) видны в приложении только admin/owner; обычному члену — пусто.
 - [ ] RevokeInvitation: admin/owner отзывает pending-инвайт (исчезает); обычный член → 403.
+
+## 85. Пермишены — Фаза 5 (роле-осведомлённый UI)
+- [ ] Member/guest НЕ видит invite-форму, role-селекты (роль показана текстом), remove, pending-инвайты, revoke — только admin/owner. delete-workspace — только owner.
+- [ ] Роль owner доступна в селекте (owner может назначить/передать owner; backend elevation-bound).
+- [ ] Settings → teams: `new team` только у ws-admin; на команде private-замок + toggle/rename/move/delete/управление членами — только у lead команды(-или-ancestor) или ws-admin.
+- [ ] Управление членами команды: чипы участников (lead помечен), add-select (только не-состоящие в команде ws-члены), remove (×). Приватная команда с замком-иконкой (accent2).
+- [ ] team_member синкается: после add/remove состав обновляется (catchUp team_member); смена ws чистит teamMembers.
+- [ ] Не-admin/guest, нажав скрытое-на-бэке действие (если контрол виден), получает ошибку (403 всплывает), не молчаливый сбой.

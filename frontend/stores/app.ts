@@ -9,9 +9,10 @@ import { match, type FilterNode } from '~/lib/filter'
 
 type Entity = Record<string, any>
 
-const BUCKET: Record<string, 'workspaces' | 'teams' | 'states' | 'issues' | 'views' | 'relations' | 'projects' | 'cycles' | 'customFields' | 'customFieldValues' | 'dashboards' | 'dashboardWidgets' | 'members' | 'notifications' | 'documents' | 'channels' | 'channelMembers' | 'users' | 'labels' | 'issueLabels' | 'invitations' | 'milestones' | 'meetings' | 'meetingParticipants' | 'attachments' | 'channelUnread' | 'cycleSnapshots' | 'calendarEvents' | 'timeEntries' | 'automations'> = {
+const BUCKET: Record<string, 'workspaces' | 'teams' | 'states' | 'issues' | 'views' | 'relations' | 'projects' | 'cycles' | 'customFields' | 'customFieldValues' | 'dashboards' | 'dashboardWidgets' | 'members' | 'notifications' | 'documents' | 'channels' | 'channelMembers' | 'users' | 'labels' | 'issueLabels' | 'invitations' | 'milestones' | 'meetings' | 'meetingParticipants' | 'attachments' | 'channelUnread' | 'cycleSnapshots' | 'calendarEvents' | 'timeEntries' | 'automations' | 'teamMembers'> = {
   workspace: 'workspaces',
   team: 'teams',
+  team_member: 'teamMembers',
   workflow_state: 'states',
   issue: 'issues',
   view: 'views',
@@ -46,7 +47,7 @@ const BUCKET: Record<string, 'workspaces' | 'teams' | 'states' | 'issues' | 'vie
 const FULL_BUCKETS = new Set([
   'issue', 'team', 'workflow_state', 'label', 'issue_label', 'issue_relation', 'cycle',
   'view', 'custom_field', 'custom_field_value', 'dashboard', 'dashboard_widget',
-  'document', 'channel', 'channel_member', 'workspace_member', 'user', 'invitation', 'milestone',
+  'document', 'channel', 'channel_member', 'workspace_member', 'team_member', 'user', 'invitation', 'milestone',
   'meeting', 'meeting_participant', 'calendar_event', 'time_entry', 'automation', 'attachment', 'channel_unread', 'cycle_snapshot',
 ])
 
@@ -73,6 +74,7 @@ export const useAppStore = defineStore('app', {
     dashboards: {} as Record<string, Entity>,
     dashboardWidgets: {} as Record<string, Entity>,
     members: {} as Record<string, Entity>,
+    teamMembers: {} as Record<string, Entity>,
     notifications: {} as Record<string, Entity>,
     documents: {} as Record<string, Entity>,
     channels: {} as Record<string, Entity>,
@@ -117,6 +119,33 @@ export const useAppStore = defineStore('app', {
     mySectionsConfig: (s) => {
       const m = Object.values(s.members).find((x) => x.userId === s.currentUserId)
       return (m?.sectionsConfig as any) || {}
+    },
+    // --- Роли/доступы текущего пользователя (UX-гейтинг; бэк энфорсит независимо) ---
+    myRole: (s): string => {
+      const m = Object.values(s.members).find((x) => x.userId === s.currentUserId)
+      return (m?.role as string) || ''
+    },
+    isWsAdmin(): boolean { return this.myRole === 'owner' || this.myRole === 'admin' },
+    isWsOwner(): boolean { return this.myRole === 'owner' },
+    isGuest(): boolean { return this.myRole === 'guest' },
+    canWrite(): boolean { return this.myRole !== '' && this.myRole !== 'guest' },
+    teamMembersOf: (s) => (teamId: string) =>
+      Object.values(s.teamMembers).filter((tm: any) => tm.teamId === teamId),
+    // управлять командой может lead команды-или-ancestor (по ltree-path) либо ws-admin
+    canManageTeam(): (teamId: string) => boolean {
+      return (teamId: string) => {
+        if (this.isWsAdmin) return true
+        const team: any = this.teams[teamId]
+        if (!team) return false
+        const path = String(team.path || '')
+        return Object.values(this.teamMembers).some((tm: any) => {
+          if (tm.userId !== this.currentUserId || tm.role !== 'lead') return false
+          const anc: any = this.teams[tm.teamId]
+          if (!anc) return false
+          const ap = String(anc.path || '')
+          return path === ap || path.startsWith(ap + '.')
+        })
+      }
     },
     teamList: (s) =>
       Object.values(s.teams).filter((t) => !t.deletedAt).sort((a, b) => String(a.path || '').localeCompare(String(b.path || ''))),
@@ -488,7 +517,7 @@ export const useAppStore = defineStore('app', {
         if (this.activeWorkspaceId !== wsId) {
           this.teams = {}; this.states = {}; this.issues = {}; this.views = {}; this.relations = {}
           this.cycles = {}; this.customFields = {}; this.customFieldValues = {}
-          this.dashboards = {}; this.dashboardWidgets = {}; this.members = {}; this.notifications = {}; this.documents = {}
+          this.dashboards = {}; this.dashboardWidgets = {}; this.members = {}; this.teamMembers = {}; this.notifications = {}; this.documents = {}
           this.channels = {}; this.channelMembers = {}; this.users = {}; this.messages = {}; this.activeChannelId = ''
           this.hasMoreMessages = {}; this.threadParentId = ''; this.threadMessages = []; this.typing = {}; this.comments = {}
           this.labels = {}; this.issueLabels = {}; this.invitations = {}; this.milestones = {}; this.activity = {}; this.labelFilter = []; this.channelUnread = {}; this.cycleSnapshots = {}
@@ -694,6 +723,33 @@ export const useAppStore = defineStore('app', {
       const m = Object.values(this.members).find((x) => x.userId === userId)
       if (m) m.role = role
       await workspaces.updateMemberRole({ workspaceId: this.activeWorkspaceId, userId, role })
+    },
+    async revokeInvitation(id: string) {
+      const { workspaces } = useClients()
+      delete this.invitations[id]
+      await workspaces.revokeInvitation({ workspaceId: this.activeWorkspaceId, id })
+    },
+    // --- Team membership (private-team access management) ---
+    async addTeamMember(teamId: string, userId: string, role = 'member') {
+      const { teams } = useClients()
+      await teams.addTeamMember({ workspaceId: this.activeWorkspaceId, teamId, userId, role })
+      await this.catchUp(this.activeWorkspaceId, ['team_member'])
+    },
+    async removeTeamMember(teamId: string, userId: string) {
+      const { teams } = useClients()
+      for (const k of Object.keys(this.teamMembers)) {
+        const tm: any = this.teamMembers[k]
+        if (tm.teamId === teamId && tm.userId === userId) delete this.teamMembers[k]
+      }
+      await teams.removeTeamMember({ workspaceId: this.activeWorkspaceId, teamId, userId })
+    },
+    async leaveTeam(teamId: string) {
+      const { teams } = useClients()
+      for (const k of Object.keys(this.teamMembers)) {
+        const tm: any = this.teamMembers[k]
+        if (tm.teamId === teamId && tm.userId === this.currentUserId) delete this.teamMembers[k]
+      }
+      await teams.leaveTeam({ workspaceId: this.activeWorkspaceId, teamId })
     },
     // --- Activity ---
     async loadActivity(issueId: string) {
