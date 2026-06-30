@@ -1641,7 +1641,7 @@ useHead({ title: () => pageTitle.value })
           </button>
           <div class="my-1 border-t border-subtle" />
           <button class="w-full rounded-sm px-2 py-1.5 text-left text-tertiary hover:bg-hover" @click="wsMenu = false; openSettings(); settingsTab = 'members'">Manage members</button>
-          <button class="w-full rounded-sm px-2 py-1.5 text-left text-tertiary hover:bg-hover" @click="openCreate('workspace')">＋ New workspace</button>
+          <button v-if="store.canWrite" class="w-full rounded-sm px-2 py-1.5 text-left text-tertiary hover:bg-hover" @click="openCreate('workspace')">＋ New workspace</button>
         </div>
       </div>
 
@@ -1715,7 +1715,7 @@ useHead({ title: () => pageTitle.value })
       <template v-if="store.activeWorkspaceId && activeSection === 'dashboard'">
         <div class="mb-1 flex items-center px-2 text-xs font-medium uppercase tracking-wider text-tertiary">
           <span><span class="text-ok">#</span> Dashboards</span>
-          <UButton class="ml-auto" icon="i-heroicons-plus" color="gray" variant="ghost" size="2xs" square @click="openCreate('dashboard')" />
+          <UButton v-if="store.canWrite" class="ml-auto" icon="i-heroicons-plus" color="gray" variant="ghost" size="2xs" square @click="openCreate('dashboard')" />
         </div>
         <div v-for="d in store.workspaceDashboards" :key="d.id"
           class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 hover:bg-hover"
@@ -1782,7 +1782,7 @@ useHead({ title: () => pageTitle.value })
       <template v-if="store.activeWorkspaceId && activeSection === 'chats'">
         <div class="mb-1 flex items-center px-2 text-xs font-medium uppercase tracking-wider text-tertiary">
           <span><span class="text-ok">#</span> Channels</span>
-          <UButton class="ml-auto" icon="i-heroicons-plus" color="gray" variant="ghost" size="2xs" square @click="openCreate('channel')" />
+          <UButton v-if="store.canWrite" class="ml-auto" icon="i-heroicons-plus" color="gray" variant="ghost" size="2xs" square @click="openCreate('channel')" />
         </div>
         <div v-for="c in store.channelList" :key="c.id"
           class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 hover:bg-hover"
@@ -1805,7 +1805,7 @@ useHead({ title: () => pageTitle.value })
 
       <!-- MEETINGS section -->
       <template v-if="store.activeWorkspaceId && activeSection === 'meetings'">
-        <UButton block color="gray" size="sm" class="mb-4" @click="openCreate('meeting')">[ new meeting ]</UButton>
+        <UButton v-if="store.canWrite" block color="gray" size="sm" class="mb-4" @click="openCreate('meeting')">[ new meeting ]</UButton>
         <div v-if="store.liveMeetings.length" class="mb-1 px-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Live now</div>
         <div v-for="m in store.liveMeetings" :key="m.id"
           class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 text-secondary hover:bg-hover" @click="joinScheduled(m.id)">
@@ -2209,7 +2209,8 @@ useHead({ title: () => pageTitle.value })
             <span v-if="store.typingNames(currentChannel.id).length">{{ store.typingNames(currentChannel.id).join(', ') }} typing…</span>
           </div>
           <!-- composer -->
-          <div class="shrink-0 px-3 pb-3">
+          <div v-if="!store.canWrite" class="shrink-0 px-3 pb-3 text-center text-xs text-tertiary">// read-only — guests can't post</div>
+          <div v-else class="shrink-0 px-3 pb-3">
             <PendingAttachments v-if="pendingFiles.length" class="mb-1.5" :files="pendingFiles" @remove="(i) => pendingFiles = pendingFiles.filter((_, j) => j !== i)" />
             <div class="rounded-lg border border-subtle bg-elevated">
               <div class="flex items-center gap-1 border-b border-subtle px-2 py-1">
@@ -2251,7 +2252,7 @@ useHead({ title: () => pageTitle.value })
         <div class="mx-auto max-w-3xl px-6 py-6">
           <div class="mb-5 flex items-center gap-2">
             <h1 class="text-lg font-semibold text-white">Meetings</h1>
-            <UButton class="ml-auto" color="gray" size="sm" @click="openCreate('meeting')">[ new meeting ]</UButton>
+            <UButton v-if="store.canWrite" class="ml-auto" color="gray" size="sm" @click="openCreate('meeting')">[ new meeting ]</UButton>
           </div>
 
           <div v-if="store.liveMeetings.length" class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Live now</div>
@@ -2348,7 +2349,7 @@ useHead({ title: () => pageTitle.value })
           <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
           <span class="text-tertiary">/</span>          <span class="font-medium">cycles</span>
           <span class="text-tertiary">{{ store.teamCycles(selectedTeamId).length }}</span>
-          <UButton class="ml-auto" size="xs" color="gray" variant="ghost" @click="openCreate('cycle')">[ new cycle ]</UButton>
+          <UButton v-if="store.canManageTeam(selectedTeamId)" class="ml-auto" size="xs" color="gray" variant="ghost" @click="openCreate('cycle')">[ new cycle ]</UButton>
         </div>
         <div class="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
           <div v-for="c in store.teamCycles(selectedTeamId)" :key="c.id"
@@ -2362,7 +2363,7 @@ useHead({ title: () => pageTitle.value })
             <div class="text-xs text-tertiary">{{ String(c.startsOn).slice(0,10) }} → {{ String(c.endsOn).slice(0,10) }}</div>
             <div class="mt-2 text-xs text-tertiary">{{ store.cycleStats(c.id).completed }}/{{ store.cycleStats(c.id).scope }} done</div>
           </div>
-          <div v-if="!store.teamCycles(selectedTeamId).length"
+          <div v-if="store.canManageTeam(selectedTeamId) && !store.teamCycles(selectedTeamId).length"
             class="flex h-28 cursor-pointer items-center justify-center rounded-lg border border-dashed border-subtle text-sm text-tertiary hover:bg-hover"
             @click="openCreate('cycle')">+ Create first cycle</div>
         </div>
@@ -2406,7 +2407,7 @@ useHead({ title: () => pageTitle.value })
             <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
             <span class="text-tertiary">/</span>            <span class="font-medium">milestones</span>
             <span class="text-tertiary">{{ store.teamMilestones(selectedTeamId).length }}</span>
-            <UButton class="ml-auto" size="xs" color="gray" variant="ghost" @click="openCreate('milestone')">[ new milestone ]</UButton>
+            <UButton v-if="store.canManageTeam(selectedTeamId)" class="ml-auto" size="xs" color="gray" variant="ghost" @click="openCreate('milestone')">[ new milestone ]</UButton>
           </div>
           <div class="p-4">
             <div class="space-y-2">
@@ -2440,7 +2441,7 @@ useHead({ title: () => pageTitle.value })
           <UIcon name="i-heroicons-document-text" class="text-tertiary" />
           <span class="font-medium">docs</span>
           <span class="text-tertiary">{{ store.teamDocs(selectedTeamId).length }}</span>
-          <UButton class="ml-auto" size="xs" color="gray" variant="ghost" @click="openCreate('doc')">[ new doc ]</UButton>
+          <UButton v-if="store.canWrite" class="ml-auto" size="xs" color="gray" variant="ghost" @click="openCreate('doc')">[ new doc ]</UButton>
         </div>
         <div class="p-4">
           <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Recent</div>
@@ -2451,7 +2452,7 @@ useHead({ title: () => pageTitle.value })
               <div class="flex items-center gap-2"><UIcon name="i-heroicons-document" class="text-tertiary" /><span class="truncate font-medium">{{ d.title }}</span></div>
               <div class="mt-1 line-clamp-2 text-xs text-tertiary">{{ d.body?.md || 'Empty document' }}</div>
             </div>
-            <div v-if="!store.teamDocs(selectedTeamId).length"
+            <div v-if="store.canWrite && !store.teamDocs(selectedTeamId).length"
               class="flex h-28 cursor-pointer items-center justify-center rounded-lg border border-dashed border-subtle text-sm text-tertiary hover:bg-hover"
               @click="openCreate('doc')">+ Create first doc</div>
           </div>
@@ -2586,7 +2587,7 @@ useHead({ title: () => pageTitle.value })
               <span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(st.category) }">{{ statusGlyph(st.category) }}</span>
               <span class="font-medium">{{ st.name }}</span>
               <span class="text-tertiary">{{ store.issuesFor(selectedTeamId, st.id).length }}</span>
-              <UButton class="ml-auto opacity-0 group-hover/col:opacity-100" icon="i-heroicons-plus" color="gray" variant="ghost" size="2xs" square @click="openCreate('issue')" />
+              <UButton v-if="store.canWrite" class="ml-auto opacity-0 group-hover/col:opacity-100" icon="i-heroicons-plus" color="gray" variant="ghost" size="2xs" square @click="openCreate('issue')" />
             </div>
             <div class="flex-1 space-y-2 overflow-y-auto">
               <div v-for="i in store.issuesFor(selectedTeamId, st.id)" :key="i.id"
@@ -2940,7 +2941,7 @@ useHead({ title: () => pageTitle.value })
             <span class="text-xs text-accent2">{{ c.identifier }}</span>
             <span class="truncate" :class="{ 'text-tertiary line-through': c.completedAt }">{{ c.title }}</span>
           </div>
-          <UInput v-model="newSub" placeholder="+ Add sub-issue" size="xs" variant="none" class="w-full" @keyup.enter="addSub" />
+          <UInput v-if="store.canWrite" v-model="newSub" placeholder="+ Add sub-issue" size="xs" variant="none" class="w-full" @keyup.enter="addSub" />
         </div>
 
         <!-- Relations -->
@@ -3001,8 +3002,8 @@ useHead({ title: () => pageTitle.value })
               </div>
             </div>
           </div>
-          <PendingAttachments v-if="commentPending.length" class="mt-2" :files="commentPending" @remove="(i) => commentPending = commentPending.filter((_, j) => j !== i)" />
-          <div class="mt-2 flex items-end gap-2">
+          <PendingAttachments v-if="store.canWrite && commentPending.length" class="mt-2" :files="commentPending" @remove="(i) => commentPending = commentPending.filter((_, j) => j !== i)" />
+          <div v-if="store.canWrite" class="mt-2 flex items-end gap-2">
             <div class="relative flex flex-1 gap-2 rounded-md border border-subtle bg-elevated px-2.5 py-1.5">
               <MentionMenu :m="commentMention" />
               <span class="select-none pt-px text-ok">&gt;</span>
@@ -3048,7 +3049,7 @@ useHead({ title: () => pageTitle.value })
         <div class="mb-1 px-2 text-xs text-tertiary">{{ store.threadMessages.length }} {{ store.threadMessages.length === 1 ? 'reply' : 'replies' }}</div>
         <ChatMessage v-for="m in store.threadMessages" :key="m.id" :m="m" :can-reply="false" />
       </div>
-      <div class="shrink-0 border-t border-subtle p-2">
+      <div v-if="store.canWrite" class="shrink-0 border-t border-subtle p-2">
         <PendingAttachments v-if="threadPending.length" class="mb-2" :files="threadPending" @remove="(i) => threadPending = threadPending.filter((_, j) => j !== i)" />
         <div class="flex gap-2 rounded-md border border-subtle bg-elevated px-2 py-1.5">
           <span class="select-none pt-px text-ok">&gt;</span>

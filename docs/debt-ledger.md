@@ -7,7 +7,7 @@
 | ID | Долг | Приоритет |
 |----|------|-----------|
 | P2-changelog | **change_log catch-up фильтрация по видимым командам** (Changes(since) льёт seq-метаданные всех команд; данные не утекают — клиент рефетчит type через фильтрованный bootstrap; но метаданные изменений скрытых команд видны). Низкий приоритет — нужен team_id на change_log или per-entity резолв. | Низкий |
-| P5-polish | **Пермишены Фаза 5 — остаточный UX-гейтинг** (core готов, см. Закрыто). Не спрятаны все create/mutate-контролы от guest и не-admin/не-lead по всему приложению (бэк 403'ит, ошибка всплывает через `err`/`wrap`); точечно: automations-таб, custom-fields create, sidebar «new issue/cycle/milestone/doc» для guest, disable inline-edit issue для guest. Низкий-сред (косметика, не безопасность). | Сред |
+| P5-polish | **Пермишены Фаза 5 — остаточный UX-гейтинг** (основное сделано: композеры чат/коммент/тред/sub-issue + create workspace/dashboard/channel/meeting/doc/issue под `canWrite`; cycle/milestone под `canManageTeam`; automations под `isWsAdmin`). Осталось мелочь: inline issue-edit дропдауны (status/priority/assignee) для guest не задизейблены; custom-field create UI не найден/не гейтнут. Бэк 403'ит. Низкий (косметика). | Низк |
 
 ## B. Отложены по триггеру (не «скелет-долг», ждут события)
 
