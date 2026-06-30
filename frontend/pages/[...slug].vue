@@ -505,6 +505,14 @@ async function wrap(fn: () => Promise<any>) {
 }
 const showCreate = ref(false)
 const wsMenu = ref(false)
+// --- Mobile: off-canvas рейл+сайдбар, fullscreen-панели ---
+const mobileNav = ref(false)
+const isMobile = ref(false)
+onMounted(() => {
+  const mq = window.matchMedia('(max-width: 767px)')
+  isMobile.value = mq.matches
+  mq.addEventListener('change', (e) => { isMobile.value = e.matches; if (!e.matches) mobileNav.value = false })
+})
 const wsInitial = computed(() => (store.activeWorkspace?.name || 'P')[0].toUpperCase())
 const createWs = () => wrap(async () => {
   await store.createWorkspace(slug.value, name.value)
@@ -1690,12 +1698,17 @@ const pageTitle = computed(() => {
   return SECTION_TITLES[sec] || 'stdtask'
 })
 useHead({ title: () => pageTitle.value })
+
+// Mobile: навигация из off-canvas drawer закрывает его (смена секции/выбор сущности).
+watch(() => [activeSection.value, selectedTeamId.value, selectedDocId.value, selectedDashboardId.value, selectedMsId.value, store.activeChannelId, selectedIssueId.value], () => { mobileNav.value = false })
 </script>
 
 <template>
   <div class="flex h-screen flex-col">
     <!-- ⓪ Top bar -->
     <header class="flex h-14 shrink-0 items-center gap-3 bg-base px-3 text-sm">
+      <!-- mobile: гамбургер off-canvas drawer -->
+      <UButton class="md:hidden" icon="i-heroicons-bars-3" color="gray" variant="ghost" square title="Menu" @click="mobileNav = !mobileNav" />
       <!-- workspace switcher -->
       <div class="relative">
         <UButton color="gray" variant="ghost" trailing-icon="i-heroicons-chevron-down" @click="wsMenu = !wsMenu">
@@ -1715,15 +1728,15 @@ useHead({ title: () => pageTitle.value })
         </div>
       </div>
 
-      <!-- глобальное создание -->
-      <UDropdown :items="createMenu" :popper="{ placement: 'bottom-start' }">
+      <!-- глобальное создание (на мобиле — через палитру/рейл) -->
+      <UDropdown class="hidden md:block" :items="createMenu" :popper="{ placement: 'bottom-start' }">
         <UButton icon="i-heroicons-plus" color="gray" variant="ghost" square title="Create… (⌘N)" />
       </UDropdown>
 
       <!-- search -->
-      <UButton color="gray" variant="ghost" class="mx-auto w-96 ring-1 ring-subtle" @click="openPalette">
-        <span class="flex-1 text-left text-tertiary"><span class="text-ok">$</span> search…</span>
-        <template #trailing><UKbd>⌘K</UKbd></template>
+      <UButton color="gray" variant="ghost" class="mx-auto w-full min-w-0 ring-1 ring-subtle md:w-96" @click="openPalette">
+        <span class="flex-1 truncate text-left text-tertiary"><span class="text-ok">$</span> search…</span>
+        <template #trailing><UKbd class="hidden sm:inline-flex">⌘K</UKbd></template>
       </UButton>
 
       <!-- notifications -->
@@ -1749,6 +1762,10 @@ useHead({ title: () => pageTitle.value })
     </header>
 
     <div class="flex flex-1 overflow-hidden bg-base" @click="onRefClick">
+    <!-- mobile backdrop -->
+    <div v-if="mobileNav" class="fixed inset-0 top-14 z-40 bg-black/60 md:hidden" @click="mobileNav = false" />
+    <!-- ②③ Рейл + сайдбар: off-canvas drawer на мобиле, статичные на десктопе -->
+    <div class="fixed inset-y-0 left-0 top-14 z-50 flex -translate-x-full bg-base transition-transform md:static md:top-0 md:z-auto md:translate-x-0" :class="{ 'translate-x-0': mobileNav }">
     <!-- ② Left rail -->
     <aside class="flex w-16 flex-col items-center gap-2 bg-base py-3">
       <div v-for="s in railSections" :key="s.key" class="relative">
@@ -1964,6 +1981,8 @@ useHead({ title: () => pageTitle.value })
 
       <p v-if="err" class="mt-3 text-xs text-danger">{{ err }}</p>
     </aside>
+    </div>
+    <!-- /off-canvas drawer -->
 
     <!-- Контент-область: отдельные плавающие панели -->
     <div class="flex flex-1 gap-2 overflow-hidden p-2">
@@ -2769,7 +2788,7 @@ useHead({ title: () => pageTitle.value })
 
     <!-- Cycle insights panel (когда выбран цикл и не открыт issue) -->
     <ResizeHandle v-if="cycleBurndown && !selectedIssue" @down="cyclePanel.onResizeStart" />
-    <aside v-if="cycleBurndown && !selectedIssue" :style="{ width: cyclePanel.w.value + 'px' }" class="shrink-0 overflow-y-auto rounded-xl border border-subtle bg-surface px-4 py-3 text-sm">
+    <aside v-if="cycleBurndown && !selectedIssue" :style="isMobile ? {} : { width: cyclePanel.w.value + 'px' }" class="shrink-0 max-md:fixed max-md:inset-0 max-md:top-14 max-md:z-[60] max-md:w-full max-md:rounded-none overflow-y-auto rounded-xl border border-subtle bg-surface px-4 py-3 text-sm">
       <!-- header: Current pill + range -->
       <div class="mb-3 flex items-center gap-2 text-sm">
         <span class="rounded-md px-2 py-0.5 text-xs font-medium"
@@ -2850,7 +2869,7 @@ useHead({ title: () => pageTitle.value })
 
     <!-- Issue detail panel (M4) -->
     <ResizeHandle v-if="selectedIssue" @down="detailPanel.onResizeStart" />
-    <aside v-if="selectedIssue" :style="{ width: detailPanel.w.value + 'px' }" class="flex shrink-0 flex-col overflow-y-auto rounded-xl border border-subtle bg-surface text-sm">
+    <aside v-if="selectedIssue" :style="isMobile ? {} : { width: detailPanel.w.value + 'px' }" class="flex shrink-0 max-md:fixed max-md:inset-0 max-md:top-14 max-md:z-[60] max-md:w-full max-md:rounded-none flex-col overflow-y-auto rounded-xl border border-subtle bg-surface text-sm">
       <!-- top bar -->
       <div class="flex items-center gap-2 border-b border-subtle px-4 py-2.5">
         <span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(store.states[selectedIssue.stateId]?.category) }">{{ statusGlyph(store.states[selectedIssue.stateId]?.category) }}</span>
@@ -3105,7 +3124,7 @@ useHead({ title: () => pageTitle.value })
 
     <!-- Thread panel (плавающая) -->
     <ResizeHandle v-if="store.threadParentId && activeSection === 'chats'" @down="threadPanel.onResizeStart" />
-    <aside v-if="store.threadParentId && activeSection === 'chats'" :style="{ width: threadPanel.w.value + 'px' }" class="flex shrink-0 flex-col overflow-hidden rounded-xl border border-subtle bg-surface text-sm">
+    <aside v-if="store.threadParentId && activeSection === 'chats'" :style="isMobile ? {} : { width: threadPanel.w.value + 'px' }" class="flex shrink-0 max-md:fixed max-md:inset-0 max-md:top-14 max-md:z-[60] max-md:w-full max-md:rounded-none flex-col overflow-hidden rounded-xl border border-subtle bg-surface text-sm">
       <div class="flex shrink-0 items-center gap-2 border-b border-subtle px-4 py-3">
         <UIcon name="i-heroicons-chat-bubble-left-right" class="text-tertiary" />
         <span class="font-medium">thread</span>
@@ -3422,7 +3441,7 @@ useHead({ title: () => pageTitle.value })
 
     <!-- Workspace Settings (большая модалка с сайдбаром) -->
     <UModal v-model="showSettings" :prevent-close="showAuto" :ui="{ ...modalUi, width: 'sm:max-w-3xl', rounded: 'rounded-xl' }">
-      <div class="flex h-[34rem] overflow-hidden rounded-xl">
+      <div class="flex h-[34rem] max-md:h-[85vh] overflow-hidden rounded-xl">
         <!-- сайдбар табов -->
         <div class="w-48 shrink-0 overflow-y-auto border-r border-subtle bg-base p-2">
           <template v-for="(tabs, grp) in settingsGroups" :key="grp">
@@ -3807,8 +3826,8 @@ useHead({ title: () => pageTitle.value })
     </UModal>
 
     <!-- Command palette (Cmd/Ctrl+K) -->
-    <div v-if="paletteOpen" class="fixed inset-0 z-[100] flex items-start justify-center bg-black/40 pt-32" @click.self="paletteOpen = false">
-      <div class="w-[32rem] rounded-md border border-subtle bg-elevated shadow-xl">
+    <div v-if="paletteOpen" class="fixed inset-0 z-[100] flex items-start justify-center bg-black/40 px-3 pt-20 md:pt-32" @click.self="paletteOpen = false">
+      <div class="w-full max-w-[32rem] rounded-md border border-subtle bg-elevated shadow-xl">
         <div class="flex items-center gap-2 border-b border-subtle px-4">
           <span class="text-ok">$</span>
           <input ref="paletteInput" v-model="paletteQ" placeholder="search issues, teams, dashboards, views…"
