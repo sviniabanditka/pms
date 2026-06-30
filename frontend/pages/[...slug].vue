@@ -2,6 +2,7 @@
 import { isAuthed, clearAuth } from '~/lib/token'
 import { fileViewUrl } from '~/lib/upload'
 import { useAppStore } from '~/stores/app'
+import { useVirtualizer } from '@tanstack/vue-virtual'
 
 const store = useAppStore()
 // Разделы левого рейла (расширяется: calendar, chats…)
@@ -465,10 +466,24 @@ onMounted(async () => {
   if (!isAuthed()) return navigateTo('/login')
   await store.loadUser()
   await store.fetchMyWorkspaces()
+  // активный ws валиден только если юзер всё ещё его участник (после seed/смены аккаунта
+  // персистнутый id может указывать на удалённый/чужой ws → bootstrap бы упал permission_denied).
+  const wsList = store.myWorkspaces || []
+  const valid = !!store.activeWorkspaceId && wsList.some((w: any) => w.id === store.activeWorkspaceId)
+  const target = valid ? store.activeWorkspaceId : wsList[0]?.id
+  if (!valid) store.activeWorkspaceId = '' // сброс стейла, иначе bootstrap не очистит бакеты
   // гидратация подняла кэш → показываем сразу (без скелетона), освежаем в фоне.
-  if (store.activeWorkspaceId && Object.keys(store.teams).length) store.loaded = true
-  if (store.activeWorkspaceId) await store.bootstrap(store.activeWorkspaceId)
-  else if (store.myWorkspaces.length) await store.bootstrap(store.myWorkspaces[0].id)
+  if (valid && Object.keys(store.teams).length) store.loaded = true
+  if (target) {
+    try {
+      await store.bootstrap(target)
+    } catch (e) {
+      // недоступный ws → фолбэк на первый доступный
+      store.activeWorkspaceId = ''
+      const fallback = wsList.find((w: any) => w.id !== target)
+      if (fallback) await store.bootstrap(fallback.id).catch(() => {})
+    }
+  }
   applyRoute(route.path) // deep-link при загрузке
 })
 
@@ -584,6 +599,37 @@ const expandDocs = reactive<Record<string, boolean>>({})
 const expandViews = reactive<Record<string, boolean>>({})
 const collapsedStatus = reactive<Record<string, boolean>>({}) // свёрнутые группы статусов в списке
 const showFilters = ref(false)
+
+// --- List virtualization (плоский поток: header-строки + issue-строки) ---
+type ListRow = { type: 'header'; key: string; g: any } | { type: 'issue'; key: string; i: any; g: any }
+const listRows = computed<ListRow[]>(() => {
+  const rows: ListRow[] = []
+  if (!selectedTeamId.value || store.layout !== 'list') return rows
+  for (const g of store.issueGroups(selectedTeamId.value)) {
+    rows.push({ type: 'header', key: 'h:' + g.key, g })
+    if (!collapsedStatus[g.key]) for (const i of g.items) rows.push({ type: 'issue', key: i.id, i, g })
+  }
+  return rows
+})
+const mainEl = ref<HTMLElement | null>(null)
+const listEl = ref<HTMLElement | null>(null)
+const listScrollMargin = ref(0)
+const measureScrollMargin = () => {
+  if (!mainEl.value || !listEl.value) return
+  listScrollMargin.value = listEl.value.getBoundingClientRect().top - mainEl.value.getBoundingClientRect().top + mainEl.value.scrollTop
+}
+const rowVirtualizer = useVirtualizer(computed(() => ({
+  count: listRows.value.length,
+  getScrollElement: () => mainEl.value,
+  estimateSize: () => 42,
+  overscan: 10,
+  scrollMargin: listScrollMargin.value,
+  getItemKey: (idx: number) => listRows.value[idx]?.key ?? idx,
+})))
+const measureRow = (el: Element | null) => { if (el) rowVirtualizer.value.measureElement(el) }
+// пересчёт оффсета списка при изменениях, влияющих на высоту sticky-хедера/раскладку
+watch([showFilters, () => store.layout, selectedTeamId], () => nextTick(measureScrollMargin))
+onMounted(() => nextTick(measureScrollMargin))
 
 // --- Глобальное создание через модалку (Linear-стиль) ---
 const createOpen = ref(false)
@@ -1820,7 +1866,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     <!-- Контент-область: отдельные плавающие панели -->
     <div class="flex flex-1 gap-2 overflow-hidden p-2">
     <!-- ④ Main content -->
-    <main class="flex-1 overflow-y-auto rounded-xl border border-subtle bg-surface">
+    <main ref="mainEl" class="flex-1 overflow-y-auto rounded-xl border border-subtle bg-surface">
       <!-- скелетон main (холодный старт) -->
       <template v-if="!store.loaded">
         <div class="border-b border-subtle px-4 py-3"><div class="skeleton h-4 w-40" /></div>
@@ -2251,7 +2297,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             :class="{ 'bg-active': selectedIssueId === i.id }" @click="openIssue(i.id)">
             <span v-if="i.priority" class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: prioColor(i.priority) }">{{ prioGlyph(i.priority) }}</span>
             <UIcon v-else name="i-heroicons-minus" class="shrink-0 text-tertiary/50" />
-            <span class="w-16 shrink-0 text-sm text-accent2">{{ i.identifier }}</span>
+            <span class="min-w-16 shrink-0 whitespace-nowrap text-sm text-accent2">{{ i.identifier }}</span>
             <span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(store.states[i.stateId]?.category) }">{{ statusGlyph(store.states[i.stateId]?.category) }}</span>
             <span class="flex-1 truncate">{{ i.title }}</span>
             <span v-if="d10(i.scheduledDate) || d10(i.dueDate)" class="shrink-0 text-xs"
@@ -2313,7 +2359,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <div v-for="i in store.milestoneIssues(selectedMs.id)" :key="i.id"
             class="flex cursor-pointer items-center gap-3 border-b border-subtle/40 px-4 py-2.5 hover:bg-hover" @click="openIssue(i.id)">
             <span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(store.states[i.stateId]?.category) }">{{ statusGlyph(store.states[i.stateId]?.category) }}</span>
-            <span class="w-14 shrink-0 text-sm text-accent2">{{ i.identifier }}</span>
+            <span class="min-w-14 shrink-0 whitespace-nowrap text-sm text-accent2">{{ i.identifier }}</span>
             <span class="flex-1 truncate">{{ i.title }}</span>
             <span v-if="i.assigneeId" class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-elevated text-[10px]">{{ (store.userName(i.assigneeId) || '?')[0].toUpperCase() }}</span>
           </div>
@@ -2566,43 +2612,48 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           </div>
         </div>
 
-        <!-- LIST (Linear-стиль: плотные строки, edit в detail) -->
+        <!-- LIST (Linear-стиль: плотные строки, edit в detail; виртуализованный плоский поток) -->
         <template v-else>
-        <div v-for="g in store.issueGroups(selectedTeamId)" :key="g.key" class="group/sec">
-          <!-- group header bar -->
-          <div class="flex cursor-pointer items-center gap-2 bg-elevated/50 px-4 py-2.5 text-sm font-semibold hover:bg-elevated"
-            @click="collapsedStatus[g.key] = !collapsedStatus[g.key]">
-            <UIcon :name="collapsedStatus[g.key] ? 'i-heroicons-chevron-right' : 'i-heroicons-chevron-down'" class="text-tertiary" />
-            <span v-if="g.kind === 'status'" class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(g.category) }">{{ statusGlyph(g.category) }}</span>
-            <span v-else-if="g.kind === 'priority'" class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: prioColor(g.prio) }">{{ prioGlyph(g.prio) }}</span>
-            <UIcon v-else-if="g.kind === 'milestone'" name="i-heroicons-flag" class="text-tertiary" />
-            <span v-else class="flex h-4 w-4 items-center justify-center rounded-full bg-elevated text-[9px]">{{ (g.label || '?')[0].toUpperCase() }}</span>
-            <span>{{ g.label }}</span>
-            <span class="font-normal text-tertiary">{{ g.items.length }}</span>
-          </div>
-
-          <template v-if="!collapsedStatus[g.key]">
-            <div v-for="i in g.items" :key="i.id"
+        <div ref="listEl" :style="{ height: rowVirtualizer.getTotalSize() + 'px', position: 'relative', width: '100%' }">
+          <div v-for="vRow in rowVirtualizer.getVirtualItems()" :key="vRow.key"
+            :ref="measureRow" :data-index="vRow.index"
+            :style="{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${vRow.start - listScrollMargin}px)` }">
+            <!-- group header bar -->
+            <div v-if="listRows[vRow.index]?.type === 'header'"
+              class="flex cursor-pointer items-center gap-2 bg-elevated/50 px-4 py-2.5 text-sm font-semibold hover:bg-elevated"
+              @click="collapsedStatus[listRows[vRow.index].g.key] = !collapsedStatus[listRows[vRow.index].g.key]">
+              <template v-if="listRows[vRow.index]" >
+                <UIcon :name="collapsedStatus[listRows[vRow.index].g.key] ? 'i-heroicons-chevron-right' : 'i-heroicons-chevron-down'" class="text-tertiary" />
+                <span v-if="listRows[vRow.index].g.kind === 'status'" class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(listRows[vRow.index].g.category) }">{{ statusGlyph(listRows[vRow.index].g.category) }}</span>
+                <span v-else-if="listRows[vRow.index].g.kind === 'priority'" class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: prioColor(listRows[vRow.index].g.prio) }">{{ prioGlyph(listRows[vRow.index].g.prio) }}</span>
+                <UIcon v-else-if="listRows[vRow.index].g.kind === 'milestone'" name="i-heroicons-flag" class="text-tertiary" />
+                <span v-else class="flex h-4 w-4 items-center justify-center rounded-full bg-elevated text-[9px]">{{ (listRows[vRow.index].g.label || '?')[0].toUpperCase() }}</span>
+                <span>{{ listRows[vRow.index].g.label }}</span>
+                <span class="font-normal text-tertiary">{{ listRows[vRow.index].g.items.length }}</span>
+              </template>
+            </div>
+            <!-- issue row -->
+            <div v-else-if="listRows[vRow.index]"
               class="group flex cursor-pointer items-center gap-3 border-b border-subtle/40 px-4 py-2.5 hover:bg-hover"
-              :class="{ 'bg-active': selectedIssueId === i.id || selectedIds.has(i.id) }"
-              @click="openIssue(i.id)">
-              <TermCheck :model-value="selectedIds.has(i.id)" class="shrink-0 transition-opacity" :class="selCount || selectedIds.has(i.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'" @click.stop @update:model-value="toggleSel(i.id)" />
-              <span v-if="i.priority" class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: prioColor(i.priority) }">{{ prioGlyph(i.priority) }}</span>
+              :class="{ 'bg-active': selectedIssueId === listRows[vRow.index].i.id || selectedIds.has(listRows[vRow.index].i.id) }"
+              @click="openIssue(listRows[vRow.index].i.id)">
+              <TermCheck :model-value="selectedIds.has(listRows[vRow.index].i.id)" class="shrink-0 transition-opacity" :class="selCount || selectedIds.has(listRows[vRow.index].i.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'" @click.stop @update:model-value="toggleSel(listRows[vRow.index].i.id)" />
+              <span v-if="listRows[vRow.index].i.priority" class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: prioColor(listRows[vRow.index].i.priority) }">{{ prioGlyph(listRows[vRow.index].i.priority) }}</span>
               <UIcon v-else name="i-heroicons-minus" class="shrink-0 text-tertiary/50" />
-              <span class="w-14 shrink-0 text-sm text-accent2">{{ i.identifier }}</span>
-              <span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(store.states[i.stateId]?.category) }">{{ statusGlyph(store.states[i.stateId]?.category) }}</span>
-              <span class="truncate">{{ i.title }}</span>
+              <span class="min-w-14 shrink-0 whitespace-nowrap text-sm text-accent2">{{ listRows[vRow.index].i.identifier }}</span>
+              <span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(store.states[listRows[vRow.index].i.stateId]?.category) }">{{ statusGlyph(store.states[listRows[vRow.index].i.stateId]?.category) }}</span>
+              <span class="truncate">{{ listRows[vRow.index].i.title }}</span>
               <span class="flex flex-1 flex-wrap items-center gap-1">
-                <span v-for="l in store.labelsForIssue(i.id)" :key="l.id" class="flex items-center gap-1 rounded border border-subtle px-1.5 py-0.5 text-xs text-tertiary">
+                <span v-for="l in store.labelsForIssue(listRows[vRow.index].i.id)" :key="l.id" class="flex items-center gap-1 rounded border border-subtle px-1.5 py-0.5 text-xs text-tertiary">
                   <span :style="{ color: l.colorToken }">#{{ l.name }}</span>
                 </span>
               </span>
-              <span v-if="i.dueDate || i.scheduledDate" class="shrink-0 text-sm tabular-nums text-tertiary">{{ String(i.scheduledDate || i.dueDate).slice(5, 10) }}</span>
-              <span v-if="i.assigneeId" class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-elevated text-[10px]" :title="store.userName(i.assigneeId)">{{ (store.userName(i.assigneeId) || '?')[0].toUpperCase() }}</span>
+              <span v-if="listRows[vRow.index].i.dueDate || listRows[vRow.index].i.scheduledDate" class="shrink-0 text-sm tabular-nums text-tertiary">{{ String(listRows[vRow.index].i.scheduledDate || listRows[vRow.index].i.dueDate).slice(5, 10) }}</span>
+              <span v-if="listRows[vRow.index].i.assigneeId" class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-elevated text-[10px]" :title="store.userName(listRows[vRow.index].i.assigneeId)">{{ (store.userName(listRows[vRow.index].i.assigneeId) || '?')[0].toUpperCase() }}</span>
               <UButton icon="i-heroicons-trash" color="gray" variant="ghost" size="xs" square
-                class="shrink-0 opacity-0 hover:opacity-100" title="Archive" @click.stop="store.archiveIssue(i.id)" />
+                class="shrink-0 opacity-0 hover:opacity-100" title="Archive" @click.stop="store.archiveIssue(listRows[vRow.index].i.id)" />
             </div>
-          </template>
+          </div>
         </div>
         </template>
       </template>

@@ -547,7 +547,7 @@ export const useAppStore = defineStore('app', {
       const base = useRuntimeConfig().public.apiBase as string
       const res = await fetch(`${base}/me/workspaces`, { credentials: 'include' })
       if (res.status === 401) return handleUnauthorized()
-      if (res.ok) this.myWorkspaces = await res.json()
+      if (res.ok) this.myWorkspaces = (await res.json()) || [] // API может отдать null
     },
 
     async createWorkspace(slug: string, name: string): Promise<string> {

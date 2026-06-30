@@ -272,7 +272,7 @@ func (s *Service) UpdateSectionsConfig(ctx context.Context, actor, wsID uuid.UUI
 // ListForUser — воркспейсы пользователя (cross-tenant через BYPASSRLS-роль,
 // строго по user_id — юзер видит только свои членства).
 func (s *Service) ListForUser(ctx context.Context, userID uuid.UUID) ([]WorkspaceBrief, error) {
-	var out []WorkspaceBrief
+	out := []WorkspaceBrief{} // непустой срез → JSON `[]`, не `null` (клиент делает .length)
 	err := s.jobs.NewSelect().
 		TableExpr("workspaces AS w").
 		ColumnExpr("w.id, w.slug, w.name").
