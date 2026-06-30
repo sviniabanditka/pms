@@ -38,7 +38,7 @@ async function clearToken() {
 export type User = { id: string; email: string; name: string }
 
 export async function login(email: string, password: string): Promise<User> {
-  const res = await fetch(`${API_BASE}/login`, {
+  const res = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
@@ -53,7 +53,7 @@ export async function login(email: string, password: string): Promise<User> {
 
 export async function me(): Promise<User | null> {
   if (!cached) return null
-  const res = await fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${cached}` } })
+  const res = await fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${cached}` } })
   if (!res.ok) {
     if (res.status === 401) await clearToken()
     return null
@@ -72,7 +72,7 @@ export async function myWorkspaces(): Promise<Workspace[]> {
 
 export async function logout() {
   if (cached) {
-    await fetch(`${API_BASE}/logout`, { method: 'POST', headers: { Authorization: `Bearer ${cached}` } }).catch(() => {})
+    await fetch(`${API_BASE}/auth/logout`, { method: 'POST', headers: { Authorization: `Bearer ${cached}` } }).catch(() => {})
   }
   await clearToken()
 }
