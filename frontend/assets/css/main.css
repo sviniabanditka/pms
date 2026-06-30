@@ -27,8 +27,9 @@ select:focus, select:focus-visible,
   --tw-ring-offset-shadow: 0 0 #0000 !important;
 }
 
-/* терминальный caret (зелёный) */
-input, textarea, [contenteditable] { caret-color: #9ece6a; }
+/* терминальный caret: зелёный + блочный (caret-shape — Safari; JS-оверлей — кросс-браузерно) */
+input, textarea, [contenteditable] { caret-color: #9ece6a; caret-shape: block; }
+@keyframes caretBlink { 0%, 50% { opacity: .85; } 50.01%, 100% { opacity: 0; } }
 
 ::selection { background: rgba(122, 162, 247, 0.32); }
 
