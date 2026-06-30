@@ -112,3 +112,47 @@ describe('store — derived indexes & lists', () => {
     expect(s.teamMembersOf('t1')[0].userId).toBe('u1')
   })
 })
+
+describe('store — applyChunk (sync core)', () => {
+  it('keys entities by id and prunes missing for FULL_BUCKETS', () => {
+    const s = useAppStore()
+    s.applyChunk('issue', [{ id: 'a', title: '1' }, { id: 'b', title: '2' }])
+    expect(Object.keys(s.issues).sort()).toEqual(['a', 'b'])
+    // issue is a FULL_BUCKET → a second chunk without 'b' prunes it
+    s.applyChunk('issue', [{ id: 'a', title: '1' }])
+    expect(Object.keys(s.issues)).toEqual(['a'])
+  })
+
+  it('uses composite key for issue_label (issueId:labelId)', () => {
+    const s = useAppStore()
+    s.applyChunk('issue_label', [{ issueId: 'i1', labelId: 'L1' }, { issueId: 'i1', labelId: 'L2' }])
+    expect(Object.keys(s.issueLabels).sort()).toEqual(['i1:L1', 'i1:L2'])
+  })
+
+  it('uses composite key for cycle_snapshot (cycleId:day)', () => {
+    const s = useAppStore()
+    s.applyChunk('cycle_snapshot', [{ cycleId: 'c1', day: '2026-06-30' }])
+    expect(s.cycleSnapshots['c1:2026-06-30']).toBeTruthy()
+  })
+
+  it('preserves lazily-loaded issue description when a chunk omits it', () => {
+    const s = useAppStore()
+    s.issues = { a: { id: 'a', title: 't', description: { md: 'kept' } } }
+    s.applyChunk('issue', [{ id: 'a', title: 't2' }]) // no description in the chunk
+    expect(s.issues.a.title).toBe('t2')
+    expect(s.issues.a.description).toEqual({ md: 'kept' })
+  })
+
+  it('routes team_member chunk into teamMembers bucket', () => {
+    const s = useAppStore()
+    s.applyChunk('team_member', [{ id: 'tm1', teamId: 't1', userId: 'u1', role: 'lead' }])
+    expect(s.teamMembers.tm1).toBeTruthy()
+  })
+
+  it('ignores unknown entity types', () => {
+    const s = useAppStore()
+    s.applyChunk('bogus', [{ id: 'x' }])
+    // nothing thrown, no bucket created
+    expect((s as any).bogus).toBeUndefined()
+  })
+})
