@@ -1986,9 +1986,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <div class="space-y-1.5">
               <div v-for="r in repRows" :key="r.key" class="flex items-center gap-3">
                 <div class="w-56 shrink-0 truncate text-sm" :title="repLabel(r.key)">{{ repLabel(r.key) }}</div>
-                <div class="relative h-6 flex-1 overflow-hidden rounded bg-elevated">
-                  <div class="absolute inset-y-0 left-0 rounded bg-accent/40" :style="{ width: (r.minutes / repMax * 100) + '%' }" />
-                </div>
+                <div class="flex-1"><TermBar :width="28" :pct="repMax ? r.minutes / repMax * 100 : 0" hide-label /></div>
                 <div class="w-12 shrink-0 text-right text-xs text-tertiary">{{ repTotal ? Math.round(r.minutes / repTotal * 100) : 0 }}%</div>
                 <div class="w-20 shrink-0 text-right text-sm tabular-nums text-white">{{ fmtMin(r.minutes) }}</div>
                 <div class="w-10 shrink-0 text-right text-xs text-tertiary">{{ r.count }}</div>
@@ -2310,9 +2308,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               <span v-if="selectedMs.targetDate" class="text-xs" :class="msOverdue(selectedMs) ? 'text-danger' : 'text-tertiary'">{{ String(selectedMs.targetDate).slice(0,10) }}{{ msOverdue(selectedMs) ? ' · overdue' : '' }}</span>
               <span class="ml-auto text-xs text-tertiary">{{ store.milestoneProgress(selectedMs.id).done }}/{{ store.milestoneProgress(selectedMs.id).total }}</span>
             </div>
-            <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-elevated">
-              <div class="h-full rounded-full bg-accent" :style="{ width: (store.milestoneProgress(selectedMs.id).total ? store.milestoneProgress(selectedMs.id).done / store.milestoneProgress(selectedMs.id).total * 100 : 0) + '%' }" />
-            </div>
+            <TermBar class="mt-2 block" :width="20" :done="store.milestoneProgress(selectedMs.id).done" :total="store.milestoneProgress(selectedMs.id).total" />
           </div>
           <div v-for="i in store.milestoneIssues(selectedMs.id)" :key="i.id"
             class="flex cursor-pointer items-center gap-3 border-b border-subtle/40 px-4 py-2.5 hover:bg-hover" @click="openIssue(i.id)">
@@ -2346,9 +2342,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                   <UButton icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" @click.stop="store.deleteMilestone(m.id)" />
                 </div>
                 <div class="mt-2 flex items-center gap-2 text-xs text-tertiary">
-                  <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-surface">
-                    <div class="h-full rounded-full bg-accent" :style="{ width: (store.milestoneProgress(m.id).total ? store.milestoneProgress(m.id).done / store.milestoneProgress(m.id).total * 100 : 0) + '%' }" />
-                  </div>
+                  <TermBar :width="14" :done="store.milestoneProgress(m.id).done" :total="store.milestoneProgress(m.id).total" />
                   <span>{{ store.milestoneProgress(m.id).done }}/{{ store.milestoneProgress(m.id).total }}</span>
                 </div>
               </div>
