@@ -681,3 +681,8 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Управление членами команды: чипы участников (lead помечен), add-select (только не-состоящие в команде ws-члены), remove (×). Приватная команда с замком-иконкой (accent2).
 - [ ] team_member синкается: после add/remove состав обновляется (catchUp team_member); смена ws чистит teamMembers.
 - [ ] Не-admin/guest, нажав скрытое-на-бэке действие (если контрол виден), получает ошибку (403 всплывает), не молчаливый сбой.
+
+## 86. Пермишены — change_log catch-up фильтрация
+- [ ] Не-член private-команды при догоне (`Changes`/реконнект) НЕ получает change-строки её issues/циклов/майлстоунов и т.д.; admin/owner и члены — получают.
+- [ ] Workspace-level изменения (workspace/member/invitation/user) видны всем членам (team_id=NULL).
+- [ ] Проверка: Changes(since=0) для не-члена не содержит entity_id issue скрытой команды; для admin содержит.

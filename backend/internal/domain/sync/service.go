@@ -318,21 +318,50 @@ func (s *Service) unreadChunk(ctx context.Context, tx bun.Tx, actor uuid.UUID) (
 	return jarr(unread), nil
 }
 
+// changeLogTeamExpr — team_id сущности change_log-строки по её entity_type (NULL = не team-scoped).
+// Подзапросы по PK-индексам; нужно дважды (IS NULL + IN visible), потому вынесено в константу.
+const changeLogTeamExpr = `(CASE cl.entity_type
+	WHEN 'issue' THEN (SELECT team_id FROM issues WHERE id = cl.entity_id)
+	WHEN 'cycle' THEN (SELECT team_id FROM cycles WHERE id = cl.entity_id)
+	WHEN 'milestone' THEN (SELECT team_id FROM milestones WHERE id = cl.entity_id)
+	WHEN 'workflow_state' THEN (SELECT team_id FROM workflow_states WHERE id = cl.entity_id)
+	WHEN 'label' THEN (SELECT team_id FROM labels WHERE id = cl.entity_id)
+	WHEN 'document' THEN (SELECT team_id FROM documents WHERE id = cl.entity_id)
+	WHEN 'view' THEN (SELECT team_id FROM views WHERE id = cl.entity_id)
+	WHEN 'dashboard' THEN (SELECT team_id FROM dashboards WHERE id = cl.entity_id)
+	WHEN 'automation' THEN (SELECT team_id FROM automations WHERE id = cl.entity_id)
+	WHEN 'custom_field' THEN (SELECT team_id FROM custom_fields WHERE id = cl.entity_id)
+	WHEN 'team' THEN cl.entity_id
+	WHEN 'team_member' THEN (SELECT team_id FROM team_members WHERE id = cl.entity_id)
+	ELSE NULL END)`
+
 // Changes отдаёт дельты из change_log после курсора (догон).
+// Фильтрует по видимым командам (как Bootstrap): не-admin не получает change-метаданные скрытых private-команд.
 func (s *Service) Changes(ctx context.Context, actor, wsID uuid.UUID, since int64) ([]models.ChangeLog, int64, error) {
 	var rows []models.ChangeLog
 	cursor := since
 
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
-		ok, err := tx.NewSelect().Model((*models.WorkspaceMember)(nil)).
-			Where("user_id = ?", actor).Where("workspace_id = ?", wsID).Exists(ctx)
-		if err != nil {
-			return err
-		}
-		if !ok {
+		var role string
+		if err := tx.NewSelect().Model((*models.WorkspaceMember)(nil)).Column("role").
+			Where("user_id = ?", actor).Where("workspace_id = ?", wsID).Where("status = 'active'").Scan(ctx, &role); err != nil {
 			return ErrForbidden
 		}
-		if err := tx.NewSelect().Model(&rows).Where("seq > ?", since).Order("seq ASC").Scan(ctx); err != nil {
+		adminAll := role == "owner" || role == "admin"
+		var visibleTeams []uuid.UUID
+		if !adminAll {
+			if err := tx.NewSelect().Model((*models.Team)(nil)).Column("id").
+				Where("deleted_at IS NULL").
+				Where("(private = false OR EXISTS (SELECT 1 FROM team_members tm JOIN teams anc ON anc.id = tm.team_id WHERE tm.user_id = ? AND t.path <@ anc.path))", actor).
+				Scan(ctx, &visibleTeams); err != nil {
+				return err
+			}
+		}
+		q := tx.NewSelect().Model(&rows).Where("seq > ?", since)
+		if !adminAll {
+			q = q.Where(changeLogTeamExpr+" IS NULL OR "+changeLogTeamExpr+" IN (?)", bun.In(visibleTeams))
+		}
+		if err := q.Order("seq ASC").Scan(ctx); err != nil {
 			return err
 		}
 		if n := len(rows); n > 0 {
