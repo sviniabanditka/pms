@@ -1384,7 +1384,8 @@ const vBlockCaret = {
     const wrap = el.parentElement
     if (!wrap) return
     if (getComputedStyle(wrap).position === 'static') wrap.style.position = 'relative'
-    el.style.caretColor = 'transparent'
+    el.classList.add('bc-caret')
+    el.style.setProperty('caret-color', 'transparent', 'important')
     const caret = document.createElement('div')
     caret.style.cssText = 'position:absolute;pointer-events:none;background:#9ece6a;mix-blend-mode:difference;border-radius:1px;display:none;z-index:5;animation:caretBlink 1.05s steps(1) infinite;'
     wrap.appendChild(caret)
@@ -1637,7 +1638,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         <div v-if="notifOpen" class="absolute right-0 top-10 z-50 w-80 rounded-md border border-subtle bg-elevated shadow-lg">
           <div class="flex items-center justify-between border-b border-subtle px-3 py-2 text-xs uppercase text-tertiary">
             <span><span class="text-ok"># </span>Notifications</span>
-            <UButton v-if="store.unreadCount" size="2xs" color="gray" variant="ghost" @click="store.markAllNotificationsRead()">Mark all read</UButton>
+            <UButton v-if="store.unreadCount" size="2xs" color="gray" variant="ghost" @click="store.markAllNotificationsRead()">[ mark all read ]</UButton>
           </div>
           <div class="max-h-96 overflow-y-auto">
             <div v-for="n in store.myNotifications.slice(0, 15)" :key="n.id"
@@ -1713,7 +1714,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
 
       <!-- CALENDAR section: чьи календари показывать -->
       <template v-if="store.activeWorkspaceId && activeSection === 'calendar'">
-        <UButton block icon="i-heroicons-plus" color="gray" variant="ghost" size="sm" class="mb-4" @click="openCalCreate(calAnchor)">New event</UButton>
+        <UButton block color="gray" variant="ghost" size="sm" class="mb-4" @click="openCalCreate(calAnchor)">[ new event ]</UButton>
         <div class="mb-1 px-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Calendars</div>
         <div v-for="u in [store.users[store.currentUserId], ...store.wsUsers].filter(Boolean)" :key="u.id"
           class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 hover:bg-hover"
@@ -1779,7 +1780,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
 
       <!-- MEETINGS section -->
       <template v-if="store.activeWorkspaceId && activeSection === 'meetings'">
-        <UButton block icon="i-heroicons-plus" color="gray" size="sm" class="mb-4" @click="openCreate('meeting')">New meeting</UButton>
+        <UButton block color="gray" size="sm" class="mb-4" @click="openCreate('meeting')">[ new meeting ]</UButton>
         <div v-if="store.liveMeetings.length" class="mb-1 px-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Live now</div>
         <div v-for="m in store.liveMeetings" :key="m.id"
           class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 text-secondary hover:bg-hover" @click="joinScheduled(m.id)">
@@ -1891,8 +1892,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <UIcon name="i-heroicons-calendar-days" class="text-tertiary" />
           <span class="font-medium">{{ calHeaderLabel }}</span>
           <div class="ml-2 flex items-center gap-1">
-            <UButton icon="i-heroicons-chevron-left" color="gray" variant="ghost" size="xs" square @click="shiftRange(-1)" />
-            <UButton color="gray" variant="ghost" size="xs" @click="calToday">Today</UButton>
+            <UButton color="gray" variant="ghost" size="xs" square @click="shiftRange(-1)" />
+            <UButton color="gray" variant="ghost" size="xs" @click="calToday">[ today ]</UButton>
             <UButton icon="i-heroicons-chevron-right" color="gray" variant="ghost" size="xs" square @click="shiftRange(1)" />
           </div>
           <div class="ml-2 flex items-center gap-0.5 rounded-md bg-elevated p-0.5">
@@ -1901,8 +1902,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               :class="calView === v ? 'bg-active text-white' : 'text-tertiary hover:text-secondary'"
               @click="calView = v as any">{{ v }}</button>
           </div>
-          <UButton class="ml-auto" icon="i-heroicons-arrow-top-right-on-square" size="xs" color="gray" variant="ghost" @click="openIcal">Subscribe</UButton>
-          <UButton icon="i-heroicons-plus" size="xs" color="gray" variant="ghost" @click="openCalCreate(calAnchor)">New event</UButton>
+          <UButton class="ml-auto" size="xs" color="gray" variant="ghost" @click="openIcal">[ subscribe ]</UButton>
+          <UButton size="xs" color="gray" variant="ghost" @click="openCalCreate(calAnchor)">[ new event ]</UButton>
         </div>
 
         <!-- MONTH -->
@@ -1998,7 +1999,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <div class="mb-4 flex items-center gap-2">
             <h1 class="text-lg font-semibold text-white">Time report</h1>
             <span class="text-sm text-tertiary">{{ dayShort(repFrom) }} – {{ dayShort(repTo) }}{{ repUser ? ' · ' + (repUser === store.currentUserId ? 'Me' : store.userName(repUser)) : '' }}</span>
-            <UButton class="ml-auto" icon="i-heroicons-arrow-down-tray" color="gray" size="xs" :disabled="!repRows.length" @click="exportReportCsv">Export CSV</UButton>
+            <UButton class="ml-auto" color="gray" size="xs" :disabled="!repRows.length" @click="exportReportCsv">[ export csv ]</UButton>
           </div>
 
           <!-- сводные карточки -->
@@ -2056,7 +2057,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         <div class="sticky top-0 z-10 flex items-center gap-2 border-b border-subtle bg-surface px-4 py-3 text-sm">
           <UIcon name="i-heroicons-squares-2x2" class="text-tertiary" />
           <span class="font-medium">{{ selectedDashboard.name }}</span>
-          <UButton class="ml-auto" icon="i-heroicons-plus" size="xs" color="gray" variant="ghost" @click="showWidget = true">Add widget</UButton>
+          <UButton class="ml-auto" size="xs" color="gray" variant="ghost" @click="showWidget = true">[ add widget ]</UButton>
         </div>
         <div class="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
           <div v-for="w in store.widgetsOf(selectedDashboardId)" :key="w.id"
@@ -2100,7 +2101,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <UIcon name="i-heroicons-inbox" class="text-tertiary" />
           <span class="font-medium">Inbox</span>
           <span v-if="store.unreadCount" class="rounded bg-accent/20 px-1.5 text-xs text-accent">{{ store.unreadCount }}</span>
-          <UButton v-if="store.unreadCount" class="ml-auto" icon="i-heroicons-check" size="xs" color="gray" variant="ghost" @click="store.markAllNotificationsRead()">Mark all read</UButton>
+          <UButton v-if="store.unreadCount" class="ml-auto" size="xs" color="gray" variant="ghost" @click="store.markAllNotificationsRead()">[ mark all read ]</UButton>
         </div>
         <div v-for="n in inboxList" :key="n.id"
           class="group flex cursor-pointer items-start gap-3 border-b border-subtle/40 px-4 py-3 hover:bg-hover"
@@ -2134,7 +2135,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
 
             <!-- channel members (count + management dropdown) -->
             <div v-if="currentChannel.kind !== 'dm'" class="relative ml-auto">
-              <UButton color="gray" variant="ghost" size="xs" icon="i-heroicons-users" @click="membersOpen = !membersOpen">
+              <UButton color="gray" variant="ghost" size="xs" @click="membersOpen = !membersOpen">
                 {{ store.channelParticipants(currentChannel.id).length }}
               </UButton>
               <div v-if="membersOpen" class="absolute right-0 top-9 z-30 w-64 rounded-lg border border-subtle bg-elevated p-2 shadow-xl">
@@ -2154,13 +2155,13 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             </div>
 
             <template v-if="store.liveHuddleForChannel(currentChannel.id)">
-              <UButton class="ml-auto" :color="meeting.activeMeetingId.value === store.liveHuddleForChannel(currentChannel.id)?.id ? 'gray' : 'green'" variant="ghost" size="xs" icon="i-heroicons-signal"
+              <UButton class="ml-auto" :color="meeting.activeMeetingId.value === store.liveHuddleForChannel(currentChannel.id)?.id ? 'gray' : 'green'" variant="ghost" size="xs"
                 @click="startOrJoinHuddle(currentChannel.id)">
                 {{ meeting.activeMeetingId.value === store.liveHuddleForChannel(currentChannel.id)?.id ? 'In huddle' : 'Join huddle' }}
                 · {{ store.meetingJoined(store.liveHuddleForChannel(currentChannel.id)!.id).length }}
               </UButton>
             </template>
-            <UButton v-else class="ml-auto" color="gray" variant="ghost" size="xs" icon="i-heroicons-signal" title="Start huddle" @click="startOrJoinHuddle(currentChannel.id)">Huddle</UButton>
+            <UButton v-else class="ml-auto" color="gray" variant="ghost" size="xs" title="Start huddle" @click="startOrJoinHuddle(currentChannel.id)">[ huddle ]</UButton>
             <UButton :icon="linkCopied ? 'i-heroicons-check' : 'i-heroicons-link'" color="gray" variant="ghost" size="xs" square :title="linkCopied ? 'Copied!' : 'Copy link'" @click="copyLink" />
             <UDropdown v-if="channelActions.length" :items="channelActions" :popper="{ placement: 'bottom-end' }">
               <UButton icon="i-heroicons-ellipsis-horizontal" color="gray" variant="ghost" size="xs" square title="Channel actions" />
@@ -2206,12 +2207,12 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 <MentionMenu :m="chatMention" />
                 <span class="select-none pt-px text-ok">&gt;</span>
                 <textarea v-block-caret ref="composerEl" v-model="msgDraft" rows="3" placeholder="message… (markdown, @mention, #ref, ↵ to send)"
-                  class="w-full resize-none bg-transparent text-sm outline-none placeholder:text-tertiary"
+                  class="bc-caret w-full resize-none bg-transparent text-sm outline-none placeholder:text-tertiary"
                   @paste="onChatPaste" @input="onComposerInput(); chatMention.detect()" @keydown="onComposerKeydown" />
               </div>
               <div class="flex items-center justify-between px-3 py-1.5">
                 <span class="text-xs text-tertiary">**bold** _italic_ `code` — Enter send, Shift+Enter newline</span>
-                <UButton icon="i-heroicons-paper-airplane" size="xs" :disabled="!msgDraft.trim() && !pendingFiles.length" @click="sendMsg">[ send ]</UButton>
+                <UButton size="xs" :disabled="!msgDraft.trim() && !pendingFiles.length" @click="sendMsg">[ send ]</UButton>
               </div>
             </div>
           </div>
@@ -2227,7 +2228,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         <div class="mx-auto max-w-3xl px-6 py-6">
           <div class="mb-5 flex items-center gap-2">
             <h1 class="text-lg font-semibold text-white">Meetings</h1>
-            <UButton class="ml-auto" icon="i-heroicons-plus" color="gray" size="sm" @click="openCreate('meeting')">New meeting</UButton>
+            <UButton class="ml-auto" color="gray" size="sm" @click="openCreate('meeting')">[ new meeting ]</UButton>
           </div>
 
           <div v-if="store.liveMeetings.length" class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Live now</div>
@@ -2243,8 +2244,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 {{ store.userName(p.userId).charAt(0).toUpperCase() }}
               </span>
             </div>
-            <UButton v-if="meeting.activeMeetingId.value !== m.id" color="green" size="sm" icon="i-heroicons-signal" @click="joinScheduled(m.id)">Join</UButton>
-            <UButton v-else color="gray" size="sm" variant="ghost" disabled>In call</UButton>
+            <UButton v-if="meeting.activeMeetingId.value !== m.id" color="green" size="sm" @click="joinScheduled(m.id)">[ join ]</UButton>
+            <UButton v-else color="gray" size="sm" variant="ghost" disabled>[ in call ]</UButton>
           </div>
 
           <div v-if="store.upcomingMeetings.length" class="mb-2 mt-6 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Upcoming</div>
@@ -2262,7 +2263,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 {{ store.userName(p.userId).charAt(0).toUpperCase() }}
               </span>
             </div>
-            <UButton color="gray" size="sm" icon="i-heroicons-video-camera" @click="joinScheduled(m.id)">Start</UButton>
+            <UButton color="gray" size="sm" @click="joinScheduled(m.id)">[ start ]</UButton>
             <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="xs" square title="Delete" @click="store.endMeeting(m.id)" />
           </div>
 
@@ -2275,7 +2276,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 <span v-if="m.scheduledAt">{{ new Date(m.scheduledAt).toLocaleString() }}<span v-if="m.endsAt">–{{ new Date(m.endsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }}</span> · </span>{{ store.meetingParts(m.id).length }} invited
               </div>
             </div>
-            <UButton color="gray" size="sm" icon="i-heroicons-arrow-path" title="Start again" @click="joinScheduled(m.id)">Restart</UButton>
+            <UButton color="gray" size="sm" title="Start again" @click="joinScheduled(m.id)">[ restart ]</UButton>
             <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="xs" square title="Delete" @click="store.endMeeting(m.id)" />
           </div>
 
@@ -2326,7 +2327,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <UIcon name="i-heroicons-arrow-path-rounded-square" class="text-tertiary" />
           <span class="font-medium">Cycles</span>
           <span class="text-tertiary">{{ store.teamCycles(selectedTeamId).length }}</span>
-          <UButton class="ml-auto" icon="i-heroicons-plus" size="xs" color="gray" variant="ghost" @click="openCreate('cycle')">New cycle</UButton>
+          <UButton class="ml-auto" size="xs" color="gray" variant="ghost" @click="openCreate('cycle')">[ new cycle ]</UButton>
         </div>
         <div class="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
           <div v-for="c in store.teamCycles(selectedTeamId)" :key="c.id"
@@ -2388,7 +2389,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <UIcon name="i-heroicons-flag" class="text-tertiary" />
             <span class="font-medium">Milestones</span>
             <span class="text-tertiary">{{ store.teamMilestones(selectedTeamId).length }}</span>
-            <UButton class="ml-auto" icon="i-heroicons-plus" size="xs" color="gray" variant="ghost" @click="openCreate('milestone')">New milestone</UButton>
+            <UButton class="ml-auto" size="xs" color="gray" variant="ghost" @click="openCreate('milestone')">[ new milestone ]</UButton>
           </div>
           <div class="p-4">
             <div class="space-y-2">
@@ -2424,7 +2425,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <UIcon name="i-heroicons-document-text" class="text-tertiary" />
           <span class="font-medium">Docs</span>
           <span class="text-tertiary">{{ store.teamDocs(selectedTeamId).length }}</span>
-          <UButton class="ml-auto" icon="i-heroicons-plus" size="xs" color="gray" variant="ghost" @click="openCreate('doc')">New doc</UButton>
+          <UButton class="ml-auto" size="xs" color="gray" variant="ghost" @click="openCreate('doc')">[ new doc ]</UButton>
         </div>
         <div class="p-4">
           <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Recent</div>
@@ -2605,11 +2606,11 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <div class="mb-2 flex items-center gap-2 text-sm">
             <UButton icon="i-heroicons-chevron-left" color="gray" variant="ghost" size="xs" square @click="monthOffset--" />
             <span class="font-medium">{{ calRangeLabel }}</span>
-            <UButton icon="i-heroicons-chevron-right" color="gray" variant="ghost" size="xs" square @click="monthOffset++" />
-            <UButton class="ml-2" color="gray" variant="ghost" size="xs" @click="monthOffset = 0">today</UButton>
+            <UButton color="gray" variant="ghost" size="xs" square @click="monthOffset++" />
+            <UButton class="ml-2" color="gray" variant="ghost" size="xs" @click="monthOffset = 0">[ today ]</UButton>
             <div class="ml-auto flex gap-1">
-              <UButton size="2xs" :color="calMode === 'month' ? 'primary' : 'gray'" variant="ghost" @click="calMode = 'month'; monthOffset = 0">Month</UButton>
-              <UButton size="2xs" :color="calMode === 'week' ? 'primary' : 'gray'" variant="ghost" @click="calMode = 'week'; monthOffset = 0">Week</UButton>
+              <UButton size="2xs" :color="calMode === 'month' ? 'primary' : 'gray'" variant="ghost" @click="calMode = 'month'; monthOffset = 0">[ month ]</UButton>
+              <UButton size="2xs" :color="calMode === 'week' ? 'primary' : 'gray'" variant="ghost" @click="calMode = 'week'; monthOffset = 0">[ week ]</UButton>
             </div>
           </div>
           <div class="grid grid-cols-7 gap-px text-xs">
@@ -2699,7 +2700,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <div class="flex-1"><label class="mb-1 block text-[11px] text-tertiary">Start</label><DatePicker v-model="cycleForm.startsOn" block /></div>
           <div class="flex-1"><label class="mb-1 block text-[11px] text-tertiary">End</label><DatePicker v-model="cycleForm.endsOn" block /></div>
         </div>
-        <div class="flex justify-end gap-2"><UButton size="2xs" color="gray" variant="ghost" @click="cycleEdit = false">Cancel</UButton><UButton size="2xs" @click="saveCycle">[ save ]</UButton></div>
+        <div class="flex justify-end gap-2"><UButton size="2xs" color="gray" variant="ghost" @click="cycleEdit = false">[ cancel ]</UButton><UButton size="2xs" @click="saveCycle">[ save ]</UButton></div>
       </div>
 
       <!-- Progress -->
@@ -2788,7 +2789,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-link" title="Link" @click="descWrap('[', '](url)')" />
               <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-paper-clip" title="Attach file/image" @click="descFileEl?.click()" />
               <input ref="descFileEl" type="file" multiple class="hidden" @change="onDescFilePick" />
-              <UButton class="ml-auto" size="2xs" color="gray" variant="ghost" title="Save (⌘↵)" @click="saveDesc">Done</UButton>
+              <UButton class="ml-auto" size="2xs" color="gray" variant="ghost" title="Save (⌘↵)" @click="saveDesc">[ done ]</UButton>
             </div>
             <div class="relative">
               <MentionMenu :m="descMention" />
@@ -2852,8 +2853,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <div class="flex min-h-8 items-center gap-3">
             <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-clock" /> Time</span>
             <span class="flex-1 text-sm" :class="store.issueTrackedMin(selectedIssue.id) ? 'text-white' : 'text-tertiary'">{{ store.issueTrackedMin(selectedIssue.id) ? fmtMin(store.issueTrackedMin(selectedIssue.id)) : 'Not tracked' }}</span>
-            <UButton v-if="store.runningTimer?.issueId === selectedIssue.id" color="red" size="2xs" icon="i-heroicons-stop" @click="wrap(() => store.stopTimer())">Stop</UButton>
-            <UButton v-else color="gray" size="2xs" icon="i-heroicons-play" @click="wrap(() => store.startTimer(selectedIssue.id))">Start</UButton>
+            <UButton v-if="store.runningTimer?.issueId === selectedIssue.id" color="red" size="2xs" @click="wrap(() => store.stopTimer())">Stop</UButton>
+            <UButton v-else color="gray" size="2xs" @click="wrap(() => store.startTimer(selectedIssue.id))">Start</UButton>
             <UButton color="gray" variant="ghost" size="2xs" square icon="i-heroicons-plus" title="Add time manually" @click="openTimeEntry(selectedIssue.id)" />
           </div>
           <!-- записи времени -->
@@ -2967,7 +2968,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               </div>
               <div v-if="editCommentId === c.id" class="mt-1">
                 <textarea v-model="editCommentDraft" rows="2" class="w-full rounded-md border border-subtle bg-elevated px-2 py-1 text-sm outline-none" @keydown.enter.exact.prevent="saveComment" @keydown.esc="editCommentId = ''" />
-                <div class="mt-1 flex gap-2"><UButton size="2xs" @click="saveComment">[ save ]</UButton><UButton size="2xs" color="gray" variant="ghost" @click="editCommentId = ''">Cancel</UButton></div>
+                <div class="mt-1 flex gap-2"><UButton size="2xs" @click="saveComment">[ save ]</UButton><UButton size="2xs" color="gray" variant="ghost" @click="editCommentId = ''">[ cancel ]</UButton></div>
               </div>
               <div v-else-if="c.deletedAt" class="text-sm italic text-tertiary">(deleted)</div>
               <div v-else class="prose-chat text-sm leading-relaxed" v-html="renderMarkdown(c.body)" />
@@ -2986,7 +2987,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               <MentionMenu :m="commentMention" />
               <span class="select-none pt-px text-ok">&gt;</span>
               <textarea v-block-caret ref="commentEl" v-model="commentDraft" rows="1" placeholder="comment… (markdown, @mention, #ref)"
-                class="block w-full resize-none bg-transparent text-sm outline-none placeholder:text-tertiary"
+                class="bc-caret block w-full resize-none bg-transparent text-sm outline-none placeholder:text-tertiary"
                 @paste="onCommentPaste" @input="commentMention.detect()" @keydown="onCommentKeydown" />
             </div>
             <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="sm" square title="Attach" @click="commentFileEl?.click()" />
@@ -3031,12 +3032,12 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         <PendingAttachments v-if="threadPending.length" class="mb-2" :files="threadPending" @remove="(i) => threadPending = threadPending.filter((_, j) => j !== i)" />
         <div class="flex gap-2 rounded-md border border-subtle bg-elevated px-2 py-1.5">
           <span class="select-none pt-px text-ok">&gt;</span>
-          <textarea v-block-caret v-model="threadDraft" rows="2" placeholder="reply…" class="w-full resize-none bg-transparent text-sm outline-none" @paste="onThreadPaste" @keydown.enter.exact.prevent="sendThread" />
+          <textarea v-block-caret v-model="threadDraft" rows="2" placeholder="reply…" class="bc-caret w-full resize-none bg-transparent text-sm outline-none" @paste="onThreadPaste" @keydown.enter.exact.prevent="sendThread" />
         </div>
         <div class="mt-1 flex items-center justify-end gap-2">
           <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="2xs" square title="Attach" @click="threadFileEl?.click()" />
           <input ref="threadFileEl" type="file" multiple class="hidden" @change="onThreadFilePick" />
-          <UButton size="2xs" icon="i-heroicons-paper-airplane" :disabled="!threadDraft.trim() && !threadPending.length" @click="sendThread">Reply</UButton>
+          <UButton size="2xs" :disabled="!threadDraft.trim() && !threadPending.length" @click="sendThread">[ reply ]</UButton>
         </div>
       </div>
     </aside>
@@ -3053,7 +3054,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         :options="[{ label: 'No assignee', value: '' }, ...store.wsUsers.map((u) => ({ label: u.name || u.email, value: u.id }))]" @update:model-value="bulkAssignee" />
       <USelectMenu v-if="store.teamLabels(selectedTeamId).length" placeholder="+ Label" size="xs" class="w-28" value-attribute="value" option-attribute="label"
         :options="store.teamLabels(selectedTeamId).map((l) => ({ label: l.name, value: l.id }))" @update:model-value="bulkLabel" />
-      <UButton size="xs" color="gray" variant="ghost" icon="i-heroicons-archive-box" @click="bulkArchive">Archive</UButton>
+      <UButton size="xs" color="gray" variant="ghost" @click="bulkArchive">[ archive ]</UButton>
       <UButton size="xs" color="gray" variant="ghost" icon="i-heroicons-x-mark" square @click="clearSel" />
     </div>
 
@@ -3160,7 +3161,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         </div>
 
         <div class="mt-4 flex justify-end gap-2">
-          <UButton color="gray" variant="ghost" @click="createOpen = false">Cancel</UButton>
+          <UButton color="gray" variant="ghost" @click="createOpen = false">[ cancel ]</UButton>
           <UButton @click="submitCreate">[ create {{ createTypeLabel.toLowerCase() }} ]</UButton>
         </div>
       </div>
@@ -3178,8 +3179,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         <USelectMenu v-else-if="wType==='view'" v-model="wViewId" value-attribute="value" option-attribute="label"
           :options="[{ label: 'pick a view…', value: '' }, ...Object.values(store.views).filter((x) => !x.deletedAt).map((v) => ({ label: v.name, value: v.id }))]" />
         <div class="flex justify-end gap-2 pt-1">
-          <UButton color="gray" variant="ghost" @click="showWidget = false">Cancel</UButton>
-          <UButton icon="i-heroicons-plus" @click="addWidget(); showWidget = false">[ add ]</UButton>
+          <UButton color="gray" variant="ghost" @click="showWidget = false">[ cancel ]</UButton>
+          <UButton @click="addWidget(); showWidget = false">[ add ]</UButton>
         </div>
       </div>
     </UModal>
@@ -3214,9 +3215,9 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           :options="store.wsUsers.map((u) => ({ label: u.name || u.email, value: u.id }))" value-attribute="value" option-attribute="label" />
         <UTextarea v-if="calForm.kind !== 'meeting'" v-model="calForm.description" placeholder="Notes (optional)" :rows="2" />
         <div class="flex items-center gap-2 pt-1">
-          <UButton v-if="calForm.id" color="red" variant="ghost" icon="i-heroicons-trash" @click="deleteCalEvent">Delete</UButton>
-          <UButton class="ml-auto" color="gray" variant="ghost" @click="showCalEvent = false">Cancel</UButton>
-          <UButton icon="i-heroicons-check" @click="saveCalEvent">[ {{ calForm.id ? 'save' : 'create' }} ]</UButton>
+          <UButton v-if="calForm.id" color="red" variant="ghost" @click="deleteCalEvent">[ delete ]</UButton>
+          <UButton class="ml-auto" color="gray" variant="ghost" @click="showCalEvent = false">[ cancel ]</UButton>
+          <UButton @click="saveCalEvent">[ {{ calForm.id ? 'save' : 'create' }} ]</UButton>
         </div>
       </div>
     </UModal>
@@ -3233,8 +3234,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         </div>
         <UInput v-model="teForm.description" placeholder="What did you work on? (optional)" @keydown.enter="saveTimeEntry" />
         <div class="flex justify-end gap-2 pt-1">
-          <UButton color="gray" variant="ghost" @click="showTimeEntry = false">Cancel</UButton>
-          <UButton color="gray" icon="i-heroicons-check" @click="saveTimeEntry">[ log ]</UButton>
+          <UButton color="gray" variant="ghost" @click="showTimeEntry = false">[ cancel ]</UButton>
+          <UButton color="gray" @click="saveTimeEntry">[ log ]</UButton>
         </div>
       </div>
     </UModal>
@@ -3249,9 +3250,9 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <UButton :icon="icalCopied ? 'i-heroicons-check' : 'i-heroicons-clipboard-document'" color="gray" @click="copyIcal">{{ icalCopied ? 'Copied' : 'Copy' }}</UButton>
         </div>
         <div class="flex items-center gap-2 pt-1">
-          <UButton color="gray" variant="ghost" icon="i-heroicons-arrow-path" @click="rotateIcal">Regenerate</UButton>
+          <UButton color="gray" variant="ghost" @click="rotateIcal">[ regenerate ]</UButton>
           <span class="text-xs text-tertiary">Regenerating invalidates the old link.</span>
-          <UButton class="ml-auto" color="gray" variant="ghost" @click="showIcal = false">Close</UButton>
+          <UButton class="ml-auto" color="gray" variant="ghost" @click="showIcal = false">[ close ]</UButton>
         </div>
       </div>
     </UModal>
@@ -3279,7 +3280,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Create new</div>
           <div class="flex gap-2">
             <UInput v-model="newLabelName" size="sm" placeholder="Label name" class="flex-1" @keyup.enter="createLabelInIssue(); showLabelModal = false" />
-            <UButton icon="i-heroicons-plus" @click="createLabelInIssue(); showLabelModal = false">[ create ]</UButton>
+            <UButton @click="createLabelInIssue(); showLabelModal = false">[ create ]</UButton>
           </div>
         </div>
       </div>
@@ -3303,8 +3304,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             :options="store.issuesForTeamAll(selectedIssue.teamId).filter((i) => i.id !== selectedIssue.id).map((i) => ({ label: `${i.identifier} · ${i.title}`, value: i.identifier }))" class="w-full" />
         </div>
         <div class="flex justify-end gap-2 pt-1">
-          <UButton color="gray" variant="ghost" @click="showRelModal = false">Cancel</UButton>
-          <UButton icon="i-heroicons-plus" :disabled="!relTarget" @click="addRel">[ add ]</UButton>
+          <UButton color="gray" variant="ghost" @click="showRelModal = false">[ cancel ]</UButton>
+          <UButton :disabled="!relTarget" @click="addRel">[ add ]</UButton>
         </div>
       </div>
     </UModal>
@@ -3358,8 +3359,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 <label class="mb-1 block text-xs text-tertiary">Logo</label>
                 <div class="flex items-center gap-3">
                   <Avatar :name="store.activeWorkspace?.name" :avatar-key="(store.activeWorkspace as any)?.logoKey" :size="48" />
-                  <UButton color="gray" variant="ghost" size="xs" icon="i-heroicons-arrow-up-tray" @click="logoEl?.click()">Upload</UButton>
-                  <UButton v-if="(store.activeWorkspace as any)?.logoKey" color="gray" variant="ghost" size="xs" @click="store.setLogo('')">Remove</UButton>
+                  <UButton color="gray" variant="ghost" size="xs" @click="logoEl?.click()">[ upload ]</UButton>
+                  <UButton v-if="(store.activeWorkspace as any)?.logoKey" color="gray" variant="ghost" size="xs" @click="store.setLogo('')">[ remove ]</UButton>
                   <input ref="logoEl" type="file" accept="image/*" class="hidden" @change="onLogoPick" />
                 </div>
               </div>
@@ -3375,7 +3376,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               <div class="mt-6 rounded-lg border border-danger/30 p-3">
                 <div class="mb-1 text-sm font-medium text-danger">Danger zone</div>
                 <p class="mb-2 text-xs text-tertiary">Deleting the workspace hides it and all its data. This action is irreversible.</p>
-                <UButton color="red" variant="ghost" icon="i-heroicons-trash" @click="confirmDeleteWs">Delete workspace</UButton>
+                <UButton color="red" variant="ghost" @click="confirmDeleteWs">[ delete workspace ]</UButton>
               </div>
             </div>
           </template>
@@ -3389,12 +3390,12 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <div class="mb-4 flex gap-2">
               <UInput v-model="inviteEmail" placeholder="email to invite" class="flex-1" @keyup.enter="doInvite" />
               <USelectMenu v-model="inviteRole" :options="labelOpts(ROLES)" value-attribute="value" option-attribute="label" class="w-32" />
-              <UButton icon="i-heroicons-paper-airplane" :disabled="!inviteEmail.trim()" @click="doInvite">[ invite ]</UButton>
+              <UButton :disabled="!inviteEmail.trim()" @click="doInvite">[ invite ]</UButton>
             </div>
             <div v-if="inviteLink" class="mb-4 flex items-center gap-2 rounded-md bg-elevated px-2 py-1.5 text-xs">
               <UIcon name="i-heroicons-link" class="shrink-0 text-tertiary" />
               <span class="flex-1 truncate font-mono text-tertiary">{{ inviteLink }}</span>
-              <UButton size="2xs" color="gray" @click="copyInviteLink">Copy</UButton>
+              <UButton size="2xs" color="gray" @click="copyInviteLink">[ copy ]</UButton>
             </div>
             <div v-for="m in store.workspaceMembers" :key="m.id" class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
               <span class="flex h-7 w-7 items-center justify-center rounded-full bg-elevated text-xs">{{ (m.name || '?')[0].toUpperCase() }}</span>
@@ -3414,7 +3415,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <template v-else-if="settingsTab === 'teams'">
             <div class="mb-4 flex items-center justify-between">
               <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> Teams</h2>
-              <UButton icon="i-heroicons-plus" size="xs" @click="showSettings = false; openCreate('team')">New team</UButton>
+              <UButton size="xs" @click="showSettings = false; openCreate('team')">[ new team ]</UButton>
             </div>
             <div v-for="t in store.teamList" :key="t.id" class="group flex items-center gap-2 rounded-md px-2 py-2 hover:bg-hover">
               <UIcon name="i-heroicons-cube" class="text-tertiary" />
@@ -3439,7 +3440,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 <button v-for="c in LABEL_COLORS" :key="c" class="h-5 w-5 rounded-full ring-offset-1 ring-offset-base" :class="newWsLabelColor === c ? 'ring-2 ring-white' : ''" :style="{ background: c }" @click="newWsLabelColor = c" />
               </div>
               <UInput v-model="newWsLabelName" placeholder="Label name" class="flex-1" @keyup.enter="addWsLabel" />
-              <UButton icon="i-heroicons-plus" :disabled="!newWsLabelName.trim()" @click="addWsLabel">[ add ]</UButton>
+              <UButton :disabled="!newWsLabelName.trim()" @click="addWsLabel">[ add ]</UButton>
             </div>
             <div v-for="l in allLabels" :key="l.id" class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
               <div class="flex gap-0.5">
@@ -3476,7 +3477,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 <div class="rounded-md border border-subtle p-2.5">
                   <div class="mb-1.5 flex items-center">
                     <span class="text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Then</span>
-                    <UButton class="ml-auto" icon="i-heroicons-plus" color="gray" variant="ghost" size="2xs" @click="addAutoAction">Add action</UButton>
+                    <UButton class="ml-auto" color="gray" variant="ghost" size="2xs" @click="addAutoAction">[ add action ]</UButton>
                   </div>
                   <div v-for="(ac, i) in autoForm.actions" :key="i" class="mb-1.5 flex items-center gap-2">
                     <USelectMenu v-model="ac.type" class="w-36 shrink-0" :options="ACTION_TYPES" value-attribute="value" option-attribute="label" @update:model-value="onActionType(i)" />
@@ -3494,8 +3495,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 </div>
                 <div class="flex items-center gap-2 pt-1">
                   <UCheckbox v-model="autoForm.enabled" label="Enabled" />
-                  <UButton class="ml-auto" color="gray" variant="ghost" @click="showAuto = false">Cancel</UButton>
-                  <UButton color="gray" icon="i-heroicons-check" @click="saveAuto">[ {{ autoForm.id ? 'save' : 'create' }} ]</UButton>
+                  <UButton class="ml-auto" color="gray" variant="ghost" @click="showAuto = false">[ cancel ]</UButton>
+                  <UButton color="gray" @click="saveAuto">[ {{ autoForm.id ? 'save' : 'create' }} ]</UButton>
                 </div>
               </div>
             </template>
@@ -3505,7 +3506,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               <div class="mb-4 flex items-center justify-between">
                 <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> Automations</h2>
                 <div class="flex items-center gap-2">
-                  <UButton icon="i-heroicons-plus" color="gray" size="xs" @click="openAutoCreate">New rule</UButton>
+                  <UButton color="gray" size="xs" @click="openAutoCreate">[ new rule ]</UButton>
                   <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
                 </div>
               </div>
@@ -3535,11 +3536,11 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 <div class="font-medium">{{ store.users[store.currentUserId]?.name || '—' }}</div>
                 <div class="text-xs text-tertiary">{{ store.users[store.currentUserId]?.email }}</div>
               </div>
-              <UButton color="gray" variant="ghost" size="xs" icon="i-heroicons-arrow-up-tray" @click="avatarEl?.click()">Upload</UButton>
-              <UButton v-if="store.users[store.currentUserId]?.avatarKey" color="gray" variant="ghost" size="xs" @click="store.setAvatar('')">Remove</UButton>
+              <UButton color="gray" variant="ghost" size="xs" @click="avatarEl?.click()">[ upload ]</UButton>
+              <UButton v-if="store.users[store.currentUserId]?.avatarKey" color="gray" variant="ghost" size="xs" @click="store.setAvatar('')">[ remove ]</UButton>
               <input ref="avatarEl" type="file" accept="image/*" class="hidden" @change="onAvatarPick" />
             </div>
-            <UButton color="red" variant="ghost" icon="i-heroicons-arrow-right-on-rectangle" @click="logout">Log out</UButton>
+            <UButton color="red" variant="ghost" @click="logout">[ log out ]</UButton>
           </template>
 
           <!-- APPEARANCE -->
@@ -3602,12 +3603,12 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         <div class="flex gap-2">
           <UInput v-model="inviteEmail" placeholder="email to invite" class="flex-1" @keyup.enter="doInvite" />
           <USelectMenu v-model="inviteRole" :options="labelOpts(ROLES)" value-attribute="value" option-attribute="label" class="w-32" />
-          <UButton icon="i-heroicons-paper-airplane" :disabled="!inviteEmail.trim()" @click="doInvite">[ invite ]</UButton>
+          <UButton :disabled="!inviteEmail.trim()" @click="doInvite">[ invite ]</UButton>
         </div>
         <div v-if="inviteLink" class="flex items-center gap-2 rounded-md bg-elevated px-2 py-1.5 text-xs">
           <UIcon name="i-heroicons-link" class="shrink-0 text-tertiary" />
           <span class="flex-1 truncate font-mono text-tertiary">{{ inviteLink }}</span>
-          <UButton size="2xs" color="gray" @click="copyInviteLink">Copy</UButton>
+          <UButton size="2xs" color="gray" @click="copyInviteLink">[ copy ]</UButton>
         </div>
         <!-- members list -->
         <div class="max-h-72 overflow-y-auto">
@@ -3633,7 +3634,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         <div class="flex items-center gap-2 border-b border-subtle px-4">
           <span class="text-ok">$</span>
           <input v-block-caret ref="paletteInput" v-model="paletteQ" placeholder="search issues, teams, dashboards, views…"
-            class="w-full bg-transparent py-3 text-sm outline-none focus:outline-none focus-visible:outline-none"
+            class="bc-caret w-full bg-transparent py-3 text-sm outline-none focus:outline-none focus-visible:outline-none"
             @keydown.down.prevent="paletteMove(1)" @keydown.up.prevent="paletteMove(-1)"
             @keydown.enter.prevent="runResult(paletteResults[paletteIdx])" />
         </div>

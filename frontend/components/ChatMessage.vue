@@ -44,7 +44,7 @@ function notifTime(at: any) {
 
       <div v-if="editing" class="mt-1">
         <textarea v-model="editDraft" rows="2" class="w-full rounded-md border border-subtle bg-elevated px-2 py-1 text-sm outline-none" @keydown.enter.exact.prevent="saveEdit" @keydown.esc="editing = false" />
-        <div class="mt-1 flex gap-2"><UButton size="2xs" @click="saveEdit">[ save ]</UButton><UButton size="2xs" color="gray" variant="ghost" @click="editing = false">Cancel</UButton></div>
+        <div class="mt-1 flex gap-2"><UButton size="2xs" @click="saveEdit">[ save ]</UButton><UButton size="2xs" color="gray" variant="ghost" @click="editing = false">[ cancel ]</UButton></div>
       </div>
       <template v-else>
         <div v-if="m.deletedAt" class="text-sm italic text-tertiary">(message deleted)</div>

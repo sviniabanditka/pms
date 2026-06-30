@@ -44,7 +44,7 @@ const title = computed(() => meeting.value?.kind === 'huddle' ? 'Huddle' : (meet
     <div class="flex items-center justify-center gap-2 border-t border-subtle px-3 py-2">
       <UButton :icon="muted ? 'i-heroicons-no-symbol' : 'i-heroicons-microphone'" :color="muted ? 'red' : 'gray'" variant="soft" size="sm" square :title="muted ? 'Unmute' : 'Mute'" @click="toggleMute" />
       <UButton :icon="camOff ? 'i-heroicons-video-camera-slash' : 'i-heroicons-video-camera'" :color="camOff ? 'red' : 'gray'" variant="soft" size="sm" square :title="camOff ? 'Camera on' : 'Camera off'" @click="toggleCam" />
-      <UButton icon="i-heroicons-phone-x-mark" color="red" variant="solid" size="sm" @click="leave">Leave</UButton>
+      <UButton color="red" variant="solid" size="sm" @click="leave">[ leave ]</UButton>
     </div>
   </div>
 </template>

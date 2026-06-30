@@ -3,7 +3,7 @@ export default defineAppConfig({
     primary: 'blue', // терминальный акцент (Tokyo-Night blue ≈ #7aa2f7)
     gray: 'zinc', // нейтральный тёмный
     // все кнопки бордерлес/плоские (как «mark all read»): по умолчанию ghost + gray
-    button: { default: { variant: 'ghost', color: 'gray' } },
+    button: { default: { variant: 'ghost', color: 'gray', size: 'xs' } },
     // все плавающие поверхности = фон основного контента (surface).
     // dark:-вариант ОБЯЗАТЕЛЕН: дефолт `dark:bg-gray-900` иначе побеждает в twMerge при .dark.
     modal: { background: 'dark:bg-surface' },
