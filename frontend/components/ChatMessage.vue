@@ -37,7 +37,7 @@ function notifTime(at: any) {
     <Avatar class="mt-0.5" :name="store.userName(m.authorId)" :avatar-key="store.users[m.authorId]?.avatarKey" :size="32" />
     <div class="min-w-0 flex-1">
       <div class="flex items-baseline gap-2">
-        <span class="text-sm font-medium">{{ store.userName(m.authorId) }}</span>
+        <span class="text-sm font-medium" :class="mine ? 'text-accent2' : 'text-accent'">{{ store.userName(m.authorId) }}</span>
         <span class="text-xs text-tertiary">{{ notifTime(m.createdAt) }}</span>
         <span v-if="m.editedAt" class="text-xs text-tertiary/60">(edited)</span>
       </div>

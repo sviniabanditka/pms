@@ -1,30 +1,36 @@
 html, body, #__nuxt {
-  background: #0c0c0d;
-  color: #ececed;
-  font-family: 'Inter var', Inter, ui-sans-serif, system-ui, sans-serif;
-  font-size: 16px;
+  background: #0b0c12;
+  color: #c5cae0;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 /* тонкий скроллбар под тёмную тему */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb { background: #2a2a2f; border-radius: 6px; }
-::-webkit-scrollbar-thumb:hover { background: #3a3a40; }
+::-webkit-scrollbar-thumb { background: #232634; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #2f3344; }
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* фокус-кольцо только для клавиатуры (a11y) */
-:focus-visible { outline: 2px solid #5e6ad2; outline-offset: 1px; border-radius: 4px; }
+:focus-visible { outline: 2px solid #7aa2f7; outline-offset: 1px; border-radius: 4px; }
 :focus:not(:focus-visible) { outline: none; }
 
-::selection { background: rgba(94, 106, 210, 0.35); }
+::selection { background: rgba(122, 162, 247, 0.32); }
 
 /* стабильный gutter — контент не прыгает при появлении/исчезновении скроллбара */
 main, aside { scrollbar-gutter: stable; }
 
+/* тонкий terminal-scanline поверх всего (CRT-вайб, не мешает кликам) */
+body::after {
+  content: ''; position: fixed; inset: 0; z-index: 9999; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(255,255,255,.012) 0 1px, transparent 1px 3px);
+}
+
 /* лёгкая пульсация скелетонов */
 @keyframes pms-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
-.skeleton { animation: pms-pulse 1.4s ease-in-out infinite; background: #1a1a1e; border-radius: 6px; }
+.skeleton { animation: pms-pulse 1.4s ease-in-out infinite; background: #16171f; border-radius: 6px; }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

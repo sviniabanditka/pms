@@ -1,10 +1,11 @@
 // Цвета + иконки статусов/приоритетов (Linear-стиль). Токены — docs/03-frontend/theme-tokens.md.
+// Tokyo-Night синтаксис-палитра (синк с лендингом/токенами)
 const STATUS: Record<string, string> = {
-  backlog: '#6b747e',
-  unstarted: '#9aa3ad',
-  started: '#d29922',
-  completed: '#5e6ad2',
-  canceled: '#6b747e',
+  backlog: '#6b7089', // tertiary
+  unstarted: '#7dcfff', // cyan
+  started: '#ff9e64', // orange
+  completed: '#9ece6a', // green
+  canceled: '#565f89', // faint
 }
 const STATUS_ICON: Record<string, string> = {
   backlog: 'i-heroicons-minus-circle',
@@ -13,7 +14,7 @@ const STATUS_ICON: Record<string, string> = {
   completed: 'i-heroicons-check-circle',
   canceled: 'i-heroicons-x-circle',
 }
-const PRIO = ['#4a525b', '#6b747e', '#d29922', '#e08c3f', '#e5484d'] // none low med high urgent
+const PRIO = ['#565f89', '#7aa2f7', '#e0af68', '#ff9e64', '#f7768e'] // none low med high urgent
 const PRIO_ICON = [
   'i-heroicons-minus',
   'i-heroicons-bars-2',

@@ -3,7 +3,17 @@ export default defineNuxtConfig({
   // local-first логика — клиентская (guarded import.meta.client); SSR оставляем дефолтным.
   devtools: { enabled: false },
   colorMode: { preference: 'dark', fallback: 'dark', storageKey: 'pms-theme' },
-  app: { head: { htmlAttrs: { class: 'dark' }, link: [{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }] } },
+  app: {
+    head: {
+      htmlAttrs: { class: 'dark' },
+      link: [
+        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+        { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+        { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
+        { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap' },
+      ],
+    },
+  },
   css: ['~/assets/css/main.css'],
   runtimeConfig: {
     public: {
