@@ -16,9 +16,9 @@ const msg = code === 404 ? 'no such route' : (props.error?.message || 'something
   <div class="er">
     <div class="er-blob" aria-hidden="true"></div>
     <div class="er-win">
-      <div class="er-bar"><span class="er-tl er-tl--r"></span><span class="er-tl er-tl--y"></span><span class="er-tl er-tl--g"></span><span class="er-path">~/pms — error</span></div>
+      <div class="er-bar"><span class="er-tl er-tl--r"></span><span class="er-tl er-tl--y"></span><span class="er-tl er-tl--g"></span><span class="er-path">~/stdtask — error</span></div>
       <div class="er-body">
-        <p class="er-line"><span class="er-prompt">$</span> pms open <span class="er-arg">{{ $route?.path || '/' }}</span></p>
+        <p class="er-line"><span class="er-prompt">$</span> stdtask open <span class="er-arg">{{ $route?.path || '/' }}</span></p>
         <p class="er-code">{{ code }}</p>
         <p class="er-msg"><span class="er-x">✗</span> {{ msg }}</p>
         <button class="er-btn" @click="clearError({ redirect: '/' })">[ cd ~/ ]</button>

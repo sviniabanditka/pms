@@ -49,10 +49,10 @@ async function submit() {
     <div class="lg-win">
       <div class="lg-bar">
         <span class="lg-tl lg-tl--r"></span><span class="lg-tl lg-tl--y"></span><span class="lg-tl lg-tl--g"></span>
-        <span class="lg-path">~/pms — {{ mode === 'login' ? 'login' : 'register' }}</span>
+        <span class="lg-path">~/stdtask — {{ mode === 'login' ? 'login' : 'register' }}</span>
       </div>
       <div class="lg-body">
-        <a href="/" class="lg-brand"><span class="lg-mark">P</span>pms</a>
+        <a href="/" class="lg-brand"><span class="lg-mark">S</span>stdtask</a>
         <p class="lg-hint"># {{ mode === 'login' ? 'welcome back. sign in to your workspace.' : 'create an account — your team in minutes.' }}</p>
 
         <label class="lg-field">

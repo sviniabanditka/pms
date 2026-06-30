@@ -15,12 +15,12 @@
   <g font-family="JetBrains Mono, ui-monospace, monospace">
     <g transform="translate(80,90)">
       <rect width="44" height="44" rx="11" fill="url(#g)"/>
-      <text x="22" y="31" font-size="26" font-weight="700" text-anchor="middle" fill="#0b0c12">P</text>
-      <text x="62" y="32" font-size="28" font-weight="700" fill="#eef0fa">pms</text>
+      <text x="22" y="31" font-size="26" font-weight="700" text-anchor="middle" fill="#0b0c12">S</text>
+      <text x="62" y="32" font-size="28" font-weight="700" fill="#eef0fa">stdtask</text>
     </g>
     <text x="80" y="300" font-size="76" font-weight="700" fill="#eef0fa">The workspace that</text>
     <text x="80" y="392" font-size="76" font-weight="700" fill="#eef0fa">runs at <tspan fill="#bb9af7">your speed.</tspan></text>
     <text x="80" y="470" font-size="30" fill="#6b7089">Issues · docs · chat · calendar · meetings — one fast web app.</text>
-    <text x="80" y="556" font-size="26" fill="#9ece6a">$ pms start --free</text>
+    <text x="80" y="556" font-size="26" fill="#9ece6a">$ stdtask start --free</text>
   </g>
 </svg>

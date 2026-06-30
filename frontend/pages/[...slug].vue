@@ -1601,7 +1601,7 @@ watch(() => [activeSection.value, selectedTeamId.value, selectedIssueId.value, s
 // URL → состояние только на back/forward (popstate) и при старте; наш replaceState popstate не вызывает
 function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
 
-// --- Тайтл вкладки (динамический по секции/выбранной сущности; глобальный titleTemplate добавит " · PMS") ---
+// --- Тайтл вкладки (динамический по секции/выбранной сущности; глобальный titleTemplate добавит " · stdtask") ---
 const SECTION_TITLES: Record<string, string> = { dashboard: 'Dashboards', inbox: 'Inbox', chats: 'Chat', meetings: 'Meetings', calendar: 'Calendar', reports: 'Reports', tasks: 'Tasks' }
 const PERSONAL_TITLES: Record<string, string> = { assigned: 'My issues', created: 'Created by me', active: 'Active' }
 const pageTitle = computed(() => {
@@ -1617,7 +1617,7 @@ const pageTitle = computed(() => {
     if (cy) return `Cycle ${cy.number}${selectedTeam.value ? ' · ' + selectedTeam.value.name : ''}`
     return selectedTeam.value?.name || 'Tasks'
   }
-  return SECTION_TITLES[sec] || 'PMS'
+  return SECTION_TITLES[sec] || 'stdtask'
 })
 useHead({ title: () => pageTitle.value })
 </script>

@@ -1,4 +1,4 @@
-# PMS
+# stdtask
 
 Project Management System (ClickUp × Linear). Спека — [`PMS_Specification.md`](PMS_Specification.md);
 проработанная документация — [`docs/`](docs/00-overview.md); план M0 — [`docs/m0-plan.md`](docs/m0-plan.md).

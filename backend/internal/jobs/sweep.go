@@ -20,7 +20,7 @@ type NotifySweepWorker struct {
 }
 
 var subjects = map[string]string{
-	"mention":       "You were mentioned in PMS",
+	"mention":       "You were mentioned in stdtask",
 	"assigned":      "A task was assigned to you",
 	"state_changed": "A task status changed",
 	"commented":     "New comment on your task",
@@ -51,9 +51,9 @@ func (w *NotifySweepWorker) Work(ctx context.Context, _ *river.Job[NotifySweepAr
 		}
 		subj := subjects[r.Type]
 		if subj == "" {
-			subj = "PMS notification"
+			subj = "stdtask notification"
 		}
-		if _, err := client.Insert(ctx, EmailArgs{To: r.Email, Subject: subj, Body: "Open PMS to see details."}, nil); err != nil {
+		if _, err := client.Insert(ctx, EmailArgs{To: r.Email, Subject: subj, Body: "Open stdtask to see details."}, nil); err != nil {
 			continue // оставим неотмеченным → повтор на следующем sweep
 		}
 		done = append(done, r.ID)

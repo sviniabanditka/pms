@@ -609,10 +609,10 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Bootstrap по проводу сжат gzip (`Content-Encoding: gzip`, ~×7 меньше) — браузер декодит прозрачно; данные не побиты (issues/борд/детали корректны).
 
 ## 79. Тайтлы вкладок
-- [ ] Глобальный `titleTemplate '%s · PMS'`; лендинг — полный маркетинг-тайтл без суффикса.
-- [ ] login → «Sign in · PMS», error → «Error · PMS», invite → «Accept invitation · PMS».
+- [ ] Глобальный `titleTemplate '%s · stdtask'`; лендинг — полный маркетинг-тайтл без суффикса.
+- [ ] login → «Sign in · stdtask», error → «Error · stdtask», invite → «Accept invitation · stdtask».
 - [ ] App: тайтл меняется по секции — Inbox/Meetings/Calendar/Reports/Dashboards/Chat/Tasks (SSR совпадает с роутом).
-- [ ] Открытая задача → «KEY-NNN title · PMS»; док → имя дока; канал → «#name»; цикл → «Cycle N · Team»; команда → имя команды; My issues/Created/Active.
+- [ ] Открытая задача → «KEY-NNN title · stdtask»; док → имя дока; канал → «#name»; цикл → «Cycle N · Team»; команда → имя команды; My issues/Created/Active.
 - [ ] При навигации (смена секции/открытие сущности) тайтл вкладки обновляется реактивно.
 
 ## 80. Cycle breakdown — перф вкладок
@@ -639,3 +639,12 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] После `make seed` (стирает юзеров): залогиниться заново сид-юзером — старая сессия указывает на удалённого юзера.
 - [ ] Юзер без воркспейсов (или «призрак» после reset) не крашит приложение: `/me/workspaces` отдаёт `[]`, показывается пустое состояние «create workspace».
 - [ ] Нет бесконечного скелетона при входе, если персистнутый `activeWorkspaceId` указывает на удалённый/чужой ws: onMounted валидирует его против myWorkspaces, иначе bootstrap'ит первый доступный (bootstrap чужого ws → permission_denied → раньше throw оставлял `loaded=false` навсегда). Фолбэк при любой ошибке bootstrap.
+
+## 81. Ребренд → stdtask
+- [ ] Лендинг (`/`): title/og/twitter = «stdtask — the workspace…»; CLI-промпты `$ stdtask ls/automate/sync/ship/diff/install/login`; бренд в навбаре/футере `~/stdtask`; mock-URL `app.stdtask.com`; копирайт `© 2026 stdtask`.
+- [ ] Демо-доска лендинга: ключи задач `STD-NNN` (не `PMS-NNN`); фид активности тоже `STD-NNN`.
+- [ ] Таблица сравнения «stdtask vs Jira/Linear» рендерится (ключ `r.stdtask`, колонка-заголовок `stdtask`).
+- [ ] Глобальный `titleTemplate '%s · stdtask'` (см. §79); все вкладки оканчиваются `· stdtask`.
+- [ ] Письма: From = `stdtask <no-reply@stdtask.com>`; тема/тело уведомлений «… in stdtask» / «stdtask notification».
+- [ ] iCal-фид: `PRODID:-//stdtask//Calendar//EN`, `X-WR-CALNAME: stdtask — <name>`.
+- [ ] Внутренние идентификаторы НЕ изменились (по дизайну): proto `pms.v1`, Go-модуль `…/pms`, БД/роли `pms_*`, имя репо — кодоген/миграции/сессии целы.

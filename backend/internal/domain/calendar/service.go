@@ -194,12 +194,12 @@ func (s *Service) Feed(ctx context.Context, token string) (string, error) {
 	}
 
 	var b strings.Builder
-	b.WriteString("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//PMS//Calendar//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n")
+	b.WriteString("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//stdtask//Calendar//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n")
 	name := u.Name
 	if name == "" {
 		name = u.Email
 	}
-	b.WriteString("X-WR-CALNAME:" + icsEsc("PMS — "+name) + "\r\n")
+	b.WriteString("X-WR-CALNAME:" + icsEsc("stdtask — "+name) + "\r\n")
 	stamp := time.Now().UTC().Format("20060102T150405Z")
 
 	for _, e := range evs {

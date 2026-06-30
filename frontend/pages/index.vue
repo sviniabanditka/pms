@@ -5,16 +5,16 @@ onMounted(() => { if (isAuthed()) navigateTo('/my/assigned') })
 
 const DESC = 'Issues, docs, chat, calendar and meetings in one fast workspace. Local-first and realtime — every change lands instantly for the whole team.'
 useHead({
-  titleTemplate: '%s', // полный маркетинг-тайтл без " · PMS"-суффикса
-  title: 'PMS — the workspace that runs at your speed',
+  titleTemplate: '%s', // полный маркетинг-тайтл без " · stdtask"-суффикса
+  title: 'stdtask — the workspace that runs at your speed',
   meta: [
     { name: 'description', content: DESC },
     { property: 'og:type', content: 'website' },
-    { property: 'og:title', content: 'PMS — the workspace that runs at your speed' },
+    { property: 'og:title', content: 'stdtask — the workspace that runs at your speed' },
     { property: 'og:description', content: DESC },
     { property: 'og:image', content: '/og.svg' },
     { name: 'twitter:card', content: 'summary_large_image' },
-    { name: 'twitter:title', content: 'PMS — the workspace that runs at your speed' },
+    { name: 'twitter:title', content: 'stdtask — the workspace that runs at your speed' },
     { name: 'twitter:description', content: DESC },
     { name: 'twitter:image', content: '/og.svg' },
   ],
@@ -57,17 +57,17 @@ const vReveal = {
 // ── product UI data (это веб-приложение, не CLI) ──
 const nav = ['Inbox', 'My work', 'Board', 'Calendar', 'Docs', 'Chat']
 const issues = [
-  { k: 'PMS-204', t: 'Refactor billing flow', s: 'prog', p: 'High', pc: '#ff9e64', a: 'M', c: '#bb9af7' },
-  { k: 'PMS-201', t: 'Calendar drag-resize', s: 'done', p: 'Med', pc: '#7dcfff', a: 'L', c: '#7dcfff' },
-  { k: 'PMS-198', t: 'Automations → post to channel', s: 'prog', p: 'High', pc: '#ff9e64', a: 'A', c: '#9ece6a' },
-  { k: 'PMS-195', t: 'iCal feed line-folding', s: 'todo', p: 'Low', pc: '#6b7089', a: 'Y', c: '#ff9e64' },
-  { k: 'PMS-190', t: 'Realtime reconnect backoff', s: 'todo', p: 'Med', pc: '#7dcfff', a: 'M', c: '#bb9af7' },
+  { k: 'STD-204', t: 'Refactor billing flow', s: 'prog', p: 'High', pc: '#ff9e64', a: 'M', c: '#bb9af7' },
+  { k: 'STD-201', t: 'Calendar drag-resize', s: 'done', p: 'Med', pc: '#7dcfff', a: 'L', c: '#7dcfff' },
+  { k: 'STD-198', t: 'Automations → post to channel', s: 'prog', p: 'High', pc: '#ff9e64', a: 'A', c: '#9ece6a' },
+  { k: 'STD-195', t: 'iCal feed line-folding', s: 'todo', p: 'Low', pc: '#6b7089', a: 'Y', c: '#ff9e64' },
+  { k: 'STD-190', t: 'Realtime reconnect backoff', s: 'todo', p: 'Med', pc: '#7dcfff', a: 'M', c: '#bb9af7' },
 ]
 const acts = [
-  { tag: 'moved', c: 'b', who: 'M', wc: '#bb9af7', m: 'Maya moved PMS-204 → In review' },
+  { tag: 'moved', c: 'b', who: 'M', wc: '#bb9af7', m: 'Maya moved STD-204 → In review' },
   { tag: 'auto', c: 'p', who: '⚙', wc: '#7aa2f7', m: 'Rule fired · assigned @leo · +needs-review' },
   { tag: 'chat', c: 'c', who: 'A', wc: '#9ece6a', m: 'Ada: shipping the new grid 🎉' },
-  { tag: 'done', c: 'g', who: '✓', wc: '#9ece6a', m: 'PMS-201 shipped · cycle 12' },
+  { tag: 'done', c: 'g', who: '✓', wc: '#9ece6a', m: 'STD-201 shipped · cycle 12' },
 ]
 const liveRow = ref(0)
 const actLive = ref(reduceMotion() ? acts.length - 1 : 0)
@@ -123,18 +123,18 @@ const kfiltered = computed(() => {
 const faqs = [
   { q: 'Is there really a free plan?', a: 'Yes — up to 10 teammates with issues, boards, calendar and realtime sync. No card, no trial clock.' },
   { q: 'Can we migrate from Jira or Linear?', a: 'Import issues, statuses and assignees from CSV today; native importers are on the way. Your keys and history come along.' },
-  { q: 'How does realtime work offline?', a: 'PMS is local-first: the app reads a local store, so it keeps working when the network drops and resyncs deltas automatically on reconnect.' },
+  { q: 'How does realtime work offline?', a: 'stdtask is local-first: the app reads a local store, so it keeps working when the network drops and resyncs deltas automatically on reconnect.' },
   { q: 'Where does our data live?', a: 'On our cloud by default, isolated per workspace with row-level security. Prefer your own servers? It self-hosts as a single binary with Postgres + S3.' },
   { q: 'Do you bill per seat?', a: 'Pro and Business are per active user, monthly or annual (save 20%). Free is flat. Cancel anytime.' },
 ]
 
 const cmp = [
-  { f: 'Issues, docs, chat, calendar & meetings in one', pms: true, jira: false, linear: false },
-  { f: 'Local-first, instant realtime', pms: true, jira: false, linear: 'part' },
-  { f: 'Built-in video huddles', pms: true, jira: false, linear: false },
-  { f: 'Time tracking & reports', pms: true, jira: 'part', linear: false },
-  { f: 'Self-hostable', pms: true, jira: true, linear: false },
-  { f: 'Free tier', pms: true, jira: true, linear: true },
+  { f: 'Issues, docs, chat, calendar & meetings in one', stdtask: true, jira: false, linear: false },
+  { f: 'Local-first, instant realtime', stdtask: true, jira: false, linear: 'part' },
+  { f: 'Built-in video huddles', stdtask: true, jira: false, linear: false },
+  { f: 'Time tracking & reports', stdtask: true, jira: 'part', linear: false },
+  { f: 'Self-hostable', stdtask: true, jira: true, linear: false },
+  { f: 'Free tier', stdtask: true, jira: true, linear: true },
 ]
 </script>
 
@@ -145,7 +145,7 @@ const cmp = [
     <!-- NAV -->
     <header class="t-nav" :class="{ 't-nav--solid': scrolled }">
       <div class="t-nav__in">
-        <a href="/" class="t-brand"><span class="t-prompt">~/</span>pms<span class="t-cur">▮</span></a>
+        <a href="/" class="t-brand"><span class="t-prompt">~/</span>stdtask<span class="t-cur">▮</span></a>
         <nav class="t-nav__links">
           <a href="#features">./features</a>
           <a href="#flow">./how</a>
@@ -187,7 +187,7 @@ const cmp = [
         <div class="t-app">
           <div class="t-app__bar">
             <span class="t-tl t-tl--r"></span><span class="t-tl t-tl--y"></span><span class="t-tl t-tl--g"></span>
-            <span class="t-url"><span class="t-url__lock">🔒</span>app.pms.dev/engineering</span>
+            <span class="t-url"><span class="t-url__lock">🔒</span>app.stdtask.com/engineering</span>
           </div>
           <div class="t-app__body">
             <aside class="t-side">
@@ -224,7 +224,7 @@ const cmp = [
     <section id="features" class="t-sec">
       <header class="t-shead" v-reveal>
         <span class="t-eyebrow"># everything the work needs — six tools, one tab</span>
-        <h2 class="t-h2"><span class="t-prompt">$</span> pms ls <span class="t-grad">~/workspace</span></h2>
+        <h2 class="t-h2"><span class="t-prompt">$</span> stdtask ls <span class="t-grad">~/workspace</span></h2>
       </header>
       <div class="t-grid">
         <article v-for="(f, i) in features" :key="f.f" class="t-card" v-reveal="i * 60">
@@ -239,8 +239,8 @@ const cmp = [
     <section class="t-spot">
       <div class="t-spot__copy" v-reveal>
         <span class="t-eyebrow"># automations — build it once, it runs forever</span>
-        <h2 class="t-h2"><span class="t-prompt">$</span> pms automate <span class="t-grad">--forever</span></h2>
-        <p class="t-lead">Point and click the rule in the app. PMS applies it server-side on every event — reassign, re-label, set status, ping a channel. No code, no glue.</p>
+        <h2 class="t-h2"><span class="t-prompt">$</span> stdtask automate <span class="t-grad">--forever</span></h2>
+        <p class="t-lead">Point and click the rule in the app. stdtask applies it server-side on every event — reassign, re-label, set status, ping a channel. No code, no glue.</p>
         <ul class="t-checks">
           <li>Triggers on create, status, owner, priority</li>
           <li>Chain actions in a single rule</li>
@@ -266,7 +266,7 @@ const cmp = [
     <section class="t-spot t-spot--rev">
       <div class="t-spot__copy" v-reveal>
         <span class="t-eyebrow"># realtime — everyone on the same page</span>
-        <h2 class="t-h2"><span class="t-prompt">$</span> pms sync <span class="t-grad">--live</span></h2>
+        <h2 class="t-h2"><span class="t-prompt">$</span> stdtask sync <span class="t-grad">--live</span></h2>
         <p class="t-lead">Local-first store, live updates over WebSocket. Every edit lands for the whole team the instant it happens — and the app keeps working when the network blinks.</p>
         <ul class="t-checks">
           <li>Optimistic edits, zero perceived latency</li>
@@ -314,7 +314,7 @@ const cmp = [
     <section id="flow" class="t-sec">
       <header class="t-shead" v-reveal>
         <span class="t-eyebrow"># the loop — from thought to shipped</span>
-        <h2 class="t-h2"><span class="t-prompt">$</span> pms ship <span class="t-grad">--repeat</span></h2>
+        <h2 class="t-h2"><span class="t-prompt">$</span> stdtask ship <span class="t-grad">--repeat</span></h2>
       </header>
       <div class="t-steps">
         <article v-for="(s, i) in [
@@ -332,14 +332,14 @@ const cmp = [
     <!-- COMPARISON -->
     <section class="t-sec">
       <header class="t-shead" v-reveal>
-        <span class="t-eyebrow"># diff — pms vs the rest</span>
-        <h2 class="t-h2"><span class="t-prompt">$</span> pms diff <span class="t-grad">--tools</span></h2>
+        <span class="t-eyebrow"># diff — stdtask vs the rest</span>
+        <h2 class="t-h2"><span class="t-prompt">$</span> stdtask diff <span class="t-grad">--tools</span></h2>
       </header>
       <div class="t-cmp" v-reveal>
-        <div class="t-cmp__head"><span></span><span class="t-cmp__me">pms</span><span>Jira</span><span>Linear</span></div>
+        <div class="t-cmp__head"><span></span><span class="t-cmp__me">stdtask</span><span>Jira</span><span>Linear</span></div>
         <div v-for="r in cmp" :key="r.f" class="t-cmp__row">
           <span class="t-cmp__f">{{ r.f }}</span>
-          <span class="t-cmp__c"><i :class="r.pms === true ? 'ok' : r.pms === 'part' ? 'part' : 'no'">{{ r.pms === true ? '✓' : r.pms === 'part' ? '~' : '·' }}</i></span>
+          <span class="t-cmp__c"><i :class="r.stdtask === true ? 'ok' : r.stdtask === 'part' ? 'part' : 'no'">{{ r.stdtask === true ? '✓' : r.stdtask === 'part' ? '~' : '·' }}</i></span>
           <span class="t-cmp__c"><i :class="r.jira === true ? 'ok' : r.jira === 'part' ? 'part' : 'no'">{{ r.jira === true ? '✓' : r.jira === 'part' ? '~' : '·' }}</i></span>
           <span class="t-cmp__c"><i :class="r.linear === true ? 'ok' : r.linear === 'part' ? 'part' : 'no'">{{ r.linear === true ? '✓' : r.linear === 'part' ? '~' : '·' }}</i></span>
         </div>
@@ -350,7 +350,7 @@ const cmp = [
     <section class="t-sec">
       <header class="t-shead" v-reveal>
         <span class="t-eyebrow"># faq</span>
-        <h2 class="t-h2"><span class="t-prompt">$</span> pms <span class="t-grad">--help</span></h2>
+        <h2 class="t-h2"><span class="t-prompt">$</span> stdtask <span class="t-grad">--help</span></h2>
       </header>
       <div class="t-faq" v-reveal>
         <details v-for="f in faqs" :key="f.q" class="t-faq__i">
@@ -364,7 +364,7 @@ const cmp = [
     <section id="pricing" class="t-sec">
       <header class="t-shead" v-reveal>
         <span class="t-eyebrow"># pricing — plans that scale with you</span>
-        <h2 class="t-h2"><span class="t-prompt">$</span> pms install <span class="t-grad">--plan</span></h2>
+        <h2 class="t-h2"><span class="t-prompt">$</span> stdtask install <span class="t-grad">--plan</span></h2>
         <p class="t-lead t-lead--c">Start free. Upgrade when the team grows. Cancel anytime.</p>
         <div class="t-toggle" v-reveal>
           <button :class="{ 'is-on': billing === 'monthly' }" @click="billing = 'monthly'">monthly</button>
@@ -388,7 +388,7 @@ const cmp = [
     <section class="t-cta" v-reveal>
       <div class="t-cta__panel">
         <span class="t-eyebrow"># ready when you are — bring the team</span>
-        <h2 class="t-h2"><span class="t-prompt">$</span> pms <span class="t-grad">login</span><span class="t-cur">▮</span></h2>
+        <h2 class="t-h2"><span class="t-prompt">$</span> stdtask <span class="t-grad">login</span><span class="t-cur">▮</span></h2>
         <p class="t-lead t-lead--c">One workspace for everything your team ships. Free to start.</p>
         <a href="/login" class="t-btn t-btn--solid t-btn--lg">[ get started ]</a>
       </div>
@@ -398,7 +398,7 @@ const cmp = [
     <footer class="t-foot">
       <div class="t-foot__in">
         <div class="t-foot__brand">
-          <a href="/" class="t-brand"><span class="t-prompt">~/</span>pms</a>
+          <a href="/" class="t-brand"><span class="t-prompt">~/</span>stdtask</a>
           <p>The workspace that runs at your speed. Local-first, realtime, all in one.</p>
         </div>
         <div class="t-foot__cols">
@@ -407,7 +407,7 @@ const cmp = [
           <div><h4>company</h4><a href="#">about</a><a href="#">docs</a><a href="/login">sign in</a></div>
         </div>
       </div>
-      <div class="t-foot__base"><span>© 2026 pms</span><span>made for teams that ship</span></div>
+      <div class="t-foot__base"><span>© 2026 stdtask</span><span>made for teams that ship</span></div>
     </footer>
   </div>
 </template>
@@ -497,7 +497,7 @@ const cmp = [
 /* sections */
 .t-sec { max-width: 1140px; margin: 0 auto; padding: 120px 24px 0; scroll-margin-top: 82px; }
 .t-shead { text-align: center; max-width: 40rem; margin: 0 auto 50px; }
-.t-h2 { font-weight: 700; font-size: clamp(28px, 4vw, 44px); line-height: 1.1; letter-spacing: -.02em; margin: 12px 0 0; color: var(--bright); }
+.t-h2 { font-weight: 700; font-size: clamp(26px, 3.6vw, 40px); line-height: 1.1; letter-spacing: -.02em; margin: 12px 0 0; color: var(--bright); white-space: nowrap; }
 .t-lead { color: var(--mut); font-size: 15px; line-height: 1.7; margin: 16px 0 0; }
 .t-lead--c { max-width: 32rem; margin-left: auto; margin-right: auto; }
 
@@ -654,6 +654,7 @@ const cmp = [
   .t-grid, .t-steps, .t-plans { grid-template-columns: 1fr; }
   .t-spot, .t-spot--rev .t-spot__copy { grid-template-columns: 1fr; }
   .t-spot { grid-template-columns: 1fr; }
+  .t-h2, .t-spot__copy .t-h2 { white-space: normal; }
   .t-spot--rev .t-spot__copy { order: 0; }
   .t-foot__in { grid-template-columns: 1fr; }
   .t-nav__links { display: none; }

@@ -79,7 +79,7 @@ func Load() Config {
 		SMTPPort:           env("SMTP_PORT", "1025"),
 		SMTPUser:           env("SMTP_USER", ""),
 		SMTPPass:           env("SMTP_PASS", ""),
-		SMTPFrom:           env("SMTP_FROM", "PMS <no-reply@pms.local>"),
+		SMTPFrom:           env("SMTP_FROM", "stdtask <no-reply@stdtask.com>"),
 		DueSoonInterval:    envDuration("DUE_SOON_INTERVAL", time.Hour),
 		EmailSweepEvery:    envDuration("EMAIL_SWEEP_EVERY", 2*time.Minute),
 		SnapshotEvery:      envDuration("SNAPSHOT_EVERY", 24*time.Hour),
