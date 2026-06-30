@@ -1605,7 +1605,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
       <div v-for="s in railSections" :key="s.key" class="relative">
         <UButton :icon="s.icon" :title="s.label" square
           :color="activeSection === s.key ? 'primary' : 'gray'"
-          :variant="activeSection === s.key ? 'soft' : 'ghost'"
+          variant="ghost"
           @click="switchSection(s.key as any)" />
         <span v-if="s.key === 'chats' && store.totalUnread" class="absolute -right-0.5 -top-0.5 flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-white">{{ store.totalUnread }}</span>
       </div>
@@ -2151,7 +2151,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               <div v-if="showPreview" class="prose-chat min-h-[60px] px-3 py-2 text-sm" v-html="renderMarkdown(msgDraft) || '<span class=&quot;text-tertiary&quot;>Nothing to preview</span>'" />
               <div v-else class="relative">
                 <MentionMenu :m="chatMention" />
-                <textarea ref="composerEl" v-model="msgDraft" rows="3" placeholder="Message… (markdown, @mention, #ref, Enter to send)"
+                <textarea ref="composerEl" v-model="msgDraft" rows="3" placeholder="> message… (markdown, @mention, #ref, ↵ to send)"
                   class="w-full resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-tertiary"
                   @paste="onChatPaste" @input="onComposerInput(); chatMention.detect()" @keydown="onComposerKeydown" />
               </div>
@@ -2472,9 +2472,9 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               <UButton size="xs" color="gray" variant="ghost" icon="i-heroicons-adjustments-horizontal" title="Manage statuses" @click="showStates = true" />
               <UButton size="xs" :color="showFilters || store.activeFilter ? 'primary' : 'gray'" variant="ghost" icon="i-heroicons-funnel" @click="showFilters = !showFilters" />
               <span class="mx-1 h-4 w-px bg-subtle" />
-              <UButton size="xs" square icon="i-heroicons-list-bullet" :color="store.layout==='list' ? 'primary' : 'gray'" :variant="store.layout==='list' ? 'soft' : 'ghost'" @click="store.layout='list'" />
-              <UButton size="xs" square icon="i-heroicons-view-columns" :color="store.layout==='board' ? 'primary' : 'gray'" :variant="store.layout==='board' ? 'soft' : 'ghost'" @click="store.layout='board'" />
-              <UButton size="xs" square icon="i-heroicons-calendar-days" :color="store.layout==='calendar' ? 'primary' : 'gray'" :variant="store.layout==='calendar' ? 'soft' : 'ghost'" @click="store.layout='calendar'" />
+              <UButton size="xs" square icon="i-heroicons-list-bullet" :color="store.layout==='list' ? 'primary' : 'gray'" variant="ghost" @click="store.layout='list'" />
+              <UButton size="xs" square icon="i-heroicons-view-columns" :color="store.layout==='board' ? 'primary' : 'gray'" variant="ghost" @click="store.layout='board'" />
+              <UButton size="xs" square icon="i-heroicons-calendar-days" :color="store.layout==='calendar' ? 'primary' : 'gray'" variant="ghost" @click="store.layout='calendar'" />
             </div>
           </div>
           <!-- FilterBar (скрыт по умолчанию) -->
@@ -2554,8 +2554,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <UButton icon="i-heroicons-chevron-right" color="gray" variant="ghost" size="xs" square @click="monthOffset++" />
             <UButton class="ml-2" color="gray" variant="ghost" size="xs" @click="monthOffset = 0">today</UButton>
             <div class="ml-auto flex gap-1">
-              <UButton size="2xs" :color="calMode === 'month' ? 'primary' : 'gray'" :variant="calMode === 'month' ? 'soft' : 'ghost'" @click="calMode = 'month'; monthOffset = 0">Month</UButton>
-              <UButton size="2xs" :color="calMode === 'week' ? 'primary' : 'gray'" :variant="calMode === 'week' ? 'soft' : 'ghost'" @click="calMode = 'week'; monthOffset = 0">Week</UButton>
+              <UButton size="2xs" :color="calMode === 'month' ? 'primary' : 'gray'" variant="ghost" @click="calMode = 'month'; monthOffset = 0">Month</UButton>
+              <UButton size="2xs" :color="calMode === 'week' ? 'primary' : 'gray'" variant="ghost" @click="calMode = 'week'; monthOffset = 0">Week</UButton>
             </div>
           </div>
           <div class="grid grid-cols-7 gap-px text-xs">
@@ -2930,7 +2930,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <div class="mt-2 flex items-end gap-2">
             <div class="relative flex-1">
               <MentionMenu :m="commentMention" />
-              <textarea ref="commentEl" v-model="commentDraft" rows="1" placeholder="Add a comment… (markdown, @mention, #ref)"
+              <textarea ref="commentEl" v-model="commentDraft" rows="1" placeholder="> comment… (markdown, @mention, #ref)"
                 class="block w-full resize-none rounded-md border border-subtle bg-elevated px-2.5 py-1.5 text-sm outline-none placeholder:text-tertiary"
                 @paste="onCommentPaste" @input="commentMention.detect()" @keydown="onCommentKeydown" />
             </div>
@@ -2974,7 +2974,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
       </div>
       <div class="shrink-0 border-t border-subtle p-2">
         <PendingAttachments v-if="threadPending.length" class="mb-2" :files="threadPending" @remove="(i) => threadPending = threadPending.filter((_, j) => j !== i)" />
-        <textarea v-model="threadDraft" rows="2" placeholder="Reply…" class="w-full resize-none rounded-md border border-subtle bg-elevated px-2 py-1.5 text-sm outline-none" @paste="onThreadPaste" @keydown.enter.exact.prevent="sendThread" />
+        <textarea v-model="threadDraft" rows="2" placeholder="> reply…" class="w-full resize-none rounded-md border border-subtle bg-elevated px-2 py-1.5 text-sm outline-none" @paste="onThreadPaste" @keydown.enter.exact.prevent="sendThread" />
         <div class="mt-1 flex items-center justify-end gap-2">
           <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="2xs" square title="Attach" @click="threadFileEl?.click()" />
           <input ref="threadFileEl" type="file" multiple class="hidden" @change="onThreadFilePick" />
