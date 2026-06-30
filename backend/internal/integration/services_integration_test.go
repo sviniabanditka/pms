@@ -33,6 +33,7 @@ import (
 	"github.com/pms/backend/internal/domain/docs"
 	"github.com/pms/backend/internal/domain/issues"
 	"github.com/pms/backend/internal/domain/milestones"
+	"github.com/pms/backend/internal/domain/notifications"
 	"github.com/pms/backend/internal/domain/search"
 	"github.com/pms/backend/internal/domain/teams"
 	"github.com/pms/backend/internal/domain/timetracking"
@@ -577,5 +578,32 @@ func TestAutomations_EngineFires(t *testing.T) {
 	}
 	if p := scalar[int](t, `SELECT priority FROM issues WHERE id = ?`, iss); p != 4 {
 		t.Errorf("automation must set priority=4, got %d", p)
+	}
+}
+
+func TestNotifications_MarkRead(t *testing.T) {
+	ws, actor := newWS(t)
+	svc := notifications.NewService(appDB, pub)
+	n1, n2 := uuid.New(), uuid.New()
+	ins := `INSERT INTO notifications (id, workspace_id, user_id, type, entity_type, entity_id) VALUES (?, ?, ?, 'assigned', 'issue', ?)`
+	mustExec(t, ins, n1, ws, actor, uuid.New())
+	mustExec(t, ins, n2, ws, actor, uuid.New())
+
+	// одиночная отметка
+	if _, err := svc.MarkRead(context.Background(), actor, ws, n1); err != nil {
+		t.Fatalf("mark read: %v", err)
+	}
+	if scalar[int](t, `SELECT count(*) FROM notifications WHERE id = ? AND read_at IS NOT NULL`, n1) != 1 {
+		t.Error("n1 must be read")
+	}
+	if scalar[int](t, `SELECT count(*) FROM notifications WHERE user_id = ? AND read_at IS NULL`, actor) != 1 {
+		t.Error("n2 must still be unread")
+	}
+	// отметить всё
+	if _, err := svc.MarkAllRead(context.Background(), actor, ws); err != nil {
+		t.Fatalf("mark all: %v", err)
+	}
+	if scalar[int](t, `SELECT count(*) FROM notifications WHERE user_id = ? AND read_at IS NULL`, actor) != 0 {
+		t.Error("all notifications must be read")
 	}
 }
