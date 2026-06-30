@@ -2766,20 +2766,20 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           </div>
           <div class="flex min-h-8 items-center gap-3">
             <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-user-circle" /> Assignee</span>
-            <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="Unassigned" :model-value="selectedIssue.assigneeId || undefined" value-attribute="value" option-attribute="label"
-              :options="[{ label: 'Unassigned', value: '' }, ...store.wsUsers.map((u) => ({ label: u.name || u.email, value: u.id })), ...(store.users[store.currentUserId] ? [{ label: (store.users[store.currentUserId].name || store.users[store.currentUserId].email) + ' (me)', value: store.currentUserId }] : [])]"
+            <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="unassigned" :model-value="selectedIssue.assigneeId || undefined" value-attribute="value" option-attribute="label"
+              :options="[{ label: 'unassigned', value: '' }, ...store.wsUsers.map((u) => ({ label: u.name || u.email, value: u.id })), ...(store.users[store.currentUserId] ? [{ label: (store.users[store.currentUserId].name || store.users[store.currentUserId].email) + ' (me)', value: store.currentUserId }] : [])]"
               @update:model-value="store.setIssueAssignee(selectedIssue.id, $event)" />
           </div>
           <div class="flex min-h-8 items-center gap-3">
             <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-arrow-path-rounded-square" /> Cycle</span>
-            <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="No cycle" :model-value="selectedIssue.cycleId || undefined" value-attribute="value" option-attribute="label"
-              :options="[{ label: 'No cycle', value: '' }, ...store.teamCycles(selectedIssue.teamId).map((c) => ({ label: `Cycle ${c.number} (${c.status})`, value: c.id }))]"
+            <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="no cycle" :model-value="selectedIssue.cycleId || undefined" value-attribute="value" option-attribute="label"
+              :options="[{ label: 'no cycle', value: '' }, ...store.teamCycles(selectedIssue.teamId).map((c) => ({ label: `Cycle ${c.number} (${c.status})`, value: c.id }))]"
               @update:model-value="store.setIssueCycle(selectedIssue.id, $event)" />
           </div>
           <div class="flex min-h-8 items-center gap-3">
             <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-flag" /> Milestone</span>
-            <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="No milestone" :model-value="selectedIssue.milestoneId || undefined" value-attribute="value" option-attribute="label"
-              :options="[{ label: 'No milestone', value: '' }, ...store.teamMilestones(selectedIssue.teamId).map((m) => ({ label: m.name, value: m.id }))]"
+            <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="no milestone" :model-value="selectedIssue.milestoneId || undefined" value-attribute="value" option-attribute="label"
+              :options="[{ label: 'no milestone', value: '' }, ...store.teamMilestones(selectedIssue.teamId).map((m) => ({ label: m.name, value: m.id }))]"
               @update:model-value="store.setIssueMilestone(selectedIssue.id, $event)" />
           </div>
           <div class="flex min-h-8 items-center gap-3">
@@ -2789,7 +2789,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           </div>
           <div class="flex min-h-8 items-center gap-3">
             <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-scale" /> Estimate</span>
-            <UInput class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" type="number" min="0" :model-value="selectedIssue.estimate ?? ''" placeholder="No estimate"
+            <UInput class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" type="number" min="0" :model-value="selectedIssue.estimate ?? ''" placeholder="no estimate"
               @change="(v:any) => store.setIssueEstimate(selectedIssue.id, Number(v))" />
           </div>
           <!-- Time tracking -->
@@ -3055,7 +3055,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <UInput v-model="cTitle" placeholder="Meeting title" autofocus @keyup.enter="submitCreate" /></div>
           <div><label class="mb-1 block text-xs text-tertiary">When (optional)</label>
             <div class="flex items-center gap-2">
-              <DatePicker v-model="cMeetDate" block class="flex-1" placeholder="Pick a date" />
+              <DatePicker v-model="cMeetDate" block class="flex-1" placeholder="pick a date" />
               <TimePicker v-model="cMeetStart" class="w-28" />
               <span class="text-tertiary">–</span>
               <TimePicker v-model="cMeetEnd" :from="cMeetStart" class="w-28" />
@@ -3080,7 +3080,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <div><label class="mb-1 block text-xs text-tertiary">Channel name</label>
             <UInput v-model="cTitle" placeholder="general" autofocus @keyup.enter="submitCreate" /></div>
           <label class="flex cursor-pointer items-center gap-2 text-sm">
-            <UToggle v-model="cPrivate" />
+            <TermCheck v-model="cPrivate" />
             <span class="flex items-center gap-1"><UIcon name="i-heroicons-lock-closed" class="text-tertiary" /> Private — invite-only</span>
           </label>
         </div>
@@ -3454,7 +3454,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               </div>
               <p class="mb-3 text-xs text-tertiary">When something happens to an issue, run actions automatically.</p>
               <div v-for="a in store.automationsList" :key="a.id" class="group mb-1.5 flex items-center gap-3 rounded-md border border-subtle px-3 py-2">
-                <UToggle :model-value="a.enabled" @update:model-value="(v:any) => store.toggleAutomation(a.id, v)" />
+                <TermCheck :model-value="a.enabled" @update:model-value="(v:any) => store.toggleAutomation(a.id, v)" />
                 <div class="min-w-0 flex-1 cursor-pointer" @click="openAutoEdit(a)">
                   <div class="truncate text-sm font-medium" :class="a.enabled ? 'text-white' : 'text-tertiary'">{{ a.name }}</div>
                   <div class="truncate text-xs text-tertiary">{{ autoSummary(a) }}<span v-if="a.teamId"> · {{ store.teams[a.teamId]?.key }}</span></div>

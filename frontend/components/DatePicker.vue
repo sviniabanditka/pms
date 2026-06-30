@@ -45,7 +45,7 @@ function pick(ds: string, close: () => void) { emit('update:modelValue', ds); cl
         <div class="mb-2 flex items-center">
           <span class="font-medium text-white">{{ monthLabel }}</span>
           <div class="ml-auto flex items-center gap-1">
-            <button type="button" class="rounded px-1.5 py-0.5 text-xs text-tertiary hover:bg-hover hover:text-secondary" @click="goToday">Today</button>
+            <button type="button" class="rounded px-1.5 py-0.5 text-xs text-tertiary hover:bg-hover hover:text-secondary" @click="goToday">[ today ]</button>
             <button type="button" class="rounded p-0.5 text-tertiary hover:bg-hover hover:text-secondary" @click="shift(-1)"><UIcon name="i-heroicons-chevron-up" /></button>
             <button type="button" class="rounded p-0.5 text-tertiary hover:bg-hover hover:text-secondary" @click="shift(1)"><UIcon name="i-heroicons-chevron-down" /></button>
           </div>
@@ -56,7 +56,7 @@ function pick(ds: string, close: () => void) { emit('update:modelValue', ds); cl
         <div class="grid grid-cols-7 gap-0.5 text-center text-sm">
           <button v-for="c in cells" :key="c.ds" type="button"
             class="flex h-9 items-center justify-center rounded-md transition-colors"
-            :class="c.sel ? 'bg-accent font-semibold text-white' : c.isToday ? 'text-white ring-1 ring-inset ring-subtle hover:bg-hover' : c.inMonth ? 'text-secondary hover:bg-hover' : 'text-tertiary/40 hover:bg-hover'"
+            :class="c.sel ? 'bg-accent font-semibold text-base' : c.isToday ? 'text-bright ring-1 ring-inset ring-subtle hover:bg-hover' : c.inMonth ? 'text-secondary hover:bg-hover' : 'text-tertiary/40 hover:bg-hover'"
             @click="pick(c.ds, close)">{{ c.day }}</button>
         </div>
       </div>
