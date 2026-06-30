@@ -667,3 +667,9 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] AddTeamMember/RemoveTeamMember — lead команды-или-ancestor или ws-admin; нельзя добавить не-члена воркспейса. LeaveTeam — сам выходит.
 - [ ] CreateIssue в private-команде не-членом → 403; в public или своей private → ок (коллаборативно).
 - [ ] Любая мутация issue (state/assign/priority/labels/relations/cf/archive/title/dates/cycle/milestone) в private-команде не-членом → 403 (даже по известному id).
+
+## 84. Пермишены — Фазы 3+4 (channels + invitations)
+- [ ] Реакция/typing/mark-read в приватном канале/DM, где ты НЕ участник → 403 (раньше проходило). В публичном или своём приватном — ок.
+- [ ] Токен инвайта в БД хранится хешем (sha256, 64 hex), не плейнтекстом; ссылка `/invite/<token>` с raw-токеном принимается (accept хеширует и матчит).
+- [ ] Pending-инвайты (список приглашённых email/role) видны в приложении только admin/owner; обычному члену — пусто.
+- [ ] RevokeInvitation: admin/owner отзывает pending-инвайт (исчезает); обычный член → 403.

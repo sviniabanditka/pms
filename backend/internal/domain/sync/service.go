@@ -221,8 +221,12 @@ func (s *Service) Bootstrap(ctx context.Context, actor, wsID uuid.UUID, only []s
 		}); err != nil {
 			return err
 		}
+		// pending-инвайты (email/role/invitedBy) видят только admin/owner; остальным — пустой чанк.
 		if err := table("invitation", &[]models.Invitation{}, func(q *bun.SelectQuery) {
 			q.Where("accepted_at IS NULL")
+			if !adminAll {
+				q.Where("1 = 0")
+			}
 		}); err != nil {
 			return err
 		}

@@ -2,6 +2,8 @@ package workspaces
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"regexp"
@@ -45,6 +47,12 @@ func ownerCount(ctx context.Context, tx bun.Tx, wsID uuid.UUID) (int, error) {
 }
 
 var slugRe = regexp.MustCompile(`^[a-z0-9-]{2,40}$`)
+
+// hashToken — токен инвайта хранится как sha256-hex (raw отдаётся только пригласившему).
+func hashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
 
 const defaultSettings = `{"estimateScale":"points","teamNestingPolicy":"inherit-public"}`
 
@@ -148,7 +156,7 @@ func (s *Service) InviteMember(ctx context.Context, actor, wsID, id uuid.UUID, e
 		tok, _ := uuid.NewV7()
 		token = tok.String()
 		_, e := tx.NewInsert().Model(&models.Invitation{
-			ID: id, WorkspaceID: wsID, Email: email, Role: role, TokenHash: token,
+			ID: id, WorkspaceID: wsID, Email: email, Role: role, TokenHash: hashToken(token),
 			InvitedBy: actor, ExpiresAt: now.Add(7 * 24 * time.Hour), CreatedAt: now, UpdatedAt: now,
 		}).Exec(ctx)
 		return e
@@ -180,7 +188,7 @@ func (s *Service) AcceptInvitation(ctx context.Context, actor uuid.UUID, token s
 	}
 	var inv models.Invitation
 	if err := s.jobs.NewSelect().Model(&inv).
-		Where("token_hash = ?", token).Where("accepted_at IS NULL").Limit(1).Scan(ctx); err != nil {
+		Where("token_hash = ?", hashToken(token)).Where("accepted_at IS NULL").Limit(1).Scan(ctx); err != nil {
 		return uuid.Nil, ErrInviteNotFound
 	}
 	if now.After(inv.ExpiresAt) {
@@ -316,6 +324,22 @@ func (s *Service) RemoveMember(ctx context.Context, actor, wsID, userID uuid.UUI
 		return err
 	}
 	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "workspace_member", EntityID: memberID.String(), Op: "delete"})
+	return nil
+}
+
+// RevokeInvitation — отозвать pending-приглашение (owner/admin).
+func (s *Service) RevokeInvitation(ctx context.Context, actor, wsID, id uuid.UUID) error {
+	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireRole(ctx, tx, wsID, actor, "owner", "admin"); err != nil {
+			return err
+		}
+		_, e := tx.NewDelete().Model((*models.Invitation)(nil)).Where("id = ?", id).Where("accepted_at IS NULL").Exec(ctx)
+		return e
+	})
+	if err != nil {
+		return err
+	}
+	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "invitation", EntityID: id.String(), Op: "delete"})
 	return nil
 }
 

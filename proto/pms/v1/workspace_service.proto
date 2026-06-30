@@ -15,6 +15,7 @@ service WorkspaceService {
   rpc UpdateSectionsConfig(UpdateSectionsConfigRequest) returns (CommandResult);
   rpc DeleteWorkspace(EntityRef) returns (CommandResult);
   rpc RemoveMember(RemoveMemberRequest) returns (CommandResult);
+  rpc RevokeInvitation(EntityRef) returns (CommandResult);
 }
 
 message UpdateSectionsConfigRequest {

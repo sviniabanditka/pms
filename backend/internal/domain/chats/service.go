@@ -261,6 +261,11 @@ func (s *Service) ToggleReaction(ctx context.Context, actor, wsID, messageID uui
 			return err
 		}
 		channelID = m.ChannelID
+		if ok, err := s.canAccess(ctx, tx, channelID, actor); err != nil {
+			return err
+		} else if !ok {
+			return ErrForbidden
+		}
 		res, err := tx.NewDelete().Model((*models.MessageReaction)(nil)).
 			Where("message_id = ?", messageID).Where("user_id = ?", actor).Where("emoji = ?", emoji).Exec(ctx)
 		if err != nil {
@@ -282,13 +287,32 @@ func (s *Service) ToggleReaction(ctx context.Context, actor, wsID, messageID uui
 
 // SendTyping публикует эфемерное событие набора (без БД).
 func (s *Service) SendTyping(ctx context.Context, actor, wsID, channelID uuid.UUID) error {
+	if err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		ok, err := s.canAccess(ctx, tx, channelID, actor)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrForbidden
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 	return s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "typing", EntityID: "typing:" + channelID.String(), Op: channelID.String(), Actor: actor.String()})
 }
 
 // MarkChannelRead — отметить канал прочитанным до текущего момента (upsert read-маркера).
 func (s *Service) MarkChannelRead(ctx context.Context, actor, wsID, channelID uuid.UUID) error {
 	return db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
-		_, err := tx.NewInsert().Model(&models.ChannelRead{WorkspaceID: wsID, ChannelID: channelID, UserID: actor, LastReadAt: time.Now().UTC()}).
+		ok, err := s.canAccess(ctx, tx, channelID, actor)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrForbidden
+		}
+		_, err = tx.NewInsert().Model(&models.ChannelRead{WorkspaceID: wsID, ChannelID: channelID, UserID: actor, LastReadAt: time.Now().UTC()}).
 			On("CONFLICT (channel_id, user_id) DO UPDATE").Set("last_read_at = EXCLUDED.last_read_at").Exec(ctx)
 		return err
 	})

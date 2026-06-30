@@ -323,6 +323,17 @@ func (h *workspaceHandler) DeleteWorkspace(ctx context.Context, req *connect.Req
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: wsID.String()}), nil
 }
 
+func (h *workspaceHandler) RevokeInvitation(ctx context.Context, req *connect.Request[pmsv1.EntityRef]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, wsID, id, err := issueRef(ctx, req.Msg.WorkspaceId, req.Msg.Id)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.RevokeInvitation(ctx, actor, wsID, id); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
+}
+
 func (h *workspaceHandler) InviteMember(ctx context.Context, req *connect.Request[pmsv1.InviteMemberRequest]) (*connect.Response[pmsv1.CommandResult], error) {
 	actor, err := requireActor(ctx)
 	if err != nil {
