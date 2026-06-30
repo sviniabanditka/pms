@@ -648,3 +648,14 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Письма: From = `stdtask <no-reply@stdtask.com>`; тема/тело уведомлений «… in stdtask» / «stdtask notification».
 - [ ] iCal-фид: `PRODID:-//stdtask//Calendar//EN`, `X-WR-CALNAME: stdtask — <name>`.
 - [ ] Внутренние идентификаторы НЕ изменились (по дизайну): proto `pms.v1`, Go-модуль `…/pms`, БД/роли `pms_*`, имя репо — кодоген/миграции/сессии целы.
+
+## 82. Пермишены — Фаза 0+1 (бэк-авторизация)
+- [ ] Кросс-тенант закрыт: залогиненный юзер с чужим `workspace_id` в любом unary-RPC → `permission_denied` «not a workspace member» (own ws работает). Проверка: Search own→200, foreign→403.
+- [ ] Guest read-only: guest-юзер может звать только read-RPC (Get*/List*/Search/RunView/Report); любой мутирующий RPC → `permission_denied` «guests are read-only».
+- [ ] Admin-only: member (не admin) на CreateAutomation/UpdateAutomation/SetAutomationEnabled/DeleteAutomation, CreateCustomField/ArchiveCustomField, SetWorkspaceLogo → 403 «requires workspace admin»; admin/owner — проходит.
+- [ ] Контент коллаборативный: любой член правит любую issue (state/assign/priority/title/labels) и любой doc (body/title).
+- [ ] Delete/archive ограничен: member архивит/удаляет чужую issue/doc → 403; свою или admin → ок. view/dashboard-виджет: правит/удаляет только владелец или admin.
+- [ ] attachment: удалить может только загрузивший или admin.
+- [ ] Роли: нельзя выдать роль выше своей (admin приглашает/назначает owner → 403); нельзя тронуть вышестоящего.
+- [ ] Last-owner: понизить/убрать/покинуть последнего owner'а → `failed_precondition` «workspace must keep at least one owner».
+- [ ] Невалидная роль в invite/updateRole → `invalid_argument`.

@@ -49,13 +49,22 @@ func (s *Service) Bootstrap(ctx context.Context, actor, wsID uuid.UUID, only []s
 	wants := func(t string) bool { return len(only) == 0 || want[t] }
 
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
-		ok, err := tx.NewSelect().Model((*models.WorkspaceMember)(nil)).
-			Where("user_id = ?", actor).Where("workspace_id = ?", wsID).Exists(ctx)
-		if err != nil {
-			return err
-		}
-		if !ok {
+		var role string
+		if err := tx.NewSelect().Model((*models.WorkspaceMember)(nil)).Column("role").
+			Where("user_id = ?", actor).Where("workspace_id = ?", wsID).Where("status = 'active'").Scan(ctx, &role); err != nil {
 			return ErrForbidden
+		}
+		// Видимость команд: admin/owner видят всё; остальным — public-команды + private,
+		// где actor состоит (с наследованием вниз по ltree: член ancestor видит подкоманды).
+		adminAll := role == "owner" || role == "admin"
+		var visibleTeams []uuid.UUID
+		if !adminAll {
+			if err := tx.NewSelect().Model((*models.Team)(nil)).Column("id").
+				Where("deleted_at IS NULL").
+				Where("(private = false OR EXISTS (SELECT 1 FROM team_members tm JOIN teams anc ON anc.id = tm.team_id WHERE tm.user_id = ? AND t.path <@ anc.path))", actor).
+				Scan(ctx, &visibleTeams); err != nil {
+				return err
+			}
 		}
 
 		if err := tx.NewSelect().Model((*models.ChangeLog)(nil)).
@@ -90,16 +99,56 @@ func (s *Service) Bootstrap(ctx context.Context, actor, wsID uuid.UUID, only []s
 		}
 		live := func(q *bun.SelectQuery) { q.Where("deleted_at IS NULL") }
 
+		// Team-фильтры видимости (no-op для admin/owner). Пустой visibleTeams → IN (NULL) → ничего.
+		inTeams := func(col string) func(*bun.SelectQuery) {
+			return func(q *bun.SelectQuery) {
+				if !adminAll {
+					q.Where(col+" IN (?)", bun.In(visibleTeams))
+				}
+			}
+		}
+		inTeamsN := func(col string) func(*bun.SelectQuery) { // nullable team_id: NULL = workspace-scoped, видно всем
+			return func(q *bun.SelectQuery) {
+				if !adminAll {
+					q.Where("("+col+" IS NULL OR "+col+" IN (?))", bun.In(visibleTeams))
+				}
+			}
+		}
+		viaIssue := func(col string) func(*bun.SelectQuery) { // строки, привязанные к issue (issue_label/relation/cf_value)
+			return func(q *bun.SelectQuery) {
+				if !adminAll {
+					q.Where(col+" IN (SELECT id FROM issues WHERE team_id IN (?))", bun.In(visibleTeams))
+				}
+			}
+		}
+		viaCycle := func(col string) func(*bun.SelectQuery) {
+			return func(q *bun.SelectQuery) {
+				if !adminAll {
+					q.Where(col+" IN (SELECT id FROM cycles WHERE team_id IN (?))", bun.In(visibleTeams))
+				}
+			}
+		}
+		viaDashboard := func(col string) func(*bun.SelectQuery) {
+			return func(q *bun.SelectQuery) {
+				if !adminAll {
+					q.Where(col+" IN (SELECT id FROM dashboards WHERE team_id IS NULL OR team_id IN (?))", bun.In(visibleTeams))
+				}
+			}
+		}
+
 		if err := table("workspace", &[]models.Workspace{}, live); err != nil {
 			return err
 		}
-		if err := table("team", &[]models.Team{}, live); err != nil {
+		if err := table("team", &[]models.Team{}, live, inTeams("id")); err != nil {
 			return err
 		}
-		if err := table("workflow_state", &[]models.WorkflowState{}); err != nil {
+		if err := table("team_member", &[]models.TeamMember{}, inTeams("team_id")); err != nil {
 			return err
 		}
-		if err := table("label", &[]models.Label{}); err != nil {
+		if err := table("workflow_state", &[]models.WorkflowState{}, inTeams("team_id")); err != nil {
+			return err
+		}
+		if err := table("label", &[]models.Label{}, inTeamsN("team_id")); err != nil {
 			return err
 		}
 		if err := table("workspace_member", &[]models.WorkspaceMember{}); err != nil {
@@ -109,33 +158,33 @@ func (s *Service) Bootstrap(ctx context.Context, actor, wsID uuid.UUID, only []s
 		// тело (md) грузится лениво при открытии задачи (GetActivity) ради объёма bootstrap.
 		if err := table("issue", &[]models.Issue{}, func(q *bun.SelectQuery) {
 			q.ExcludeColumn("description").Where("archived_at IS NULL").Where("deleted_at IS NULL")
-		}); err != nil {
+		}, inTeams("team_id")); err != nil {
 			return err
 		}
-		if err := table("issue_label", &[]models.IssueLabel{}); err != nil {
+		if err := table("issue_label", &[]models.IssueLabel{}, viaIssue("issue_id")); err != nil {
 			return err
 		}
-		if err := table("view", &[]models.View{}, live); err != nil {
+		if err := table("view", &[]models.View{}, live, inTeamsN("team_id")); err != nil {
 			return err
 		}
-		if err := table("issue_relation", &[]models.IssueRelation{}); err != nil {
+		if err := table("issue_relation", &[]models.IssueRelation{}, viaIssue("source_id")); err != nil {
 			return err
 		}
-		if err := table("cycle", &[]models.Cycle{}); err != nil {
+		if err := table("cycle", &[]models.Cycle{}, inTeams("team_id")); err != nil {
 			return err
 		}
 		if err := table("custom_field", &[]models.CustomField{}, func(q *bun.SelectQuery) {
 			q.Where("archived_at IS NULL")
-		}); err != nil {
+		}, inTeamsN("team_id")); err != nil {
 			return err
 		}
-		if err := table("custom_field_value", &[]models.CustomFieldValue{}); err != nil {
+		if err := table("custom_field_value", &[]models.CustomFieldValue{}, viaIssue("issue_id")); err != nil {
 			return err
 		}
-		if err := table("dashboard", &[]models.Dashboard{}, live); err != nil {
+		if err := table("dashboard", &[]models.Dashboard{}, live, inTeamsN("team_id")); err != nil {
 			return err
 		}
-		if err := table("dashboard_widget", &[]models.DashboardWidget{}); err != nil {
+		if err := table("dashboard_widget", &[]models.DashboardWidget{}, viaDashboard("dashboard_id")); err != nil {
 			return err
 		}
 		// нотификации — только текущего пользователя (последние 100)
@@ -144,7 +193,7 @@ func (s *Service) Bootstrap(ctx context.Context, actor, wsID uuid.UUID, only []s
 		}); err != nil {
 			return err
 		}
-		if err := table("document", &[]models.Document{}, live); err != nil {
+		if err := table("document", &[]models.Document{}, live, inTeamsN("team_id")); err != nil {
 			return err
 		}
 		// чаты: публичные каналы (не приватные) + приватные/dm, где actor участник
@@ -177,7 +226,7 @@ func (s *Service) Bootstrap(ctx context.Context, actor, wsID uuid.UUID, only []s
 		}); err != nil {
 			return err
 		}
-		if err := table("milestone", &[]models.Milestone{}, live); err != nil {
+		if err := table("milestone", &[]models.Milestone{}, live, inTeams("team_id")); err != nil {
 			return err
 		}
 		// митинги: только активные (scheduled/live), завершённые не тянем.
@@ -206,7 +255,7 @@ func (s *Service) Bootstrap(ctx context.Context, actor, wsID uuid.UUID, only []s
 		}); err != nil {
 			return err
 		}
-		if err := table("automation", &[]models.Automation{}, live); err != nil {
+		if err := table("automation", &[]models.Automation{}, live, inTeamsN("team_id")); err != nil {
 			return err
 		}
 		if err := table("attachment", &[]models.Attachment{}, live); err != nil {
@@ -214,7 +263,7 @@ func (s *Service) Bootstrap(ctx context.Context, actor, wsID uuid.UUID, only []s
 		}
 		return table("cycle_snapshot", &[]models.CycleSnapshot{}, func(q *bun.SelectQuery) {
 			q.OrderExpr("day")
-		})
+		}, viaCycle("cycle_id"))
 	})
 	return chunks, cursor, err
 }

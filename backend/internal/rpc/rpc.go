@@ -14,6 +14,7 @@ import (
 	pmsv1 "github.com/pms/backend/gen/pms/v1"
 	"github.com/pms/backend/gen/pms/v1/pmsv1connect"
 	"github.com/pms/backend/internal/auth"
+	"github.com/pms/backend/internal/authz"
 	"github.com/pms/backend/internal/domain/attachments"
 	"github.com/pms/backend/internal/domain/automations"
 	"github.com/pms/backend/internal/domain/calendar"
@@ -59,28 +60,30 @@ type Services struct {
 	Sync          *syncsvc.Service
 }
 
-// Mount монтирует connect-сервисы.
+// Mount монтирует connect-сервисы. Все unary-RPC проходят через membership-гейт
+// (newWorkspaceAuthInterceptor): запрос с workspace_id → проверка членства + роль в ctx.
 func Mount(r chi.Router, svcs Services) {
+	wsAuth := connect.WithInterceptors(newWorkspaceAuthInterceptor(svcs.Workspaces.RoleOf))
 	mount := func(p string, h http.Handler) { r.Mount(p, h) }
-	mount(pmsv1connect.NewWorkspaceServiceHandler(&workspaceHandler{svc: svcs.Workspaces}))
-	mount(pmsv1connect.NewTeamServiceHandler(&teamHandler{svc: svcs.Teams}))
-	mount(pmsv1connect.NewIssueServiceHandler(&issueHandler{svc: svcs.Issues}))
-	mount(pmsv1connect.NewViewServiceHandler(&viewHandler{svc: svcs.Views}))
-	mount(pmsv1connect.NewCycleServiceHandler(&cycleHandler{svc: svcs.Cycles}))
-	mount(pmsv1connect.NewCustomFieldServiceHandler(&customFieldHandler{svc: svcs.CustomFields}))
-	mount(pmsv1connect.NewDashboardServiceHandler(&dashboardHandler{svc: svcs.Dashboards}))
-	mount(pmsv1connect.NewNotificationServiceHandler(&notificationHandler{svc: svcs.Notifications}))
-	mount(pmsv1connect.NewDocServiceHandler(&docHandler{svc: svcs.Docs}))
-	mount(pmsv1connect.NewChatServiceHandler(&chatHandler{svc: svcs.Chats}))
-	mount(pmsv1connect.NewCommentServiceHandler(&commentHandler{svc: svcs.Comments}))
-	mount(pmsv1connect.NewMilestoneServiceHandler(&milestoneHandler{svc: svcs.Milestones}))
-	mount(pmsv1connect.NewMeetingServiceHandler(&meetingHandler{svc: svcs.Meetings}))
-	mount(pmsv1connect.NewCalendarServiceHandler(&calendarHandler{svc: svcs.Calendar}))
-	mount(pmsv1connect.NewTimeServiceHandler(&timeHandler{svc: svcs.Time}))
-	mount(pmsv1connect.NewAutomationServiceHandler(&automationHandler{svc: svcs.Automations}))
-	mount(pmsv1connect.NewAttachmentServiceHandler(&attachmentHandler{svc: svcs.Attachments}))
-	mount(pmsv1connect.NewSyncServiceHandler(&syncHandler{svc: svcs.Sync}))
-	mount(pmsv1connect.NewQueryServiceHandler(&queryHandler{svc: svcs.Search}))
+	mount(pmsv1connect.NewWorkspaceServiceHandler(&workspaceHandler{svc: svcs.Workspaces}, wsAuth))
+	mount(pmsv1connect.NewTeamServiceHandler(&teamHandler{svc: svcs.Teams}, wsAuth))
+	mount(pmsv1connect.NewIssueServiceHandler(&issueHandler{svc: svcs.Issues}, wsAuth))
+	mount(pmsv1connect.NewViewServiceHandler(&viewHandler{svc: svcs.Views}, wsAuth))
+	mount(pmsv1connect.NewCycleServiceHandler(&cycleHandler{svc: svcs.Cycles}, wsAuth))
+	mount(pmsv1connect.NewCustomFieldServiceHandler(&customFieldHandler{svc: svcs.CustomFields}, wsAuth))
+	mount(pmsv1connect.NewDashboardServiceHandler(&dashboardHandler{svc: svcs.Dashboards}, wsAuth))
+	mount(pmsv1connect.NewNotificationServiceHandler(&notificationHandler{svc: svcs.Notifications}, wsAuth))
+	mount(pmsv1connect.NewDocServiceHandler(&docHandler{svc: svcs.Docs}, wsAuth))
+	mount(pmsv1connect.NewChatServiceHandler(&chatHandler{svc: svcs.Chats}, wsAuth))
+	mount(pmsv1connect.NewCommentServiceHandler(&commentHandler{svc: svcs.Comments}, wsAuth))
+	mount(pmsv1connect.NewMilestoneServiceHandler(&milestoneHandler{svc: svcs.Milestones}, wsAuth))
+	mount(pmsv1connect.NewMeetingServiceHandler(&meetingHandler{svc: svcs.Meetings}, wsAuth))
+	mount(pmsv1connect.NewCalendarServiceHandler(&calendarHandler{svc: svcs.Calendar}, wsAuth))
+	mount(pmsv1connect.NewTimeServiceHandler(&timeHandler{svc: svcs.Time}, wsAuth))
+	mount(pmsv1connect.NewAutomationServiceHandler(&automationHandler{svc: svcs.Automations}, wsAuth))
+	mount(pmsv1connect.NewAttachmentServiceHandler(&attachmentHandler{svc: svcs.Attachments}, wsAuth))
+	mount(pmsv1connect.NewSyncServiceHandler(&syncHandler{svc: svcs.Sync}, wsAuth))
+	mount(pmsv1connect.NewQueryServiceHandler(&queryHandler{svc: svcs.Search}, wsAuth))
 }
 
 type queryHandler struct {
@@ -1516,6 +1519,7 @@ func mapErr(err error) error {
 		errors.Is(err, automations.ErrName),
 		errors.Is(err, workspaces.ErrInviteEmail),
 		errors.Is(err, workspaces.ErrInviteExpired),
+		errors.Is(err, workspaces.ErrInvalidRole),
 		errors.Is(err, workspaces.ErrEmail):
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	case errors.Is(err, workspaces.ErrInviteNotFound):
@@ -1523,7 +1527,8 @@ func mapErr(err error) error {
 	case errors.Is(err, workspaces.ErrSlugTaken),
 		errors.Is(err, teams.ErrKeyTaken):
 		return connect.NewError(connect.CodeAlreadyExists, err)
-	case errors.Is(err, syncsvc.ErrForbidden),
+	case errors.Is(err, authz.ErrForbidden),
+		errors.Is(err, syncsvc.ErrForbidden),
 		errors.Is(err, chats.ErrForbidden),
 		errors.Is(err, comments.ErrForbidden),
 		errors.Is(err, workspaces.ErrForbidden),
@@ -1532,7 +1537,8 @@ func mapErr(err error) error {
 		errors.Is(err, calendar.ErrNotOwner):
 		return connect.NewError(connect.CodePermissionDenied, err)
 	case errors.Is(err, teams.ErrStateInUse),
-		errors.Is(err, teams.ErrTeamHasIssues):
+		errors.Is(err, teams.ErrTeamHasIssues),
+		errors.Is(err, workspaces.ErrLastOwner):
 		return connect.NewError(connect.CodeFailedPrecondition, err)
 	default:
 		return connect.NewError(connect.CodeInternal, err)

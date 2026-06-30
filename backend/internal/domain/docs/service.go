@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pms/backend/internal/authz"
 	"github.com/pms/backend/internal/changelog"
 	"github.com/pms/backend/internal/db"
 	"github.com/pms/backend/internal/models"
@@ -70,6 +71,13 @@ func (s *Service) UpdateDoc(ctx context.Context, actor, wsID, id uuid.UUID, titl
 
 func (s *Service) DeleteDoc(ctx context.Context, actor, wsID, id uuid.UUID) (int64, error) {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		var owner uuid.UUID
+		if err := tx.NewSelect().Model((*models.Document)(nil)).Column("created_by").Where("id = ?", id).Scan(ctx, &owner); err != nil {
+			return err
+		}
+		if !authz.OwnerOrAdmin(ctx, owner, actor) {
+			return authz.ErrForbidden
+		}
 		if _, err := tx.NewUpdate().Model((*models.Document)(nil)).
 			Set("deleted_at = now()").Set("updated_at = now()").Set("version = version + 1").
 			Where("id = ?", id).Exec(ctx); err != nil {

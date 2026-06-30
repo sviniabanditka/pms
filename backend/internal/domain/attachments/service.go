@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pms/backend/internal/authz"
 	"github.com/pms/backend/internal/db"
 	"github.com/pms/backend/internal/models"
 	"github.com/pms/backend/internal/realtime"
@@ -50,6 +51,9 @@ func (s *Service) Delete(ctx context.Context, actor, wsID, id uuid.UUID) error {
 		var att models.Attachment
 		if e := tx.NewSelect().Model(&att).Where("id = ?", id).Scan(ctx); e != nil {
 			return e
+		}
+		if !authz.OwnerOrAdmin(ctx, att.Uploader, actor) {
+			return ErrForbidden
 		}
 		key = att.S3Key
 		_, e := tx.NewUpdate().Model((*models.Attachment)(nil)).Set("deleted_at = ?", now).Where("id = ?", id).Exec(ctx)

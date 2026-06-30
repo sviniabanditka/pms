@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pms/backend/internal/authz"
 	"github.com/pms/backend/internal/changelog"
 	"github.com/pms/backend/internal/db"
 	"github.com/pms/backend/internal/models"
@@ -25,7 +26,23 @@ var (
 	ErrInviteNotFound = errors.New("invitation not found")
 	ErrInviteExpired  = errors.New("invitation expired")
 	ErrInviteEmail    = errors.New("invitation email mismatch")
+	ErrInvalidRole    = errors.New("invalid role")
+	ErrLastOwner      = errors.New("workspace must keep at least one owner")
 )
+
+// memberRole — текущая активная роль участника (ErrForbidden-обёртки делает вызывающий).
+func memberRole(ctx context.Context, tx bun.Tx, wsID, userID uuid.UUID) (string, error) {
+	var role string
+	err := tx.NewSelect().Model((*models.WorkspaceMember)(nil)).Column("role").
+		Where("workspace_id = ?", wsID).Where("user_id = ?", userID).Where("status = 'active'").Scan(ctx, &role)
+	return role, err
+}
+
+// ownerCount — число активных owner'ов (last-owner guard).
+func ownerCount(ctx context.Context, tx bun.Tx, wsID uuid.UUID) (int, error) {
+	return tx.NewSelect().Model((*models.WorkspaceMember)(nil)).
+		Where("workspace_id = ?", wsID).Where("role = 'owner'").Where("status = 'active'").Count(ctx)
+}
 
 var slugRe = regexp.MustCompile(`^[a-z0-9-]{2,40}$`)
 
@@ -54,6 +71,20 @@ func requireRole(ctx context.Context, tx bun.Tx, wsID, actor uuid.UUID, roles ..
 		}
 	}
 	return ErrForbidden
+}
+
+// RoleOf возвращает активную роль actor в воркспейсе; ErrForbidden, если не участник.
+// Используется membership-интерсептором (один гейт на все unary-RPC с workspace_id).
+func (s *Service) RoleOf(ctx context.Context, wsID, actor uuid.UUID) (string, error) {
+	var role string
+	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		return tx.NewSelect().Model((*models.WorkspaceMember)(nil)).Column("role").
+			Where("workspace_id = ?", wsID).Where("user_id = ?", actor).Where("status = 'active'").Scan(ctx, &role)
+	})
+	if err != nil {
+		return "", ErrForbidden
+	}
+	return role, nil
 }
 
 // IsMember — actor является активным участником воркспейса (для проверок вне RPC, напр. upload).
@@ -85,6 +116,9 @@ func (s *Service) InviteMember(ctx context.Context, actor, wsID, id uuid.UUID, e
 	if role == "" {
 		role = "member"
 	}
+	if !authz.Role(role).Valid() {
+		return "", ErrInvalidRole
+	}
 	now := time.Now().UTC()
 	token := ""
 	existing := false
@@ -92,8 +126,16 @@ func (s *Service) InviteMember(ctx context.Context, actor, wsID, id uuid.UUID, e
 		if err := requireRole(ctx, tx, wsID, actor, "owner", "admin"); err != nil {
 			return err
 		}
+		actorRole, err := memberRole(ctx, tx, wsID, actor)
+		if err != nil {
+			return ErrForbidden
+		}
+		// elevation-bound: нельзя пригласить с ролью выше своей.
+		if !authz.Role(actorRole).AtLeast(authz.Role(role)) {
+			return ErrForbidden
+		}
 		var u models.User
-		err := tx.NewSelect().Model(&u).Where("email = ?", email).Limit(1).Scan(ctx)
+		err = tx.NewSelect().Model(&u).Where("email = ?", email).Limit(1).Scan(ctx)
 		if err == nil && u.ID != uuid.Nil {
 			existing = true
 			mid, _ := uuid.NewV7()
@@ -166,9 +208,34 @@ func (s *Service) AcceptInvitation(ctx context.Context, actor uuid.UUID, token s
 
 // UpdateMemberRole меняет роль участника.
 func (s *Service) UpdateMemberRole(ctx context.Context, actor, wsID, userID uuid.UUID, role string) error {
+	if !authz.Role(role).Valid() {
+		return ErrInvalidRole
+	}
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
 		if err := requireRole(ctx, tx, wsID, actor, "owner", "admin"); err != nil {
 			return err
+		}
+		actorRole, err := memberRole(ctx, tx, wsID, actor)
+		if err != nil {
+			return ErrForbidden
+		}
+		targetRole, err := memberRole(ctx, tx, wsID, userID)
+		if err != nil {
+			return err
+		}
+		// elevation-bound: нельзя выдать роль выше своей и нельзя трогать вышестоящего.
+		if !authz.Role(actorRole).AtLeast(authz.Role(role)) || !authz.Role(actorRole).AtLeast(authz.Role(targetRole)) {
+			return ErrForbidden
+		}
+		// last-owner guard: нельзя понизить последнего owner'а.
+		if targetRole == string(authz.RoleOwner) && role != string(authz.RoleOwner) {
+			n, err := ownerCount(ctx, tx, wsID)
+			if err != nil {
+				return err
+			}
+			if n <= 1 {
+				return ErrLastOwner
+			}
 		}
 		_, e := tx.NewUpdate().Model((*models.WorkspaceMember)(nil)).
 			Set("role = ?", role).Set("version = version + 1").
@@ -210,10 +277,31 @@ func (s *Service) UpdateSettings(ctx context.Context, actor, wsID uuid.UUID, nam
 func (s *Service) RemoveMember(ctx context.Context, actor, wsID, userID uuid.UUID) error {
 	var memberID uuid.UUID
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
-		// admin/owner может убрать любого; обычный участник — только себя (leave)
+		targetRole, err := memberRole(ctx, tx, wsID, userID)
+		if err != nil {
+			return err
+		}
+		// admin/owner может убрать любого (но не вышестоящего); обычный участник — только себя (leave).
 		if actor != userID {
 			if err := requireRole(ctx, tx, wsID, actor, "owner", "admin"); err != nil {
 				return err
+			}
+			actorRole, err := memberRole(ctx, tx, wsID, actor)
+			if err != nil {
+				return ErrForbidden
+			}
+			if !authz.Role(actorRole).AtLeast(authz.Role(targetRole)) {
+				return ErrForbidden
+			}
+		}
+		// last-owner guard: нельзя убрать/покинуть, если это последний owner.
+		if targetRole == string(authz.RoleOwner) {
+			n, err := ownerCount(ctx, tx, wsID)
+			if err != nil {
+				return err
+			}
+			if n <= 1 {
+				return ErrLastOwner
 			}
 		}
 		m := new(models.WorkspaceMember)

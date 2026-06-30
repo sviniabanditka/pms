@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pms/backend/internal/authz"
 	"github.com/pms/backend/internal/changelog"
 	"github.com/pms/backend/internal/db"
 	"github.com/pms/backend/internal/models"
@@ -76,8 +77,27 @@ type UpdatePatch struct {
 	Layout   *string
 }
 
+// requireViewOwner — править/удалять view может владелец или админ воркспейса.
+func requireViewOwner(ctx context.Context, tx bun.Tx, id, actor uuid.UUID) error {
+	var owner *uuid.UUID
+	if err := tx.NewSelect().Model((*models.View)(nil)).Column("owner_id").Where("id = ?", id).Scan(ctx, &owner); err != nil {
+		return err
+	}
+	o := uuid.Nil
+	if owner != nil {
+		o = *owner
+	}
+	if !authz.OwnerOrAdmin(ctx, o, actor) {
+		return authz.ErrForbidden
+	}
+	return nil
+}
+
 func (s *Service) UpdateView(ctx context.Context, actor, wsID, id uuid.UUID, p UpdatePatch) (int64, error) {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireViewOwner(ctx, tx, id, actor); err != nil {
+			return err
+		}
 		q := tx.NewUpdate().Model((*models.View)(nil)).Where("id = ?", id).
 			Set("updated_at = now()").Set("version = version + 1")
 		if p.Name != nil {
@@ -106,6 +126,9 @@ func (s *Service) UpdateView(ctx context.Context, actor, wsID, id uuid.UUID, p U
 
 func (s *Service) DeleteView(ctx context.Context, actor, wsID, id uuid.UUID) (int64, error) {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireViewOwner(ctx, tx, id, actor); err != nil {
+			return err
+		}
 		if _, err := tx.NewUpdate().Model((*models.View)(nil)).
 			Set("deleted_at = now()").Set("updated_at = now()").Set("version = version + 1").
 			Where("id = ?", id).Exec(ctx); err != nil {

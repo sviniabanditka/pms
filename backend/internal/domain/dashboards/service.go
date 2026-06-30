@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pms/backend/internal/authz"
 	"github.com/pms/backend/internal/changelog"
 	"github.com/pms/backend/internal/db"
 	"github.com/pms/backend/internal/models"
@@ -47,6 +48,36 @@ func (s *Service) CreateDashboard(ctx context.Context, actor, wsID, id uuid.UUID
 	return 0, nil
 }
 
+// checkDashOwner — мутировать дашборд/виджет может владелец дашборда или админ.
+func checkDashOwner(ctx context.Context, owner *uuid.UUID, actor uuid.UUID) error {
+	o := uuid.Nil
+	if owner != nil {
+		o = *owner
+	}
+	if !authz.OwnerOrAdmin(ctx, o, actor) {
+		return authz.ErrForbidden
+	}
+	return nil
+}
+
+func requireDashboardOwner(ctx context.Context, tx bun.Tx, dashboardID, actor uuid.UUID) error {
+	var owner *uuid.UUID
+	if err := tx.NewSelect().Model((*models.Dashboard)(nil)).Column("owner_id").Where("id = ?", dashboardID).Scan(ctx, &owner); err != nil {
+		return err
+	}
+	return checkDashOwner(ctx, owner, actor)
+}
+
+func requireWidgetOwner(ctx context.Context, tx bun.Tx, widgetID, actor uuid.UUID) error {
+	var owner *uuid.UUID
+	if err := tx.NewSelect().TableExpr("dashboard_widgets AS dw").
+		Join("JOIN dashboards AS d ON d.id = dw.dashboard_id").
+		Column("d.owner_id").Where("dw.id = ?", widgetID).Scan(ctx, &owner); err != nil {
+		return err
+	}
+	return checkDashOwner(ctx, owner, actor)
+}
+
 func (s *Service) AddWidget(ctx context.Context, actor, wsID, id, dashboardID uuid.UUID, typ, title string, config []byte) (int64, error) {
 	if !widgetTypes[typ] {
 		return 0, ErrWidgetType
@@ -56,6 +87,9 @@ func (s *Service) AddWidget(ctx context.Context, actor, wsID, id, dashboardID uu
 	}
 	now := time.Now().UTC()
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireDashboardOwner(ctx, tx, dashboardID, actor); err != nil {
+			return err
+		}
 		w := &models.DashboardWidget{ID: id, WorkspaceID: wsID, DashboardID: dashboardID, Type: typ, Config: config, W: 1, H: 1, CreatedAt: now, UpdatedAt: now}
 		if title != "" {
 			w.Title = &title
@@ -74,6 +108,9 @@ func (s *Service) AddWidget(ctx context.Context, actor, wsID, id, dashboardID uu
 
 func (s *Service) UpdateWidget(ctx context.Context, actor, wsID, id uuid.UUID, title *string, config []byte, x, y, w, h *int32) (int64, error) {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireWidgetOwner(ctx, tx, id, actor); err != nil {
+			return err
+		}
 		q := tx.NewUpdate().Model((*models.DashboardWidget)(nil)).Where("id = ?", id).
 			Set("updated_at = now()").Set("version = version + 1")
 		if title != nil {
@@ -108,6 +145,9 @@ func (s *Service) UpdateWidget(ctx context.Context, actor, wsID, id uuid.UUID, t
 
 func (s *Service) RemoveWidget(ctx context.Context, actor, wsID, id uuid.UUID) (int64, error) {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireWidgetOwner(ctx, tx, id, actor); err != nil {
+			return err
+		}
 		if _, err := tx.NewDelete().Model((*models.DashboardWidget)(nil)).Where("id = ?", id).Exec(ctx); err != nil {
 			return err
 		}
