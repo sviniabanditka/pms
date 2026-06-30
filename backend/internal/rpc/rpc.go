@@ -15,6 +15,7 @@ import (
 	"github.com/pms/backend/gen/pms/v1/pmsv1connect"
 	"github.com/pms/backend/internal/auth"
 	"github.com/pms/backend/internal/authz"
+	"github.com/pms/backend/internal/domain/apitokens"
 	"github.com/pms/backend/internal/domain/attachments"
 	"github.com/pms/backend/internal/domain/automations"
 	"github.com/pms/backend/internal/domain/calendar"
@@ -58,6 +59,7 @@ type Services struct {
 	Attachments   *attachments.Service
 	Search        *search.Service
 	Sync          *syncsvc.Service
+	ApiTokens     *apitokens.Service
 }
 
 // Mount монтирует connect-сервисы. Все unary-RPC проходят через membership-гейт

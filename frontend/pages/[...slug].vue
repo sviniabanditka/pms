@@ -1439,13 +1439,14 @@ const modalUi = { background: 'dark:bg-surface', ring: 'ring-1 ring-subtle' }
 
 // --- Settings-модалка (workspace) ---
 const showSettings = ref(false)
-const settingsTab = ref<'general' | 'members' | 'teams' | 'labels' | 'automations' | 'sections'>('general')
+const settingsTab = ref<'general' | 'members' | 'teams' | 'labels' | 'automations' | 'apitokens' | 'sections'>('general')
 const SETTINGS_TABS = [
   { key: 'general', label: 'General', icon: 'i-heroicons-cog-6-tooth', group: 'Workspace' },
   { key: 'members', label: 'Members', icon: 'i-heroicons-user-group', group: 'Workspace' },
   { key: 'teams', label: 'Teams', icon: 'i-heroicons-rectangle-stack', group: 'Workspace' },
   { key: 'labels', label: 'Labels', icon: 'i-heroicons-tag', group: 'Workspace' },
   { key: 'automations', label: 'Automations', icon: 'i-heroicons-bolt', group: 'Workspace' },
+  { key: 'apitokens', label: 'API tokens', icon: 'i-heroicons-key', group: 'Workspace' },
   { key: 'account', label: 'Account', icon: 'i-heroicons-user-circle', group: 'Personal' },
   { key: 'appearance', label: 'Appearance', icon: 'i-heroicons-swatch', group: 'Personal' },
   { key: 'notifications', label: 'Notifications', icon: 'i-heroicons-bell', group: 'Personal' },
@@ -1456,6 +1457,32 @@ const settingsGroups = computed(() => {
   for (const t of SETTINGS_TABS) (g[t.group] ||= []).push(t)
   return g
 })
+// --- API tokens (REST /api/tokens, cookie-auth) ---
+const apiTokens = ref<any[]>([])
+const newTokenName = ref('')
+const newTokenExpiry = ref(0) // дней; 0 = бессрочно
+const revealedToken = ref('')
+const apiBase = () => (useRuntimeConfig().public.apiBase as string) || ''
+async function loadApiTokens() {
+  if (!store.activeWorkspaceId) return
+  const r = await fetch(`${apiBase()}/api/tokens?workspaceId=${store.activeWorkspaceId}`, { credentials: 'include' })
+  apiTokens.value = r.ok ? await r.json() : []
+}
+async function createApiToken() {
+  const name = newTokenName.value.trim()
+  if (!name) return
+  const r = await fetch(`${apiBase()}/api/tokens`, {
+    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workspaceId: store.activeWorkspaceId, name, expiresInDays: newTokenExpiry.value || 0 }),
+  })
+  if (r.ok) { revealedToken.value = (await r.json()).token; newTokenName.value = ''; await loadApiTokens() }
+}
+async function revokeApiToken(id: string) {
+  if (import.meta.client && !confirm('Revoke this token? Apps using it stop working.')) return
+  await fetch(`${apiBase()}/api/tokens/${id}?workspaceId=${store.activeWorkspaceId}`, { method: 'DELETE', credentials: 'include' })
+  await loadApiTokens()
+}
+watch(settingsTab, (t) => { if (t === 'apitokens') { revealedToken.value = ''; loadApiTokens() } })
 // appearance (клиентское, localStorage)
 const density = ref('default')
 const DENSITY_PX: Record<string, string> = { compact: '15px', default: '16px', comfortable: '18px' }
@@ -3560,6 +3587,34 @@ useHead({ title: () => pageTitle.value })
               </div>
               <div v-if="!store.automationsList.length" class="py-6 text-center text-sm text-tertiary">No automations yet. Create your first rule.</div>
             </template>
+          </template>
+
+          <!-- API TOKENS -->
+          <template v-else-if="settingsTab === 'apitokens'">
+            <div class="mb-4 flex items-center justify-between">
+              <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> API tokens</h2>
+              <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
+            </div>
+            <p class="mb-3 text-xs text-tertiary">Call the API as you: <code class="rounded bg-elevated px-1">Authorization: Bearer pms_…</code> on any RPC endpoint (POST <code class="rounded bg-elevated px-1">/pms.v1.&lt;Service&gt;/&lt;Method&gt;</code>). A token carries your access in this workspace.</p>
+            <div class="mb-3 flex gap-2">
+              <UInput v-model="newTokenName" placeholder="token name (e.g. ci-bot)" class="flex-1" @keyup.enter="createApiToken" />
+              <USelectMenu v-model="newTokenExpiry" :options="[{ label: 'never', value: 0 }, { label: '30d', value: 30 }, { label: '90d', value: 90 }, { label: '1y', value: 365 }]" value-attribute="value" option-attribute="label" class="w-24" />
+              <UButton :disabled="!newTokenName.trim()" @click="createApiToken">[ create ]</UButton>
+            </div>
+            <div v-if="revealedToken" class="mb-3 rounded-md border border-ok/40 bg-elevated px-3 py-2">
+              <div class="mb-1 text-xs text-ok">Copy now — shown once:</div>
+              <div class="flex items-center gap-2">
+                <code class="flex-1 truncate font-mono text-xs text-white">{{ revealedToken }}</code>
+                <UButton size="2xs" color="gray" @click="copyText(revealedToken)">[ copy ]</UButton>
+              </div>
+            </div>
+            <div v-for="t in apiTokens" :key="t.id" class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
+              <UIcon name="i-heroicons-key" class="shrink-0 text-tertiary" />
+              <span class="flex-1 truncate text-sm">{{ t.name }} <span class="ml-1 font-mono text-xs text-tertiary">{{ t.prefix }}…</span></span>
+              <span class="shrink-0 text-xs text-tertiary">{{ t.lastUsedAt ? 'used ' + d10(t.lastUsedAt) : 'never used' }}</span>
+              <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Revoke" @click="revokeApiToken(t.id)" />
+            </div>
+            <div v-if="!apiTokens.length" class="py-6 text-center text-sm text-tertiary">// no API tokens yet</div>
           </template>
 
           <!-- ACCOUNT -->

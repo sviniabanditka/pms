@@ -686,3 +686,11 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Не-член private-команды при догоне (`Changes`/реконнект) НЕ получает change-строки её issues/циклов/майлстоунов и т.д.; admin/owner и члены — получают.
 - [ ] Workspace-level изменения (workspace/member/invitation/user) видны всем членам (team_id=NULL).
 - [ ] Проверка: Changes(since=0) для не-члена не содержит entity_id issue скрытой команды; для admin содержит.
+
+## 87. Public API — API токены (PAT)
+- [ ] Settings → API tokens: создать токен (имя+срок) → секрет `pms_…` показан один раз (copy), потом только prefix.
+- [ ] Внешний вызов: `curl -H "Authorization: Bearer pms_…" POST /pms.v1.QueryService/Search` (без cookie) → 200, аутентифицирован как владелец токена.
+- [ ] Токен наследует права юзера: чужой ws (где юзер не член) → permission_denied (membership-интерсептор).
+- [ ] last_used_at обновляется после вызова; list не отдаёт сам токен/хеш.
+- [ ] Revoke → токен перестаёт работать (резолв не находит; revoked_at IS NOT NULL).
+- [ ] Истёкший токен (expiresInDays) не резолвится.

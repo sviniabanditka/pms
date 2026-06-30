@@ -6,6 +6,9 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+
+	"github.com/pms/backend/internal/models"
+	tokenpkg "github.com/pms/backend/internal/token"
 )
 
 const cookieName = "pms_session"
@@ -23,7 +26,13 @@ const (
 func (s *Service) Authenticator(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tok := extractToken(r)
-		if tok != "" {
+		switch {
+		case strings.HasPrefix(tok, "pms_"):
+			// API-токен публичного API → user_id (членство энфорсит интерсептор).
+			if uid, ok := s.resolveAPIToken(r.Context(), tok); ok {
+				r = r.WithContext(WithUserID(r.Context(), uid))
+			}
+		case tok != "":
 			if sess, err := s.sessions.Get(r.Context(), tok); err == nil && sess != nil {
 				ctx := context.WithValue(WithUserID(r.Context(), sess.UserID), ctxToken, tok)
 				r = r.WithContext(ctx)
@@ -52,6 +61,23 @@ func RequireAuth(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// resolveAPIToken — raw `pms_…` → user_id, если токен валиден (не отозван, не истёк).
+func (s *Service) resolveAPIToken(ctx context.Context, raw string) (uuid.UUID, bool) {
+	var at models.APIToken
+	err := s.db.NewSelect().Model(&at).
+		Where("token_hash = ?", tokenpkg.Hash(raw)).
+		Where("revoked_at IS NULL").
+		Where("expires_at IS NULL OR expires_at > now()").
+		Limit(1).Scan(ctx)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	// best-effort отметка использования (не блокируем запрос; фоновый ctx)
+	_, _ = s.db.NewUpdate().Model((*models.APIToken)(nil)).
+		Set("last_used_at = now()").Where("id = ?", at.ID).Exec(context.Background())
+	return at.UserID, true
 }
 
 // WithUserID кладёт id аутентифицированного пользователя в контекст (симметрично UserID).

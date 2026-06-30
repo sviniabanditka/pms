@@ -23,6 +23,7 @@ import (
 
 	"github.com/pms/backend/internal/authz"
 	"github.com/pms/backend/internal/db"
+	"github.com/pms/backend/internal/domain/apitokens"
 	"github.com/pms/backend/internal/domain/automations"
 	"github.com/pms/backend/internal/domain/calendar"
 	"github.com/pms/backend/internal/domain/chats"
@@ -39,6 +40,7 @@ import (
 	"github.com/pms/backend/internal/domain/timetracking"
 	"github.com/pms/backend/internal/domain/views"
 	"github.com/pms/backend/internal/realtime"
+	"github.com/pms/backend/internal/token"
 )
 
 const rolesSQL = `
@@ -605,5 +607,41 @@ func TestNotifications_MarkRead(t *testing.T) {
 	}
 	if scalar[int](t, `SELECT count(*) FROM notifications WHERE user_id = ? AND read_at IS NULL`, actor) != 0 {
 		t.Error("all notifications must be read")
+	}
+}
+
+func TestApiTokens_CreateResolveRevoke(t *testing.T) {
+	ws, actor := newWS(t)
+	svc := apitokens.NewService(appDB)
+
+	raw, err := svc.Create(context.Background(), actor, ws, uuid.New(), "ci-bot", nil)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if len(raw) < 12 || raw[:4] != "pms_" {
+		t.Errorf("raw token must start with pms_, got %q", raw)
+	}
+	// хранится только хеш (raw нигде в строке)
+	if scalar[int](t, `SELECT count(*) FROM api_tokens WHERE token_hash = ? AND revoked_at IS NULL`, token.Hash(raw)) != 1 {
+		t.Error("token must be stored by sha256 hash")
+	}
+	// пустое имя → ErrName
+	if _, err := svc.Create(context.Background(), actor, ws, uuid.New(), "  ", nil); err != apitokens.ErrName {
+		t.Errorf("empty name: got %v, want ErrName", err)
+	}
+	// list (без секрета)
+	list, err := svc.List(context.Background(), ws)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("list: %v len=%d", err, len(list))
+	}
+	if raw, _ := json.Marshal(list[0]); strings.Contains(string(raw), "token_hash") || strings.Contains(string(raw), "tokenHash") {
+		t.Errorf("serialized token must not expose the hash: %s", raw)
+	}
+	// revoke → исчезает из активных, резолв-запрос больше не находит
+	if n, err := svc.Revoke(context.Background(), actor, ws, list[0].ID); err != nil || n != 1 {
+		t.Fatalf("revoke: n=%d err=%v", n, err)
+	}
+	if scalar[int](t, `SELECT count(*) FROM api_tokens WHERE token_hash = ? AND revoked_at IS NULL`, token.Hash(raw)) != 0 {
+		t.Error("revoked token must not resolve")
 	}
 }

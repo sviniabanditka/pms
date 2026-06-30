@@ -13,6 +13,7 @@ import (
 	"github.com/pms/backend/internal/auth"
 	"github.com/pms/backend/internal/config"
 	"github.com/pms/backend/internal/db"
+	"github.com/pms/backend/internal/domain/apitokens"
 	"github.com/pms/backend/internal/domain/attachments"
 	"github.com/pms/backend/internal/domain/automations"
 	"github.com/pms/backend/internal/domain/calendar"
@@ -116,6 +117,7 @@ func main() {
 		Attachments:   attachments.NewService(bdb, pub, store),
 		Search:        search.NewService(bdb),
 		Sync:          syncsvc.NewService(bdb),
+		ApiTokens:     apitokens.NewService(bdb),
 	}
 	svcs.Issues.SetEngine(svcs.Automations) // хук автоматизаций после issue-мутаций
 

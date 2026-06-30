@@ -182,6 +182,83 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 		_, _ = w.Write([]byte(ics))
 	})
 
+	// Public API — управление API-токенами (PAT). За session-auth; сами токены
+	// аутентифицируют внешние вызовы к connect-эндпоинтам (Authorization: Bearer pms_…).
+	r.With(auth.RequireAuth).Post("/api/tokens", func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := auth.UserID(req.Context())
+		var body struct {
+			WorkspaceID   string `json:"workspaceId"`
+			Name          string `json:"name"`
+			ExpiresInDays int    `json:"expiresInDays"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		wsID, err := uuid.Parse(body.WorkspaceID)
+		if err != nil {
+			http.Error(w, "invalid workspace_id", http.StatusBadRequest)
+			return
+		}
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		var exp *time.Time
+		if body.ExpiresInDays > 0 {
+			t := time.Now().AddDate(0, 0, body.ExpiresInDays)
+			exp = &t
+		}
+		id, _ := uuid.NewV7()
+		raw, err := svcs.ApiTokens.Create(req.Context(), uid, wsID, id, body.Name, exp)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": id, "token": raw, "prefix": raw[:12]})
+	})
+	r.With(auth.RequireAuth).Get("/api/tokens", func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := auth.UserID(req.Context())
+		wsID, err := uuid.Parse(req.URL.Query().Get("workspaceId"))
+		if err != nil {
+			http.Error(w, "invalid workspace_id", http.StatusBadRequest)
+			return
+		}
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		list, err := svcs.ApiTokens.List(req.Context(), wsID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(list)
+	})
+	r.With(auth.RequireAuth).Delete("/api/tokens/{id}", func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := auth.UserID(req.Context())
+		id, err := uuid.Parse(chi.URLParam(req, "id"))
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+		wsID, err := uuid.Parse(req.URL.Query().Get("workspaceId"))
+		if err != nil {
+			http.Error(w, "invalid workspace_id", http.StatusBadRequest)
+			return
+		}
+		n, err := svcs.ApiTokens.Revoke(req.Context(), uid, wsID, id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"revoked": n > 0})
+	})
+
 	// ConnectRPC-сервисы. Streaming-ответы (bootstrap) жмём gzip на HTTP-уровне
 	// (Content-Encoding) — браузер декодит прозрачно; connect-web не умеет
 	// connect-protocol compression, а bootstrap большой (×6-7 экономии). Unary
