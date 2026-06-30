@@ -50,6 +50,7 @@ type Config struct {
 	SMTPPass        string
 	SMTPFrom        string
 	DueSoonInterval time.Duration
+	WebhookEvery    time.Duration
 	EmailSweepEvery time.Duration
 	SnapshotEvery   time.Duration
 }
@@ -81,6 +82,7 @@ func Load() Config {
 		SMTPPass:           env("SMTP_PASS", ""),
 		SMTPFrom:           env("SMTP_FROM", "stdtask <no-reply@stdtask.com>"),
 		DueSoonInterval:    envDuration("DUE_SOON_INTERVAL", time.Hour),
+		WebhookEvery:       envDuration("WEBHOOK_DISPATCH_EVERY", 10*time.Second),
 		EmailSweepEvery:    envDuration("EMAIL_SWEEP_EVERY", 2*time.Minute),
 		SnapshotEvery:      envDuration("SNAPSHOT_EVERY", 24*time.Hour),
 	}

@@ -34,6 +34,7 @@ import (
 	"github.com/pms/backend/internal/domain/teams"
 	"github.com/pms/backend/internal/domain/timetracking"
 	"github.com/pms/backend/internal/domain/views"
+	"github.com/pms/backend/internal/domain/webhooks"
 	"github.com/pms/backend/internal/domain/workspaces"
 	"github.com/pms/backend/internal/filter"
 )
@@ -60,6 +61,7 @@ type Services struct {
 	Search        *search.Service
 	Sync          *syncsvc.Service
 	ApiTokens     *apitokens.Service
+	Webhooks      *webhooks.Service
 }
 
 // Mount монтирует connect-сервисы. Все unary-RPC проходят через membership-гейт

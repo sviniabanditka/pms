@@ -259,6 +259,111 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 		_ = json.NewEncoder(w).Encode(map[string]any{"revoked": n > 0})
 	})
 
+	// Webhooks — CRUD за session-auth. Доставку выполняет River-диспетчер (change_log).
+	r.With(auth.RequireAuth).Post("/api/webhooks", func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := auth.UserID(req.Context())
+		var body struct {
+			WorkspaceID string   `json:"workspaceId"`
+			URL         string   `json:"url"`
+			Events      []string `json:"events"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		wsID, err := uuid.Parse(body.WorkspaceID)
+		if err != nil {
+			http.Error(w, "invalid workspace_id", http.StatusBadRequest)
+			return
+		}
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		id, _ := uuid.NewV7()
+		secret, err := svcs.Webhooks.Create(req.Context(), uid, wsID, id, body.URL, body.Events)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": id, "secret": secret})
+	})
+	r.With(auth.RequireAuth).Get("/api/webhooks", func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := auth.UserID(req.Context())
+		wsID, err := uuid.Parse(req.URL.Query().Get("workspaceId"))
+		if err != nil {
+			http.Error(w, "invalid workspace_id", http.StatusBadRequest)
+			return
+		}
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		list, err := svcs.Webhooks.List(req.Context(), wsID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(list)
+	})
+	r.With(auth.RequireAuth).Patch("/api/webhooks/{id}", func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := auth.UserID(req.Context())
+		id, err := uuid.Parse(chi.URLParam(req, "id"))
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+		var body struct {
+			WorkspaceID string   `json:"workspaceId"`
+			URL         *string  `json:"url"`
+			Events      []string `json:"events"`
+			Active      *bool    `json:"active"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		wsID, err := uuid.Parse(body.WorkspaceID)
+		if err != nil {
+			http.Error(w, "invalid workspace_id", http.StatusBadRequest)
+			return
+		}
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if err := svcs.Webhooks.Update(req.Context(), uid, wsID, id, body.URL, body.Events, body.Active); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	r.With(auth.RequireAuth).Delete("/api/webhooks/{id}", func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := auth.UserID(req.Context())
+		id, err := uuid.Parse(chi.URLParam(req, "id"))
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+		wsID, err := uuid.Parse(req.URL.Query().Get("workspaceId"))
+		if err != nil {
+			http.Error(w, "invalid workspace_id", http.StatusBadRequest)
+			return
+		}
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if err := svcs.Webhooks.Delete(req.Context(), uid, wsID, id); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	// ConnectRPC-сервисы. Streaming-ответы (bootstrap) жмём gzip на HTTP-уровне
 	// (Content-Encoding) — браузер декодит прозрачно; connect-web не умеет
 	// connect-protocol compression, а bootstrap большой (×6-7 экономии). Unary

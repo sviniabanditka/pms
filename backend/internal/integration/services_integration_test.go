@@ -39,6 +39,7 @@ import (
 	"github.com/pms/backend/internal/domain/teams"
 	"github.com/pms/backend/internal/domain/timetracking"
 	"github.com/pms/backend/internal/domain/views"
+	"github.com/pms/backend/internal/domain/webhooks"
 	"github.com/pms/backend/internal/realtime"
 	"github.com/pms/backend/internal/token"
 )
@@ -643,5 +644,51 @@ func TestApiTokens_CreateResolveRevoke(t *testing.T) {
 	}
 	if scalar[int](t, `SELECT count(*) FROM api_tokens WHERE token_hash = ? AND revoked_at IS NULL`, token.Hash(raw)) != 0 {
 		t.Error("revoked token must not resolve")
+	}
+}
+
+func TestWebhooks_CRUD(t *testing.T) {
+	ws, actor := newWS(t)
+	svc := webhooks.NewService(appDB)
+	ctx := context.Background()
+
+	id := uuid.New()
+	secret, err := svc.Create(ctx, actor, ws, id, "https://example.com/hook", []string{"issue.create", "comment.*"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if secret[:6] != "whsec_" {
+		t.Errorf("secret must start with whsec_, got %q", secret)
+	}
+	// невалидный url → ErrURL
+	if _, err := svc.Create(ctx, actor, ws, uuid.New(), "ftp://x", []string{"issue.create"}); err != webhooks.ErrURL {
+		t.Errorf("bad url: got %v, want ErrURL", err)
+	}
+	// без событий → ErrEvents
+	if _, err := svc.Create(ctx, actor, ws, uuid.New(), "https://x", nil); err != webhooks.ErrEvents {
+		t.Errorf("no events: got %v, want ErrEvents", err)
+	}
+	// list (без секрета в JSON)
+	list, err := svc.List(ctx, ws)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("list: %v len=%d", err, len(list))
+	}
+	if raw, _ := json.Marshal(list[0]); strings.Contains(string(raw), "secret") || strings.Contains(string(raw), "whsec_") {
+		t.Errorf("serialized webhook must not expose the secret: %s", raw)
+	}
+	// update: выключить
+	active := false
+	if err := svc.Update(ctx, actor, ws, id, nil, nil, &active); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if scalar[bool](t, `SELECT active FROM webhooks WHERE id = ?`, id) {
+		t.Error("webhook must be inactive after update")
+	}
+	// delete (soft)
+	if err := svc.Delete(ctx, actor, ws, id); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if l, _ := svc.List(ctx, ws); len(l) != 0 {
+		t.Error("deleted webhook must not be listed")
 	}
 }

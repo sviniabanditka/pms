@@ -694,3 +694,11 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] last_used_at обновляется после вызова; list не отдаёт сам токен/хеш.
 - [ ] Revoke → токен перестаёт работать (резолв не находит; revoked_at IS NOT NULL).
 - [ ] Истёкший токен (expiresInDays) не резолвится.
+
+## 88. Public API — Webhooks
+- [ ] Settings → Webhooks: добавить url (https) + выбрать события (`*`/`issue.*`/`issue.create`) → secret `whsec_…` показан один раз.
+- [ ] Создать issue в ws → в течение ~10с приходит POST на url: заголовки `X-PMS-Event`, `X-PMS-Signature: sha256=<hmac(secret,body)>`, `X-PMS-Delivery`; тело JSON {event, entity{type,id}, op, actor, workspaceId, at}.
+- [ ] Подпись валидна: HMAC-SHA256(secret, body) == signature.
+- [ ] disable вебхука → события не доставляются; enable → снова.
+- [ ] Невалидный url (не http/https) / без событий → 400. list/JSON не отдаёт secret.
+- [ ] Бэклог не фолбэчится: вебхук, созданный сейчас, НЕ получает события, случившиеся ДО создания (курсор стартует с max seq).

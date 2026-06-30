@@ -32,6 +32,7 @@ import (
 	"github.com/pms/backend/internal/domain/teams"
 	"github.com/pms/backend/internal/domain/timetracking"
 	"github.com/pms/backend/internal/domain/views"
+	"github.com/pms/backend/internal/domain/webhooks"
 	"github.com/pms/backend/internal/domain/workspaces"
 	"github.com/pms/backend/internal/httpx"
 	"github.com/pms/backend/internal/jobs"
@@ -88,6 +89,7 @@ func main() {
 		EmailSweepEvery:  river.PeriodicInterval(cfg.EmailSweepEvery),
 		SnapshotEvery:    river.PeriodicInterval(cfg.SnapshotEvery),
 		MeetingReapEvery: river.PeriodicInterval(cfg.MeetingReapEvery),
+		WebhookEvery:     river.PeriodicInterval(cfg.WebhookEvery),
 		LiveKitAPIURL:    cfg.LiveKitAPIURL,
 		LiveKitAPIKey:    cfg.LiveKitAPIKey,
 		LiveKitSecret:    cfg.LiveKitSecret,
@@ -118,6 +120,7 @@ func main() {
 		Search:        search.NewService(bdb),
 		Sync:          syncsvc.NewService(bdb),
 		ApiTokens:     apitokens.NewService(bdb),
+		Webhooks:      webhooks.NewService(bdb),
 	}
 	svcs.Issues.SetEngine(svcs.Automations) // хук автоматизаций после issue-мутаций
 

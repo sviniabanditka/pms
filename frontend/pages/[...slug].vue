@@ -1439,7 +1439,7 @@ const modalUi = { background: 'dark:bg-surface', ring: 'ring-1 ring-subtle' }
 
 // --- Settings-модалка (workspace) ---
 const showSettings = ref(false)
-const settingsTab = ref<'general' | 'members' | 'teams' | 'labels' | 'automations' | 'apitokens' | 'sections'>('general')
+const settingsTab = ref<'general' | 'members' | 'teams' | 'labels' | 'automations' | 'apitokens' | 'webhooks' | 'sections'>('general')
 const SETTINGS_TABS = [
   { key: 'general', label: 'General', icon: 'i-heroicons-cog-6-tooth', group: 'Workspace' },
   { key: 'members', label: 'Members', icon: 'i-heroicons-user-group', group: 'Workspace' },
@@ -1447,6 +1447,7 @@ const SETTINGS_TABS = [
   { key: 'labels', label: 'Labels', icon: 'i-heroicons-tag', group: 'Workspace' },
   { key: 'automations', label: 'Automations', icon: 'i-heroicons-bolt', group: 'Workspace' },
   { key: 'apitokens', label: 'API tokens', icon: 'i-heroicons-key', group: 'Workspace' },
+  { key: 'webhooks', label: 'Webhooks', icon: 'i-heroicons-globe-alt', group: 'Workspace' },
   { key: 'account', label: 'Account', icon: 'i-heroicons-user-circle', group: 'Personal' },
   { key: 'appearance', label: 'Appearance', icon: 'i-heroicons-swatch', group: 'Personal' },
   { key: 'notifications', label: 'Notifications', icon: 'i-heroicons-bell', group: 'Personal' },
@@ -1483,6 +1484,39 @@ async function revokeApiToken(id: string) {
   await loadApiTokens()
 }
 watch(settingsTab, (t) => { if (t === 'apitokens') { revealedToken.value = ''; loadApiTokens() } })
+// --- Webhooks (REST /api/webhooks) ---
+const EVENT_OPTIONS = ['*', 'issue.create', 'issue.update', 'issue.archive', 'comment.create', 'document.create', 'document.update', 'cycle.create', 'milestone.create']
+const webhooksList = ref<any[]>([])
+const newWebhookUrl = ref('')
+const newWebhookEvents = ref<string[]>(['issue.create'])
+const revealedSecret = ref('')
+async function loadWebhooks() {
+  if (!store.activeWorkspaceId) return
+  const r = await fetch(`${apiBase()}/api/webhooks?workspaceId=${store.activeWorkspaceId}`, { credentials: 'include' })
+  webhooksList.value = r.ok ? await r.json() : []
+}
+async function createWebhook() {
+  const url = newWebhookUrl.value.trim()
+  if (!url || !newWebhookEvents.value.length) return
+  const r = await fetch(`${apiBase()}/api/webhooks`, {
+    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workspaceId: store.activeWorkspaceId, url, events: newWebhookEvents.value }),
+  })
+  if (r.ok) { revealedSecret.value = (await r.json()).secret; newWebhookUrl.value = ''; await loadWebhooks() }
+}
+async function toggleWebhook(wh: any) {
+  await fetch(`${apiBase()}/api/webhooks/${wh.id}`, {
+    method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workspaceId: store.activeWorkspaceId, active: !wh.active }),
+  })
+  await loadWebhooks()
+}
+async function deleteWebhook(id: string) {
+  if (import.meta.client && !confirm('Delete this webhook?')) return
+  await fetch(`${apiBase()}/api/webhooks/${id}?workspaceId=${store.activeWorkspaceId}`, { method: 'DELETE', credentials: 'include' })
+  await loadWebhooks()
+}
+watch(settingsTab, (t) => { if (t === 'webhooks') { revealedSecret.value = ''; loadWebhooks() } })
 // appearance (клиентское, localStorage)
 const density = ref('default')
 const DENSITY_PX: Record<string, string> = { compact: '15px', default: '16px', comfortable: '18px' }
@@ -3615,6 +3649,34 @@ useHead({ title: () => pageTitle.value })
               <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Revoke" @click="revokeApiToken(t.id)" />
             </div>
             <div v-if="!apiTokens.length" class="py-6 text-center text-sm text-tertiary">// no API tokens yet</div>
+          </template>
+
+          <!-- WEBHOOKS -->
+          <template v-else-if="settingsTab === 'webhooks'">
+            <div class="mb-4 flex items-center justify-between">
+              <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> webhooks</h2>
+              <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
+            </div>
+            <p class="mb-3 text-xs text-tertiary">POST JSON to your URL on events, signed with HMAC-SHA256 (<code class="rounded bg-elevated px-1">X-PMS-Signature: sha256=…</code>) using the secret shown once below.</p>
+            <div class="mb-2 flex gap-2">
+              <UInput v-model="newWebhookUrl" placeholder="https://your-host/hook" class="flex-1" @keyup.enter="createWebhook" />
+              <UButton :disabled="!newWebhookUrl.trim() || !newWebhookEvents.length" @click="createWebhook">[ add ]</UButton>
+            </div>
+            <USelectMenu v-model="newWebhookEvents" :options="EVENT_OPTIONS" multiple placeholder="events" class="mb-3 w-full" />
+            <div v-if="revealedSecret" class="mb-3 rounded-md border border-ok/40 bg-elevated px-3 py-2">
+              <div class="mb-1 text-xs text-ok">Signing secret — shown once:</div>
+              <div class="flex items-center gap-2">
+                <code class="flex-1 truncate font-mono text-xs text-white">{{ revealedSecret }}</code>
+                <UButton size="2xs" color="gray" @click="copyText(revealedSecret)">[ copy ]</UButton>
+              </div>
+            </div>
+            <div v-for="wh in webhooksList" :key="wh.id" class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
+              <span class="h-2 w-2 shrink-0 rounded-full" :class="wh.active ? 'bg-ok' : 'bg-tertiary'" />
+              <span class="min-w-0 flex-1 truncate text-sm">{{ wh.url }}<span class="ml-1 text-xs text-tertiary">{{ (wh.events || []).join(', ') }}</span></span>
+              <UButton size="2xs" color="gray" variant="ghost" @click="toggleWebhook(wh)">{{ wh.active ? 'disable' : 'enable' }}</UButton>
+              <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Delete" @click="deleteWebhook(wh.id)" />
+            </div>
+            <div v-if="!webhooksList.length" class="py-6 text-center text-sm text-tertiary">// no webhooks yet</div>
           </template>
 
           <!-- ACCOUNT -->
