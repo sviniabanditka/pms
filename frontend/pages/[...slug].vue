@@ -1701,6 +1701,8 @@ useHead({ title: () => pageTitle.value })
 
 // Mobile: навигация из off-canvas drawer закрывает его (смена секции/выбор сущности).
 watch(() => [activeSection.value, selectedTeamId.value, selectedDocId.value, selectedDashboardId.value, selectedMsId.value, store.activeChannelId, selectedIssueId.value], () => { mobileNav.value = false })
+// Mobile: week-вид календаря недоступен (тесно) → day.
+watch(isMobile, (m) => { if (m && calView.value === 'week') calView.value = 'day' })
 </script>
 
 <template>
@@ -2011,7 +2013,7 @@ watch(() => [activeSection.value, selectedTeamId.value, selectedDocId.value, sel
             <UButton icon="i-heroicons-chevron-right" color="gray" variant="ghost" size="xs" square @click="shiftRange(1)" />
           </div>
           <div class="ml-2 flex items-center gap-0.5 rounded-md bg-elevated p-0.5">
-            <button v-for="v in ['month','week','day']" :key="v"
+            <button v-for="v in ['month','week','day']" v-show="!(isMobile && v === 'week')" :key="v"
               class="rounded px-2 py-0.5 text-xs capitalize transition-colors"
               :class="calView === v ? 'bg-active text-white' : 'text-tertiary hover:text-secondary'"
               @click="calView = v as any">{{ v }}</button>
@@ -2025,15 +2027,20 @@ watch(() => [activeSection.value, selectedTeamId.value, selectedDocId.value, sel
           <div class="grid grid-cols-7 border-b border-subtle text-center text-xs font-medium uppercase tracking-wider text-tertiary">
             <div v-for="wd in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="wd" class="py-1.5">{{ wd }}</div>
           </div>
-          <div class="grid grid-cols-7" style="grid-auto-rows: minmax(96px, 1fr)">
+          <div class="grid grid-cols-7 [grid-auto-rows:minmax(96px,1fr)] max-md:[grid-auto-rows:minmax(58px,1fr)]">
             <div v-for="cell in calGrid" :key="cell.ds"
-              class="group/cell relative cursor-pointer border-b border-r border-subtle/50 p-1 text-left align-top transition hover:bg-hover/40"
+              class="group/cell relative min-w-0 cursor-pointer border-b border-r border-subtle/50 p-1 text-left align-top transition hover:bg-hover/40"
               :class="cell.inMonth ? '' : 'bg-elevated/30'"
               @click="openCalCreate(cell.ds)">
               <div class="flex items-center justify-between px-0.5">
                 <span class="text-xs" :class="cell.isToday ? 'flex h-5 w-5 items-center justify-center rounded bg-accent font-semibold text-base' : cell.inMonth ? 'text-secondary' : 'text-tertiary/50'">{{ cell.day }}</span>
               </div>
-              <div class="mt-0.5 space-y-0.5">
+              <!-- mobile: точки вместо текста (узкие ячейки) -->
+              <div v-if="calItemsForDay(cell.ds).length" class="mt-1 flex flex-wrap gap-0.5 px-0.5 md:hidden">
+                <span v-for="it in calItemsForDay(cell.ds).slice(0, 6)" :key="'d' + it.kind + it.id" class="h-1.5 w-1.5 rounded-full"
+                  :style="{ background: (it.kind === 'event' || it.kind === 'dayoff') ? it.color : '#7aa2f7' }" />
+              </div>
+              <div class="mt-0.5 space-y-0.5 max-md:hidden">
                 <div v-for="it in calItemsForDay(cell.ds).slice(0, 4)" :key="it.kind + it.id"
                   class="flex cursor-pointer items-center gap-1 truncate rounded px-1 py-0.5 text-[11px] leading-tight transition hover:brightness-125"
                   :class="it.kind === 'issue' || it.kind === 'meeting' ? 'bg-hover text-secondary hover:bg-active' : 'text-white'"
@@ -2721,12 +2728,16 @@ watch(() => [activeSection.value, selectedTeamId.value, selectedDocId.value, sel
           <div class="grid grid-cols-7 gap-px text-xs">
             <div v-for="w in WEEKDAYS" :key="w" class="px-1 py-1 text-tertiary">{{ w }}</div>
             <div v-for="c in calCells" :key="c.date"
-              :class="[calMode === 'week' ? 'min-h-[360px]' : 'min-h-[88px]', 'rounded-sm border p-1', c.inMonth ? 'border-subtle bg-surface' : 'border-transparent bg-base opacity-40', c.date === todayStr ? '!border-accent' : '']"
+              :class="[calMode === 'week' ? 'min-h-[360px]' : 'min-h-[88px] max-md:min-h-[52px]', 'min-w-0 rounded-sm border p-1', c.inMonth ? 'border-subtle bg-surface' : 'border-transparent bg-base opacity-40', c.date === todayStr ? '!border-accent' : '']"
               @dragover.prevent @drop="dropOnDay(c.date)">
               <div class="mb-1 text-tertiary">{{ c.day }}</div>
+              <!-- mobile: точки -->
+              <div v-if="store.calendarIssues(selectedTeamId, c.date).length" class="flex flex-wrap gap-0.5 md:hidden">
+                <span v-for="i in store.calendarIssues(selectedTeamId, c.date).slice(0, 6)" :key="'d' + i.id" class="h-1.5 w-1.5 rounded-full bg-accent2" />
+              </div>
               <div v-for="i in store.calendarIssues(selectedTeamId, c.date)" :key="i.id"
                 draggable="true" @dragstart="draggedId = i.id" @click="openIssue(i.id)"
-                class="mb-0.5 cursor-pointer truncate rounded-sm bg-elevated px-1 py-0.5 hover:bg-hover"
+                class="mb-0.5 cursor-pointer truncate rounded-sm bg-elevated px-1 py-0.5 hover:bg-hover max-md:hidden"
                 :title="i.identifier + ' ' + i.title">
                 <span class="text-accent2">{{ i.identifier }}</span> {{ i.title }}
               </div>
