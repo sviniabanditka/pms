@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pms/backend/internal/authz"
 	"github.com/pms/backend/internal/changelog"
 	"github.com/pms/backend/internal/db"
 	"github.com/pms/backend/internal/models"
@@ -47,6 +48,101 @@ type Service struct {
 
 func NewService(bdb *bun.DB, pub *realtime.Publisher) *Service { return &Service{db: bdb, pub: pub} }
 
+// requireManage — управлять командой (конфиг/членство) может lead команды-или-ancestor либо ws-admin.
+func requireManage(ctx context.Context, tx bun.Tx, actor, teamID uuid.UUID) error {
+	ok, err := authz.CanManageTeam(ctx, tx, actor, teamID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return authz.ErrForbidden
+	}
+	return nil
+}
+
+// requireManageN — для nullable team_id: NULL = workspace-scoped → только ws-admin.
+func requireManageN(ctx context.Context, tx bun.Tx, actor uuid.UUID, teamID *uuid.UUID) error {
+	if teamID == nil {
+		if r, _ := authz.RoleFromContext(ctx); r.IsAdmin() {
+			return nil
+		}
+		return authz.ErrForbidden
+	}
+	return requireManage(ctx, tx, actor, *teamID)
+}
+
+// stateTeam / labelTeam — резолв команды по id дочерней сущности (для гейтинга update/delete).
+func stateTeam(ctx context.Context, tx bun.Tx, id uuid.UUID) (uuid.UUID, error) {
+	var t uuid.UUID
+	err := tx.NewSelect().Model((*models.WorkflowState)(nil)).Column("team_id").Where("id = ?", id).Scan(ctx, &t)
+	return t, err
+}
+
+func labelTeam(ctx context.Context, tx bun.Tx, id uuid.UUID) (*uuid.UUID, error) {
+	var t *uuid.UUID
+	err := tx.NewSelect().Model((*models.Label)(nil)).Column("team_id").Where("id = ?", id).Scan(ctx, &t)
+	return t, err
+}
+
+// AddMember добавляет/обновляет участника команды (lead команды-или-ancestor | ws-admin).
+func (s *Service) AddMember(ctx context.Context, actor, wsID, id, teamID, userID uuid.UUID, role string) error {
+	if role != "lead" && role != "member" {
+		role = "member"
+	}
+	now := time.Now().UTC()
+	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireManage(ctx, tx, actor, teamID); err != nil {
+			return err
+		}
+		ex, err := tx.NewSelect().Model((*models.WorkspaceMember)(nil)).
+			Where("workspace_id = ?", wsID).Where("user_id = ?", userID).Where("status = 'active'").Exists(ctx)
+		if err != nil {
+			return err
+		}
+		if !ex {
+			return ErrTeamNotFound // целевой не активный член воркспейса
+		}
+		tm := &models.TeamMember{ID: id, WorkspaceID: wsID, TeamID: teamID, UserID: userID, Role: role, Source: "direct", CreatedAt: now, UpdatedAt: now}
+		_, e := tx.NewInsert().Model(tm).
+			On("CONFLICT (team_id, user_id) DO UPDATE SET role = EXCLUDED.role, updated_at = EXCLUDED.updated_at").Exec(ctx)
+		return e
+	})
+	if err != nil {
+		return err
+	}
+	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "team_member", EntityID: id.String(), Op: "create"})
+	return nil
+}
+
+// RemoveMember убирает участника команды (lead команды-или-ancestor | ws-admin).
+func (s *Service) RemoveMember(ctx context.Context, actor, wsID, teamID, userID uuid.UUID) error {
+	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireManage(ctx, tx, actor, teamID); err != nil {
+			return err
+		}
+		_, e := tx.NewDelete().Model((*models.TeamMember)(nil)).Where("team_id = ?", teamID).Where("user_id = ?", userID).Exec(ctx)
+		return e
+	})
+	if err != nil {
+		return err
+	}
+	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "team_member", EntityID: userID.String(), Op: "delete"})
+	return nil
+}
+
+// LeaveTeam — выйти из команды самому (без manage-прав).
+func (s *Service) LeaveTeam(ctx context.Context, actor, wsID, teamID uuid.UUID) error {
+	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		_, e := tx.NewDelete().Model((*models.TeamMember)(nil)).Where("team_id = ?", teamID).Where("user_id = ?", actor).Exec(ctx)
+		return e
+	})
+	if err != nil {
+		return err
+	}
+	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "team_member", EntityID: actor.String(), Op: "delete"})
+	return nil
+}
+
 // CreateTeam создаёт команду (path/ltree, валидный key), дефолтные статусы, lead-членство
 // и записи change_log — одна транзакция под RLS-контекстом воркспейса.
 var ErrStateInUse = errors.New("state has issues; reassign first")
@@ -63,6 +159,9 @@ func (s *Service) CreateWorkflowState(ctx context.Context, actor, wsID, id, team
 	}
 	now := time.Now().UTC()
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireManage(ctx, tx, actor, teamID); err != nil {
+			return err
+		}
 		var maxPos string
 		_ = tx.NewSelect().Model((*models.WorkflowState)(nil)).ColumnExpr("COALESCE(MAX(position),'a')").
 			Where("team_id = ?", teamID).Scan(ctx, &maxPos)
@@ -79,6 +178,13 @@ func (s *Service) CreateWorkflowState(ctx context.Context, actor, wsID, id, team
 
 func (s *Service) UpdateWorkflowState(ctx context.Context, actor, wsID, id uuid.UUID, name, color, category *string) error {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		teamID, err := stateTeam(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if err := requireManage(ctx, tx, actor, teamID); err != nil {
+			return err
+		}
 		q := tx.NewUpdate().Model((*models.WorkflowState)(nil)).Where("id = ?", id).
 			Set("updated_at = now()").Set("version = version + 1")
 		if name != nil {
@@ -102,6 +208,13 @@ func (s *Service) UpdateWorkflowState(ctx context.Context, actor, wsID, id uuid.
 
 func (s *Service) DeleteWorkflowState(ctx context.Context, actor, wsID, id uuid.UUID) error {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		teamID, e := stateTeam(ctx, tx, id)
+		if e != nil {
+			return e
+		}
+		if e := requireManage(ctx, tx, actor, teamID); e != nil {
+			return e
+		}
 		n, e := tx.NewSelect().Model((*models.Issue)(nil)).Where("state_id = ?", id).Where("archived_at IS NULL").Count(ctx)
 		if e != nil {
 			return e
@@ -123,6 +236,13 @@ var ErrTeamHasIssues = errors.New("team has issues; archive or move them first")
 
 func (s *Service) UpdateLabel(ctx context.Context, actor, wsID, id uuid.UUID, name, color *string) error {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		tID, err := labelTeam(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if err := requireManageN(ctx, tx, actor, tID); err != nil {
+			return err
+		}
 		q := tx.NewUpdate().Model((*models.Label)(nil)).Where("id = ?", id).
 			Set("updated_at = now()").Set("version = version + 1")
 		if name != nil {
@@ -143,6 +263,13 @@ func (s *Service) UpdateLabel(ctx context.Context, actor, wsID, id uuid.UUID, na
 
 func (s *Service) DeleteLabel(ctx context.Context, actor, wsID, id uuid.UUID) error {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		tID, err := labelTeam(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if err := requireManageN(ctx, tx, actor, tID); err != nil {
+			return err
+		}
 		if _, e := tx.NewDelete().Model((*models.IssueLabel)(nil)).Where("label_id = ?", id).Exec(ctx); e != nil {
 			return e
 		}
@@ -159,6 +286,9 @@ func (s *Service) DeleteLabel(ctx context.Context, actor, wsID, id uuid.UUID) er
 // DeleteTeam — мягкое удаление команды (и её под-команд по ltree-пути), если нет активных задач.
 func (s *Service) DeleteTeam(ctx context.Context, actor, wsID, id uuid.UUID) error {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireManage(ctx, tx, actor, id); err != nil {
+			return err
+		}
 		t := new(models.Team)
 		if err := tx.NewSelect().Model(t).Column("path").Where("id = ?", id).Scan(ctx); err != nil {
 			return ErrTeamNotFound
@@ -198,6 +328,9 @@ func (s *Service) CreateLabel(ctx context.Context, actor, wsID, id uuid.UUID, te
 	}
 	now := time.Now().UTC()
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireManageN(ctx, tx, actor, teamID); err != nil {
+			return err
+		}
 		l := &models.Label{ID: id, WorkspaceID: wsID, TeamID: teamID, Name: strings.TrimSpace(name), ColorToken: color, CreatedAt: now, UpdatedAt: now}
 		_, err := tx.NewInsert().Model(l).Exec(ctx)
 		return err
@@ -222,6 +355,10 @@ func (s *Service) CreateTeam(ctx context.Context, actor, wsID, id uuid.UUID, par
 	label := ltreeLabel(id)
 
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		// root-команду создаёт только ws-admin; вложенную — lead родителя(-или-ancestor) либо ws-admin.
+		if err := requireManageN(ctx, tx, actor, parentID); err != nil {
+			return err
+		}
 		path := label
 		if parentID != nil {
 			parent := new(models.Team)
@@ -288,6 +425,9 @@ func (s *Service) CreateTeam(ctx context.Context, actor, wsID, id uuid.UUID, par
 // Защита от цикла: новый родитель не может быть внутри поддерева перемещаемой команды.
 func (s *Service) UpdateTeam(ctx context.Context, actor, wsID, id uuid.UUID, name *string, private *bool) error {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireManage(ctx, tx, actor, id); err != nil {
+			return err
+		}
 		q := tx.NewUpdate().Model((*models.Team)(nil)).Where("id = ?", id).
 			Set("updated_at = now()").Set("version = version + 1")
 		if name != nil && strings.TrimSpace(*name) != "" {
@@ -313,6 +453,14 @@ func (s *Service) MoveTeam(ctx context.Context, actor, wsID, id uuid.UUID, newPa
 	label := ltreeLabel(id)
 
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireManage(ctx, tx, actor, id); err != nil {
+			return err
+		}
+		if newParent != nil {
+			if err := requireManage(ctx, tx, actor, *newParent); err != nil {
+				return err
+			}
+		}
 		self := new(models.Team)
 		if err := tx.NewSelect().Model(self).Column("path").Where("id = ?", id).Scan(ctx); err != nil {
 			return ErrTeamNotFound

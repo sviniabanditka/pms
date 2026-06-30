@@ -659,3 +659,11 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Роли: нельзя выдать роль выше своей (admin приглашает/назначает owner → 403); нельзя тронуть вышестоящего.
 - [ ] Last-owner: понизить/убрать/покинуть последнего owner'а → `failed_precondition` «workspace must keep at least one owner».
 - [ ] Невалидная роль в invite/updateRole → `invalid_argument`.
+
+## 83. Пермишены — Фаза 2 (private teams = граница доступа)
+- [ ] Bootstrap: не-член private-команды НЕ получает её team/issues/cycles/docs/labels/views и т.д.; admin/owner и члены (вкл. наследование вниз по ltree — член ancestor видит подкоманды) — получают.
+- [ ] team_member синкается в bootstrap (видны участники видимых команд).
+- [ ] Управление командой (CreateTeam root → ws-admin; subteam → lead родителя/ancestor или ws-admin; UpdateTeam/MoveTeam/DeleteTeam, workflow states, labels, cycles, milestones) — обычный member → 403, lead команды или ws-admin → ок.
+- [ ] AddTeamMember/RemoveTeamMember — lead команды-или-ancestor или ws-admin; нельзя добавить не-члена воркспейса. LeaveTeam — сам выходит.
+- [ ] CreateIssue в private-команде не-членом → 403; в public или своей private → ок (коллаборативно).
+- [ ] Любая мутация issue (state/assign/priority/labels/relations/cf/archive/title/dates/cycle/milestone) в private-команде не-членом → 403 (даже по известному id).

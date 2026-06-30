@@ -461,6 +461,59 @@ func (h *teamHandler) MoveTeam(ctx context.Context, req *connect.Request[pmsv1.M
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String(), NewVersion: ver}), nil
 }
 
+func (h *teamHandler) AddTeamMember(ctx context.Context, req *connect.Request[pmsv1.AddTeamMemberRequest]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wsID, err := uuid.Parse(req.Msg.WorkspaceId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid workspace_id"))
+	}
+	id, err := parseOrNew(req.Msg.Id)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	teamID, err := uuid.Parse(req.Msg.TeamId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid team_id"))
+	}
+	userID, err := uuid.Parse(req.Msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid user_id"))
+	}
+	if err := h.svc.AddMember(ctx, actor, wsID, id, teamID, userID, req.Msg.Role); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
+}
+
+func (h *teamHandler) RemoveTeamMember(ctx context.Context, req *connect.Request[pmsv1.RemoveTeamMemberRequest]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, wsID, teamID, err := issueRef(ctx, req.Msg.WorkspaceId, req.Msg.TeamId)
+	if err != nil {
+		return nil, err
+	}
+	userID, err := uuid.Parse(req.Msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid user_id"))
+	}
+	if err := h.svc.RemoveMember(ctx, actor, wsID, teamID, userID); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: userID.String()}), nil
+}
+
+func (h *teamHandler) LeaveTeam(ctx context.Context, req *connect.Request[pmsv1.LeaveTeamRequest]) (*connect.Response[pmsv1.CommandResult], error) {
+	actor, wsID, teamID, err := issueRef(ctx, req.Msg.WorkspaceId, req.Msg.TeamId)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.LeaveTeam(ctx, actor, wsID, teamID); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CommandResult{EntityId: teamID.String()}), nil
+}
+
 type issueHandler struct {
 	pmsv1connect.UnimplementedIssueServiceHandler
 	svc *issues.Service

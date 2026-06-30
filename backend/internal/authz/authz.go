@@ -8,10 +8,37 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
+	"github.com/uptrace/bun"
 )
 
 // ErrForbidden — object/role authorization failure; mapErr maps it to PermissionDenied.
 var ErrForbidden = errors.New("insufficient permissions")
+
+// CanAccessTeam reports whether the actor may read/write content of a team:
+// ws-admin always; a public team is open to any member; a private team requires
+// membership of the team or an ancestor (downward ltree inheritance).
+func CanAccessTeam(ctx context.Context, tx bun.Tx, actor, teamID uuid.UUID) (bool, error) {
+	if r, _ := RoleFromContext(ctx); r.IsAdmin() {
+		return true, nil
+	}
+	return tx.NewSelect().TableExpr("teams AS t").
+		Where("t.id = ?", teamID).
+		Where("(t.private = false OR EXISTS (SELECT 1 FROM team_members tm JOIN teams anc ON anc.id = tm.team_id WHERE tm.user_id = ? AND t.path <@ anc.path))", actor).
+		Exists(ctx)
+}
+
+// CanManageTeam reports whether the actor may manage a team (config + membership):
+// ws-admin, or a lead of the team or any ancestor (downward ltree inheritance).
+// Privacy is irrelevant — management is lead/admin regardless.
+func CanManageTeam(ctx context.Context, tx bun.Tx, actor, teamID uuid.UUID) (bool, error) {
+	if r, _ := RoleFromContext(ctx); r.IsAdmin() {
+		return true, nil
+	}
+	return tx.NewSelect().TableExpr("teams AS t").
+		Where("t.id = ?", teamID).
+		Where("EXISTS (SELECT 1 FROM team_members tm JOIN teams anc ON anc.id = tm.team_id WHERE tm.user_id = ? AND tm.role = 'lead' AND t.path <@ anc.path)", actor).
+		Exists(ctx)
+}
 
 // OwnerOrAdmin reports whether the actor may mutate an object owned by `owner`:
 // the owner always may; otherwise a workspace admin/owner may. Used for content

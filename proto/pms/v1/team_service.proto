@@ -17,6 +17,28 @@ service TeamService {
   rpc UpdateLabel(UpdateLabelRequest) returns (CommandResult);
   rpc DeleteLabel(EntityRef) returns (CommandResult);
   rpc DeleteTeam(EntityRef) returns (CommandResult);
+  rpc AddTeamMember(AddTeamMemberRequest) returns (CommandResult);
+  rpc RemoveTeamMember(RemoveTeamMemberRequest) returns (CommandResult);
+  rpc LeaveTeam(LeaveTeamRequest) returns (CommandResult);
+}
+
+message AddTeamMemberRequest {
+  string workspace_id = 1;
+  string id = 2; // client-generated UUIDv7 для строки team_member
+  string team_id = 3;
+  string user_id = 4;
+  string role = 5; // lead | member
+}
+
+message RemoveTeamMemberRequest {
+  string workspace_id = 1;
+  string team_id = 2;
+  string user_id = 3;
+}
+
+message LeaveTeamRequest {
+  string workspace_id = 1;
+  string team_id = 2;
 }
 
 message UpdateWorkflowStateRequest {

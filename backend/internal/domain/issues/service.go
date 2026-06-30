@@ -92,6 +92,9 @@ func (s *Service) CreateIssue(ctx context.Context, actor, wsID, teamID, id uuid.
 			}
 			teamID = p.TeamID
 		}
+		if err := requireTeamAccess(ctx, tx, actor, teamID); err != nil {
+			return err
+		}
 		// Атомарная нумерация: row-lock на teams сериализует конкурентные создания.
 		var key string
 		var number int64
@@ -166,6 +169,9 @@ func (s *Service) UpdateIssueState(ctx context.Context, actor, wsID, id uuid.UUI
 		if err := tx.NewSelect().Model(cur).Column("team_id", "started_at", "completed_at", "created_by", "assignee_id").Where("id = ?", id).Scan(ctx); err != nil {
 			return ErrIssueNotFound
 		}
+		if err := requireTeamAccess(ctx, tx, actor, cur.TeamID); err != nil {
+			return err
+		}
 		var category string
 		if err := tx.NewSelect().Model((*models.WorkflowState)(nil)).Column("category").
 			Where("id = ?", newState).Where("team_id = ?", cur.TeamID).Scan(ctx, &category); err != nil {
@@ -210,6 +216,9 @@ func (s *Service) ReorderIssue(ctx context.Context, actor, wsID, id uuid.UUID, s
 		cur := new(models.Issue)
 		if err := tx.NewSelect().Model(cur).Column("team_id", "state_id", "started_at", "completed_at").Where("id = ?", id).Scan(ctx); err != nil {
 			return ErrIssueNotFound
+		}
+		if err := requireTeamAccess(ctx, tx, actor, cur.TeamID); err != nil {
+			return err
 		}
 		targetState := cur.StateID
 		if stateID != "" {
@@ -268,6 +277,9 @@ func (s *Service) AddRelation(ctx context.Context, actor, wsID, id, source, targ
 	}
 	now := time.Now().UTC()
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireIssueTeam(ctx, tx, actor, source); err != nil {
+			return err
+		}
 		rel := &models.IssueRelation{ID: id, WorkspaceID: wsID, SourceID: source, TargetID: target, Type: typ, CreatedAt: now}
 		if _, err := tx.NewInsert().Model(rel).Exec(ctx); err != nil {
 			if strings.Contains(err.Error(), "issue_relations_source_id_target_id_type_key") {
@@ -316,6 +328,9 @@ func (s *Service) RemoveRelation(ctx context.Context, actor, wsID, relID uuid.UU
 // AssignIssue: assignee=nil → снять. Уведомляет нового assignee (≠ actor).
 func (s *Service) AssignIssue(ctx context.Context, actor, wsID, id uuid.UUID, assignee *uuid.UUID) (int64, error) {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireIssueTeam(ctx, tx, actor, id); err != nil {
+			return err
+		}
 		q := tx.NewUpdate().Model((*models.Issue)(nil)).Where("id = ?", id).
 			Set("updated_at = now()").Set("version = version + 1")
 		if assignee == nil {
@@ -356,6 +371,9 @@ func (s *Service) SetPriority(ctx context.Context, actor, wsID, id uuid.UUID, pr
 // SetCustomFieldValue: upsert значения; пустой value → снять.
 func (s *Service) SetCustomFieldValue(ctx context.Context, actor, wsID, issueID, fieldID uuid.UUID, value []byte) (int64, error) {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireIssueTeam(ctx, tx, actor, issueID); err != nil {
+			return err
+		}
 		if len(value) == 0 || string(value) == "null" {
 			if _, err := tx.NewDelete().Model((*models.CustomFieldValue)(nil)).
 				Where("field_id = ?", fieldID).Where("issue_id = ?", issueID).Exec(ctx); err != nil {
@@ -435,7 +453,11 @@ func (s *Service) SetDescription(ctx context.Context, actor, wsID, id uuid.UUID,
 func (s *Service) ArchiveIssue(ctx context.Context, actor, wsID, id uuid.UUID) (int64, error) {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
 		var owner uuid.UUID
-		if err := tx.NewSelect().Model((*models.Issue)(nil)).Column("created_by").Where("id = ?", id).Scan(ctx, &owner); err != nil {
+		var teamID uuid.UUID
+		if err := tx.NewSelect().Model((*models.Issue)(nil)).Column("created_by", "team_id").Where("id = ?", id).Scan(ctx, &owner, &teamID); err != nil {
+			return err
+		}
+		if err := requireTeamAccess(ctx, tx, actor, teamID); err != nil {
 			return err
 		}
 		if !authz.OwnerOrAdmin(ctx, owner, actor) {
@@ -516,6 +538,9 @@ func (s *Service) GetActivity(ctx context.Context, actor, wsID, entityID uuid.UU
 
 func (s *Service) AddLabel(ctx context.Context, actor, wsID, issueID, labelID uuid.UUID) error {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireIssueTeam(ctx, tx, actor, issueID); err != nil {
+			return err
+		}
 		_, err := tx.NewInsert().Model(&models.IssueLabel{WorkspaceID: wsID, IssueID: issueID, LabelID: labelID}).
 			On("CONFLICT DO NOTHING").Exec(ctx)
 		return err
@@ -525,6 +550,9 @@ func (s *Service) AddLabel(ctx context.Context, actor, wsID, issueID, labelID uu
 
 func (s *Service) RemoveLabel(ctx context.Context, actor, wsID, issueID, labelID uuid.UUID) error {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireIssueTeam(ctx, tx, actor, issueID); err != nil {
+			return err
+		}
 		_, err := tx.NewDelete().Model((*models.IssueLabel)(nil)).
 			Where("issue_id = ?", issueID).Where("label_id = ?", labelID).Exec(ctx)
 		return err
@@ -532,8 +560,32 @@ func (s *Service) RemoveLabel(ctx context.Context, actor, wsID, issueID, labelID
 	return s.afterMutate(ctx, wsID, issueID, err)
 }
 
+// requireTeamAccess — доступ к команде (private-team border): член team-или-ancestor | ws-admin.
+func requireTeamAccess(ctx context.Context, tx bun.Tx, actor, teamID uuid.UUID) error {
+	ok, err := authz.CanAccessTeam(ctx, tx, actor, teamID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return authz.ErrForbidden
+	}
+	return nil
+}
+
+// requireIssueTeam — то же по issue (резолвит её команду).
+func requireIssueTeam(ctx context.Context, tx bun.Tx, actor, issueID uuid.UUID) error {
+	var teamID uuid.UUID
+	if err := tx.NewSelect().Model((*models.Issue)(nil)).Column("team_id").Where("id = ?", issueID).Scan(ctx, &teamID); err != nil {
+		return err
+	}
+	return requireTeamAccess(ctx, tx, actor, teamID)
+}
+
 func (s *Service) simpleUpdate(ctx context.Context, actor, wsID, id uuid.UUID, setFn func(*bun.UpdateQuery)) error {
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireIssueTeam(ctx, tx, actor, id); err != nil {
+			return err
+		}
 		q := tx.NewUpdate().Model((*models.Issue)(nil)).Where("id = ?", id).
 			Set("updated_at = now()").Set("version = version + 1")
 		setFn(q)
