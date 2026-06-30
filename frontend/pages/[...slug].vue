@@ -1730,7 +1730,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         <div v-if="store.liveMeetings.length" class="mb-1 px-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Live now</div>
         <div v-for="m in store.liveMeetings" :key="m.id"
           class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 text-secondary hover:bg-hover" @click="joinScheduled(m.id)">
-          <span class="flex h-2 w-2 shrink-0 rounded-full bg-red-500" />
+          <span class="flex h-2 w-2 shrink-0 rounded-full bg-danger" />
           <span class="truncate">{{ m.kind === 'huddle' ? 'Huddle' : m.title }}</span>
           <span class="ml-auto text-xs text-tertiary">{{ store.meetingJoined(m.id).length }}</span>
         </div>
@@ -1813,7 +1813,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         </template>
       </template>
 
-      <p v-if="err" class="mt-3 text-xs text-red-400">{{ err }}</p>
+      <p v-if="err" class="mt-3 text-xs text-danger">{{ err }}</p>
     </aside>
 
     <!-- Контент-область: отдельные плавающие панели -->
@@ -1916,8 +1916,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <div v-for="ds in gridDays" :key="ds" class="relative select-none border-l border-subtle/50" style="cursor: cell" @pointerdown.self="dragCreate(ds, $event)">
               <div v-for="h in HOURS" :key="h" class="pointer-events-none absolute inset-x-0 border-t border-subtle/25" :style="{ top: h * HOUR_PX + 'px' }" />
               <!-- now-линия -->
-              <div v-if="ds === calTodayStr" class="pointer-events-none absolute inset-x-0 z-20 border-t border-red-500" :style="{ top: nowMin / 60 * HOUR_PX + 'px' }">
-                <span class="absolute -left-1 -top-1 h-2 w-2 rounded-full bg-red-500" />
+              <div v-if="ds === calTodayStr" class="pointer-events-none absolute inset-x-0 z-20 border-t border-danger" :style="{ top: nowMin / 60 * HOUR_PX + 'px' }">
+                <span class="absolute -left-1 -top-1 h-2 w-2 rounded-full bg-danger" />
               </div>
               <!-- drag-create превью -->
               <div v-if="calDrag.active && calDrag.mode === 'create' && calDrag.ds === ds" class="pointer-events-none absolute inset-x-0.5 z-10 rounded bg-accent/30 ring-1 ring-accent"
@@ -2117,8 +2117,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <div ref="msgScrollEl" class="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-3" @scroll="onMessagesScroll">
             <div v-if="store.hasMoreMessages[currentChannel.id]" class="py-1 text-center text-xs text-tertiary">loading older…</div>
             <template v-for="m in store.channelMessages(currentChannel.id)" :key="m.id">
-            <div v-if="m.id === firstUnreadMsgId" data-unread-divider class="my-1 flex items-center gap-2 px-2 text-xs font-medium text-red-400">
-              <span class="h-px flex-1 bg-red-400/40" /> New messages <span class="h-px flex-1 bg-red-400/40" />
+            <div v-if="m.id === firstUnreadMsgId" data-unread-divider class="my-1 flex items-center gap-2 px-2 text-xs font-medium text-danger">
+              <span class="h-px flex-1 bg-danger/40" /> New messages <span class="h-px flex-1 bg-danger/40" />
             </div>
             <ChatMessage :m="m" />
             </template>
@@ -2178,7 +2178,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
 
           <div v-if="store.liveMeetings.length" class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Live now</div>
           <div v-for="m in store.liveMeetings" :key="m.id" class="mb-2 flex items-center gap-3 rounded-lg border border-subtle bg-elevated p-3">
-            <span class="flex h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" />
+            <span class="flex h-2.5 w-2.5 shrink-0 rounded-full bg-danger" />
             <div class="min-w-0 flex-1">
               <div class="truncate font-medium text-white">{{ m.kind === 'huddle' ? 'Huddle' : (m.title || 'Meeting') }}</div>
               <div class="text-xs text-tertiary">{{ store.meetingJoined(m.id).length }} in call · {{ store.meetingParts(m.id).length }} invited</div>
@@ -2255,7 +2255,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <UIcon :name="statusIcon(store.states[i.stateId]?.category)" :style="{ color: statusColor(store.states[i.stateId]?.category) }" class="shrink-0" />
             <span class="flex-1 truncate">{{ i.title }}</span>
             <span v-if="d10(i.scheduledDate) || d10(i.dueDate)" class="shrink-0 text-xs"
-              :class="g.key === 'overdue' ? 'text-red-400' : 'text-tertiary'">{{ d10(i.scheduledDate) || d10(i.dueDate) }}</span>
+              :class="g.key === 'overdue' ? 'text-danger' : 'text-tertiary'">{{ d10(i.scheduledDate) || d10(i.dueDate) }}</span>
             <span class="shrink-0 text-xs text-tertiary">{{ store.teams[i.teamId]?.key }}</span>
           </div>
         </template>
@@ -2304,10 +2304,10 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
               <button class="text-tertiary hover:text-secondary" @click="selectedMsId = ''">Milestones</button>
               <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
-              <UIcon name="i-heroicons-flag" :class="selectedMs.status === 'done' ? 'text-accent' : selectedMs.status === 'active' ? 'text-amber-400' : 'text-tertiary'" />
+              <UIcon name="i-heroicons-flag" :class="selectedMs.status === 'done' ? 'text-accent' : selectedMs.status === 'active' ? 'text-warn' : 'text-tertiary'" />
               <span class="font-medium">{{ selectedMs.name }}</span>
               <USelectMenu :model-value="selectedMs.status" :options="labelOpts(['planned', 'active', 'done'])" value-attribute="value" option-attribute="label" size="xs" class="w-28" @update:model-value="(st) => store.updateMilestone(selectedMs.id, { status: st })" />
-              <span v-if="selectedMs.targetDate" class="text-xs" :class="msOverdue(selectedMs) ? 'text-red-400' : 'text-tertiary'">{{ String(selectedMs.targetDate).slice(0,10) }}{{ msOverdue(selectedMs) ? ' · overdue' : '' }}</span>
+              <span v-if="selectedMs.targetDate" class="text-xs" :class="msOverdue(selectedMs) ? 'text-danger' : 'text-tertiary'">{{ String(selectedMs.targetDate).slice(0,10) }}{{ msOverdue(selectedMs) ? ' · overdue' : '' }}</span>
               <span class="ml-auto text-xs text-tertiary">{{ store.milestoneProgress(selectedMs.id).done }}/{{ store.milestoneProgress(selectedMs.id).total }}</span>
             </div>
             <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-elevated">
@@ -2341,10 +2341,10 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               <div v-for="m in store.teamMilestones(selectedTeamId)" :key="m.id"
                 class="group cursor-pointer rounded-lg border border-subtle bg-elevated p-3 hover:border-strong" @click="openMilestone(m.id)">
                 <div class="flex items-center gap-2">
-                  <UIcon name="i-heroicons-flag" :class="m.status === 'done' ? 'text-accent' : m.status === 'active' ? 'text-amber-400' : 'text-tertiary'" />
+                  <UIcon name="i-heroicons-flag" :class="m.status === 'done' ? 'text-accent' : m.status === 'active' ? 'text-warn' : 'text-tertiary'" />
                   <span class="flex-1 truncate font-medium">{{ m.name }}</span>
                   <span class="rounded bg-surface px-1.5 text-xs text-tertiary">{{ m.status }}</span>
-                  <span v-if="m.targetDate" class="text-xs" :class="msOverdue(m) ? 'text-red-400' : 'text-tertiary'">{{ String(m.targetDate).slice(5,10) }}</span>
+                  <span v-if="m.targetDate" class="text-xs" :class="msOverdue(m) ? 'text-danger' : 'text-tertiary'">{{ String(m.targetDate).slice(5,10) }}</span>
                   <UButton icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" @click.stop="store.deleteMilestone(m.id)" />
                 </div>
                 <div class="mt-2 flex items-center gap-2 text-xs text-tertiary">
@@ -2804,11 +2804,11 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           </div>
           <!-- записи времени -->
           <div v-for="te in store.timeEntriesForIssue(selectedIssue.id)" :key="te.id" class="group ml-24 flex items-center gap-2 pl-3 text-xs text-tertiary">
-            <UIcon :name="te.endedAt ? 'i-heroicons-check-circle' : 'i-heroicons-play-circle'" :class="te.endedAt ? '' : 'text-green-500'" class="shrink-0" />
+            <UIcon :name="te.endedAt ? 'i-heroicons-check-circle' : 'i-heroicons-play-circle'" :class="te.endedAt ? '' : 'text-ok'" class="shrink-0" />
             <span class="tabular-nums">{{ new Date(te.startedAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) }} {{ new Date(te.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</span>
             <span class="flex-1 truncate">{{ te.description }}</span>
             <span v-if="te.endedAt" class="tabular-nums">{{ fmtMin(Math.max(0, Math.round((new Date(te.endedAt).getTime() - new Date(te.startedAt).getTime()) / 60000))) }}</span>
-            <span v-else class="text-green-500">running</span>
+            <span v-else class="text-ok">running</span>
             <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="wrap(() => store.deleteTimeEntry(te.id))" />
           </div>
           <!-- Custom fields -->
@@ -2845,7 +2845,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <div class="flex flex-wrap items-center gap-1.5">
             <span v-for="l in store.labelsForIssue(selectedIssue.id)" :key="l.id" class="group/lbl flex items-center gap-1 rounded-full border border-subtle px-2 py-0.5 text-xs">
               <span class="h-2 w-2 rounded-full" :style="{ background: l.colorToken }" />{{ l.name }}
-              <UIcon name="i-heroicons-x-mark" class="cursor-pointer text-tertiary hover:text-red-400" @click="store.removeLabel(selectedIssue.id, l.id)" />
+              <UIcon name="i-heroicons-x-mark" class="cursor-pointer text-tertiary hover:text-danger" @click="store.removeLabel(selectedIssue.id, l.id)" />
             </span>
             <button class="flex items-center gap-1 rounded-full border border-dashed border-subtle px-2 py-0.5 text-xs text-tertiary hover:border-strong hover:text-secondary" @click="showLabelModal = true">
               <UIcon name="i-heroicons-plus" /> Add label
@@ -2952,7 +2952,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <div v-if="!store.issueActivity(selectedIssue.id).length" class="text-xs text-tertiary/60">No activity</div>
         </div>
 
-        <p v-if="err" class="text-xs text-red-400">{{ err }}</p>
+        <p v-if="err" class="text-xs text-danger">{{ err }}</p>
       </div>
     </aside>
 
@@ -3270,7 +3270,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <USelectMenu v-model="newStateCat" :options="labelOpts(STATE_CATS)" value-attribute="value" option-attribute="label" size="sm" class="w-36" />
           <UButton icon="i-heroicons-plus" size="xs" square @click="addState" />
         </div>
-        <p v-if="err" class="text-xs text-red-400">{{ err }}</p>
+        <p v-if="err" class="text-xs text-danger">{{ err }}</p>
       </div>
     </UModal>
 
@@ -3314,8 +3314,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 <UInput :model-value="store.activeWorkspace?.slug" disabled />
               </div>
               <div class="text-xs text-tertiary">ID: {{ store.activeWorkspaceId }}</div>
-              <div class="mt-6 rounded-lg border border-red-500/30 p-3">
-                <div class="mb-1 text-sm font-medium text-red-400">Danger zone</div>
+              <div class="mt-6 rounded-lg border border-danger/30 p-3">
+                <div class="mb-1 text-sm font-medium text-danger">Danger zone</div>
                 <p class="mb-2 text-xs text-tertiary">Deleting the workspace hides it and all its data. This action is irreversible.</p>
                 <UButton color="red" variant="ghost" icon="i-heroicons-trash" @click="confirmDeleteWs">Delete workspace</UButton>
               </div>

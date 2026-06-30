@@ -24,7 +24,7 @@ onBeforeUnmount(detach)
       {{ (label || '?').charAt(0).toUpperCase() }}
     </div>
     <div class="absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white">
-      <UIcon v-if="mutedIcon" name="i-heroicons-no-symbol" class="text-red-400" />
+      <UIcon v-if="mutedIcon" name="i-heroicons-no-symbol" class="text-danger" />
       {{ label }}
     </div>
   </div>

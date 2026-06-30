@@ -41,7 +41,7 @@ function dl(a: any) { if (import.meta.client) window.open(fileViewUrl(a.s3Key) +
       <button v-for="a in items.filter(isImage)" :key="a.id" class="group relative h-24 w-24 overflow-hidden rounded-lg border border-subtle bg-elevated"
         @click="lightbox.open(fileViewUrl(a.s3Key), a.filename)">
         <img :src="fileViewUrl(a.s3Key)" class="h-full w-full object-cover" :alt="a.filename" />
-        <span v-if="!readonly" class="absolute right-1 top-1 hidden h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white group-hover:flex hover:text-red-400"
+        <span v-if="!readonly" class="absolute right-1 top-1 hidden h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white group-hover:flex hover:text-danger"
           title="Remove" @click.stop="store.deleteAttachment(a.id)"><UIcon name="i-heroicons-x-mark" class="text-xs" /></span>
       </button>
       <!-- файл: плашка с иконкой типа + скачать -->
@@ -53,7 +53,7 @@ function dl(a: any) { if (import.meta.client) window.open(fileViewUrl(a.s3Key) +
           <span class="block text-[11px] text-tertiary">{{ fmtSize(Number(a.size)) }}</span>
         </span>
         <button class="shrink-0 text-tertiary hover:text-white" title="Download" @click="dl(a)"><UIcon name="i-heroicons-arrow-down-tray" /></button>
-        <button v-if="!readonly" class="shrink-0 text-tertiary opacity-0 hover:text-red-400 group-hover:opacity-100" title="Remove" @click="store.deleteAttachment(a.id)"><UIcon name="i-heroicons-x-mark" /></button>
+        <button v-if="!readonly" class="shrink-0 text-tertiary opacity-0 hover:text-danger group-hover:opacity-100" title="Remove" @click="store.deleteAttachment(a.id)"><UIcon name="i-heroicons-x-mark" /></button>
       </div>
     </div>
     <button v-if="!readonly" class="mt-2 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-tertiary hover:bg-elevated hover:text-secondary" :disabled="busy" @click="fileEl?.click()">

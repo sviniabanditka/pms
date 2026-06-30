@@ -22,7 +22,7 @@ const title = computed(() => meeting.value?.kind === 'huddle' ? 'Huddle' : (meet
     :class="expanded ? 'w-[640px]' : 'w-72'">
     <!-- header -->
     <div class="flex items-center gap-2 border-b border-subtle px-3 py-2">
-      <span class="flex h-2 w-2 rounded-full bg-red-500" />
+      <span class="flex h-2 w-2 rounded-full bg-danger" />
       <span class="text-sm font-medium text-white">{{ title }}</span>
       <span class="text-xs text-tertiary">{{ tiles.length }}</span>
       <span v-if="connecting" class="text-xs text-tertiary">connecting…</span>

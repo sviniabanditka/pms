@@ -22,7 +22,7 @@ const fmtSize = (n: number) => (n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' :
         <UIcon name="i-heroicons-document" class="shrink-0 text-tertiary" />
         <span class="min-w-0 flex-1"><span class="block truncate text-xs text-secondary">{{ p.name }}</span><span class="block text-[10px] text-tertiary">{{ fmtSize(p.size) }}</span></span>
       </div>
-      <button class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-surface text-tertiary shadow hover:text-red-400"
+      <button class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-surface text-tertiary shadow hover:text-danger"
         title="Remove" @click="emit('remove', i)"><UIcon name="i-heroicons-x-mark" class="text-xs" /></button>
     </div>
   </div>

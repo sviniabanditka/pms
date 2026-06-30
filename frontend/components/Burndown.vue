@@ -25,8 +25,8 @@ const idealPts = computed(() => {
     <svg v-else :viewBox="`0 0 ${W} ${H}`" class="w-full">
       <line :x1="PAD" :y1="H - PAD" :x2="W - PAD" :y2="H - PAD" stroke="currentColor" class="text-subtle" stroke-width="0.5" />
       <polyline :points="idealPts" fill="none" stroke="currentColor" class="text-tertiary" stroke-width="1" stroke-dasharray="3 3" />
-      <polyline :points="actualPts" fill="none" stroke="#5e6ad2" stroke-width="1.5" />
-      <circle v-for="(d, i) in data" :key="i" :cx="x(i)" :cy="y(d.remaining)" r="2" fill="#5e6ad2" />
+      <polyline :points="actualPts" fill="none" stroke="#7aa2f7" stroke-width="1.5" />
+      <circle v-for="(d, i) in data" :key="i" :cx="x(i)" :cy="y(d.remaining)" r="2" fill="#7aa2f7" />
     </svg>
     <div class="mt-1 flex items-center justify-between text-[11px] text-tertiary">
       <span>{{ data[0]?.day?.slice(5) }}</span>
