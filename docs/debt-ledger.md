@@ -11,7 +11,7 @@
 
 | ID | Долг | Триггер |
 |----|------|---------|
-| MOBILE | **Мобильный клиент** — веб-адаптив shell'а пробовали (off-canvas drawer/fullscreen-панели/calendar-точки/PWA/offline-SW), но UX вышел плохой → откатили (revert). Решение: делать **нативное мобильное приложение** отдельно (не адаптив текущего desktop-shell). | когда возьмёмся за нативный клиент |
+| MOBILE | **Мобильный клиент** — веб-адаптив пробовали → откатили (плохой UX). Решение: **нативное приложение** (RN+Expo, монорепо `mobile/`, lean MVP, online-first+SQLite-кэш). Спланировано: **docs/mobile/README.md** (архитектура/решения) + **docs/mobile/roadmap.md** (фазы M0–M5). Net-new бэкенд = только push-инфра (device_tokens + Expo Push + River-воркер); login уже отдаёт Bearer-токен, connect-кодген переиспользуется. | старт по roadmap M0 (scaffold+auth) |
 
 ## Закрыто
 
