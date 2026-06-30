@@ -2149,7 +2149,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 <input ref="chatFileEl" type="file" multiple class="hidden" @change="onChatFilePick" />
                 <UButton class="ml-auto" :icon="showPreview ? 'i-heroicons-pencil' : 'i-heroicons-eye'" color="gray" variant="ghost" size="2xs" square @click="showPreview = !showPreview" />
               </div>
-              <div v-if="showPreview" class="prose-chat min-h-[60px] px-3 py-2 text-sm" v-html="renderMarkdown(msgDraft) || '<span class=&quot;text-tertiary&quot;>Nothing to preview</span>'" />
+              <div v-if="showPreview" class="prose-chat min-h-[60px] px-3 py-2 text-sm" v-html="renderMarkdown(msgDraft) || '<span class=&quot;text-tertiary&quot;>// nothing to preview</span>'" />
               <div v-else class="relative flex gap-2 px-3 py-2">
                 <MentionMenu :m="chatMention" />
                 <span class="select-none pt-px text-ok">&gt;</span>
@@ -2352,7 +2352,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                   <span>{{ store.milestoneProgress(m.id).done }}/{{ store.milestoneProgress(m.id).total }}</span>
                 </div>
               </div>
-              <div v-if="!store.teamMilestones(selectedTeamId).length" class="py-10 text-center text-sm text-tertiary">No milestones yet</div>
+              <div v-if="!store.teamMilestones(selectedTeamId).length" class="py-10 text-center text-sm text-tertiary">// no milestones</div>
             </div>
           </div>
         </template>
@@ -2450,7 +2450,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               class="h-full w-full resize-none bg-transparent p-4 text-sm leading-relaxed outline-none"
               @paste="onDocPaste" @input="onDocInput(); docMention.detect()" @keydown="onDocKeydown" />
           </div>
-          <div v-if="docMode !== 'edit'" :class="docMode === 'split' ? 'w-1/2' : 'w-full'" class="prose-chat overflow-y-auto p-4 text-sm leading-relaxed" v-html="renderMarkdown(docDraft) || '<span class=&quot;text-tertiary&quot;>Nothing to preview</span>'" />
+          <div v-if="docMode !== 'edit'" :class="docMode === 'split' ? 'w-1/2' : 'w-full'" class="prose-chat overflow-y-auto p-4 text-sm leading-relaxed" v-html="renderMarkdown(docDraft) || '<span class=&quot;text-tertiary&quot;>// nothing to preview</span>'" />
         </div>
       </template>
 
@@ -2490,7 +2490,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 class="flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
                 :class="store.labelFilter.includes(l.id) ? 'border-subtle bg-active text-white' : 'border-subtle bg-elevated text-tertiary hover:bg-hover'"
                 @click="store.labelFilter.includes(l.id) ? store.labelFilter = store.labelFilter.filter((x) => x !== l.id) : store.labelFilter.push(l.id)">
-                <span class="h-2 w-2 rounded-full" :style="{ background: l.colorToken }" />{{ l.name }}
+                <span :style="{ color: l.colorToken }">#{{ l.name }}</span>
               </button>
             </template>
             <span class="mx-1 text-subtle">|</span>
@@ -2529,8 +2529,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 <div class="mb-1.5 text-xs text-accent2">{{ i.identifier }}</div>
                 <div class="line-clamp-3 text-sm font-medium leading-snug">{{ i.title }}</div>
                 <div v-if="store.labelsForIssue(i.id).length" class="mt-1.5 flex flex-wrap gap-1">
-                  <span v-for="l in store.labelsForIssue(i.id)" :key="l.id" class="flex items-center gap-1 rounded-full border border-subtle px-1.5 py-0.5 text-xs text-tertiary">
-                    <span class="h-2 w-2 rounded-full" :style="{ background: l.colorToken }" />{{ l.name }}
+                  <span v-for="l in store.labelsForIssue(i.id)" :key="l.id" class="flex items-center gap-1 rounded border border-subtle px-1.5 py-0.5 text-xs text-tertiary">
+                    <span :style="{ color: l.colorToken }">#{{ l.name }}</span>
                   </span>
                 </div>
                 <div class="mt-2.5 flex items-center gap-2 text-xs text-tertiary">
@@ -2592,15 +2592,15 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               class="group flex cursor-pointer items-center gap-3 border-b border-subtle/40 px-4 py-2.5 hover:bg-hover"
               :class="{ 'bg-active': selectedIssueId === i.id || selectedIds.has(i.id) }"
               @click="openIssue(i.id)">
-              <UCheckbox :model-value="selectedIds.has(i.id)" class="shrink-0 transition-opacity" :class="selCount || selectedIds.has(i.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'" @click.stop @update:model-value="toggleSel(i.id)" />
+              <TermCheck :model-value="selectedIds.has(i.id)" class="shrink-0 transition-opacity" :class="selCount || selectedIds.has(i.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'" @click.stop @update:model-value="toggleSel(i.id)" />
               <span v-if="i.priority" class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: prioColor(i.priority) }">{{ prioGlyph(i.priority) }}</span>
               <UIcon v-else name="i-heroicons-minus" class="shrink-0 text-tertiary/50" />
               <span class="w-14 shrink-0 text-sm text-accent2">{{ i.identifier }}</span>
               <span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(store.states[i.stateId]?.category) }">{{ statusGlyph(store.states[i.stateId]?.category) }}</span>
               <span class="truncate">{{ i.title }}</span>
               <span class="flex flex-1 flex-wrap items-center gap-1">
-                <span v-for="l in store.labelsForIssue(i.id)" :key="l.id" class="flex items-center gap-1 rounded-full border border-subtle px-1.5 py-0.5 text-xs text-tertiary">
-                  <span class="h-2 w-2 rounded-full" :style="{ background: l.colorToken }" />{{ l.name }}
+                <span v-for="l in store.labelsForIssue(i.id)" :key="l.id" class="flex items-center gap-1 rounded border border-subtle px-1.5 py-0.5 text-xs text-tertiary">
+                  <span :style="{ color: l.colorToken }">#{{ l.name }}</span>
                 </span>
               </span>
               <span v-if="i.dueDate || i.scheduledDate" class="shrink-0 text-sm tabular-nums text-tertiary">{{ String(i.scheduledDate || i.dueDate).slice(5, 10) }}</span>
@@ -2812,7 +2812,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <!-- Custom fields -->
           <div v-for="f in store.fieldsForTeam(selectedIssue.teamId)" :key="f.id" class="flex min-h-8 items-center gap-3">
             <span class="w-24 shrink-0 truncate text-tertiary">{{ f.name }}</span>
-            <div v-if="f.type==='checkbox'" class="flex-1 pl-2"><UCheckbox :model-value="!!store.cfValue(selectedIssue.id, f.id)"
+            <div v-if="f.type==='checkbox'" class="flex-1 pl-2"><TermCheck :model-value="!!store.cfValue(selectedIssue.id, f.id)"
               @update:model-value="store.setCustomFieldValue(selectedIssue.id, f.id, $event)" /></div>
             <USelectMenu v-else-if="f.type==='select'" class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="—" value-attribute="value" option-attribute="label"
               :model-value="store.cfValue(selectedIssue.id, f.id) || undefined" :options="[{ label: '—', value: '' }, ...(f.config?.options || []).map((o) => ({ label: o, value: o }))]"
@@ -2842,7 +2842,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Labels</div>
           <div class="flex flex-wrap items-center gap-1.5">
             <span v-for="l in store.labelsForIssue(selectedIssue.id)" :key="l.id" class="group/lbl flex items-center gap-1 rounded-full border border-subtle px-2 py-0.5 text-xs">
-              <span class="h-2 w-2 rounded-full" :style="{ background: l.colorToken }" />{{ l.name }}
+              <span :style="{ color: l.colorToken }">#{{ l.name }}</span>
               <UIcon name="i-heroicons-x-mark" class="cursor-pointer text-tertiary hover:text-danger" @click="store.removeLabel(selectedIssue.id, l.id)" />
             </span>
             <button class="flex items-center gap-1 rounded-full border border-dashed border-subtle px-2 py-0.5 text-xs text-tertiary hover:border-strong hover:text-secondary" @click="showLabelModal = true">
@@ -3141,7 +3141,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <span class="text-tertiary">–</span>
           <TimePicker v-model="calForm.end" :from="calForm.start" class="flex-1" />
         </div>
-        <UCheckbox v-if="calForm.kind !== 'meeting'" v-model="calForm.allDay" label="All day" />
+        <TermCheck v-if="calForm.kind !== 'meeting'" v-model="calForm.allDay" label="All day" />
         <!-- повтор (не для митинга) -->
         <div v-if="calForm.kind !== 'meeting'" class="flex items-center gap-2">
           <USelectMenu v-model="calForm.recurrence" class="w-40"
@@ -3212,7 +3212,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <button v-for="l in store.teamLabels(selectedIssue.teamId).filter((l) => !store.labelsForIssue(selectedIssue.id).some((x) => x.id === l.id))" :key="l.id"
               class="flex items-center gap-1 rounded-full border border-subtle px-2.5 py-1 text-sm hover:border-strong hover:bg-hover"
               @click="addLabelFromModal(l.id); showLabelModal = false">
-              <span class="h-2 w-2 rounded-full" :style="{ background: l.colorToken }" />{{ l.name }}
+              <span :style="{ color: l.colorToken }">#{{ l.name }}</span>
             </button>
             <span v-if="!store.teamLabels(selectedIssue.teamId).filter((l) => !store.labelsForIssue(selectedIssue.id).some((x) => x.id === l.id)).length" class="text-sm text-tertiary">All labels added</span>
           </div>
@@ -3436,7 +3436,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                   <div v-if="!autoForm.actions.length" class="py-2 text-center text-xs text-tertiary">No actions — add one.</div>
                 </div>
                 <div class="flex items-center gap-2 pt-1">
-                  <UCheckbox v-model="autoForm.enabled" label="Enabled" />
+                  <TermCheck v-model="autoForm.enabled" label="Enabled" />
                   <UButton class="ml-auto" color="gray" variant="ghost" @click="showAuto = false">[ cancel ]</UButton>
                   <UButton color="gray" @click="saveAuto">[ {{ autoForm.id ? 'save' : 'create' }} ]</UButton>
                 </div>
@@ -3509,7 +3509,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             </div>
             <p class="mb-3 text-xs text-tertiary">Which notifications to show in the Inbox.</p>
             <div v-for="p in NOTIF_PREF_LIST" :key="p.key" class="flex items-center gap-2 rounded-md px-2 py-2 hover:bg-hover">
-              <UCheckbox :model-value="notifPrefs[p.key] !== false" @update:model-value="toggleNotifPref(p.key)" />
+              <TermCheck :model-value="notifPrefs[p.key] !== false" @update:model-value="toggleNotifPref(p.key)" />
               <span class="text-sm">{{ p.label }}</span>
             </div>
           </template>
@@ -3522,7 +3522,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             </div>
             <p class="mb-3 text-xs text-tertiary">Toggle rail sections and set their order.</p>
             <div v-for="(s, i) in cfgList" :key="s.key" class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
-              <UCheckbox :model-value="s.visible" @update:model-value="toggleSection(i)" />
+              <TermCheck :model-value="s.visible" @update:model-value="toggleSection(i)" />
               <UIcon :name="s.icon" class="text-tertiary" />
               <span class="flex-1 text-sm">{{ s.label }}</span>
               <UButton icon="i-heroicons-chevron-up" color="gray" variant="ghost" size="2xs" square :disabled="i === 0" @click="moveSection(i, -1)" />
