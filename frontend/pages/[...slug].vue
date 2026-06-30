@@ -1581,7 +1581,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
       <!-- notifications -->
       <div class="relative">
         <UButton icon="i-heroicons-bell" color="gray" variant="ghost" square @click="notifOpen = !notifOpen" />
-        <UBadge v-if="store.unreadCount" color="primary" size="xs" class="pointer-events-none absolute -right-1 -top-1 rounded-full">{{ store.unreadCount }}</UBadge>
+        <UBadge v-if="store.unreadCount" color="primary" size="xs" class="pointer-events-none absolute -right-1 -top-1 rounded">{{ store.unreadCount }}</UBadge>
         <div v-if="notifOpen" class="absolute right-0 top-10 z-50 w-80 rounded-md border border-subtle bg-elevated shadow-lg">
           <div class="flex items-center justify-between border-b border-subtle px-3 py-2 text-xs uppercase text-tertiary">
             <span><span class="text-ok"># </span>Notifications</span>
@@ -1608,7 +1608,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           :color="activeSection === s.key ? 'primary' : 'gray'"
           variant="ghost"
           @click="switchSection(s.key as any)" />
-        <span v-if="s.key === 'chats' && store.totalUnread" class="absolute -right-0.5 -top-0.5 flex min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold text-white">{{ store.totalUnread }}</span>
+        <span v-if="s.key === 'chats' && store.totalUnread" class="absolute -right-0.5 -top-0.5 flex min-w-[16px] items-center justify-center rounded bg-accent px-1 text-[10px] font-semibold text-white">{{ store.totalUnread }}</span>
       </div>
 
       <!-- настройки воркспейса -->
@@ -1710,7 +1710,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 hover:bg-hover"
           :class="store.activeChannelId === c.id ? 'bg-active text-white' : store.channelUnreadCount(c.id) ? 'font-semibold text-white' : 'text-secondary'"
           @click="openChannel(c.id)"><UIcon :name="c.private ? 'i-heroicons-lock-closed' : 'i-heroicons-hashtag'" class="text-tertiary" /> <span class="truncate">{{ c.name }}</span>
-          <span v-if="store.channelUnreadCount(c.id) && store.activeChannelId !== c.id" class="ml-auto rounded-full bg-accent px-1.5 text-[11px] font-medium text-white">{{ store.channelUnreadCount(c.id) }}</span></div>
+          <span v-if="store.channelUnreadCount(c.id) && store.activeChannelId !== c.id" class="ml-auto rounded bg-accent px-1.5 text-[11px] font-medium text-white">{{ store.channelUnreadCount(c.id) }}</span></div>
         <div v-if="!store.channelList.length" class="px-2 py-1 text-xs text-tertiary/60">// no channels</div>
 
         <div class="mb-1 mt-4 px-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Direct messages</div>
@@ -1720,7 +1720,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           @click="openDM(u.id)">
           <Avatar :name="u.name || u.email" :avatar-key="u.avatarKey" :size="20" />
           <span class="truncate">{{ u.name || u.email }}</span>
-          <span v-if="store.channelUnreadCount(store.dmChannelWith(u.id))" class="ml-auto rounded-full bg-accent px-1.5 text-[11px] font-medium text-white">{{ store.channelUnreadCount(store.dmChannelWith(u.id)) }}</span>
+          <span v-if="store.channelUnreadCount(store.dmChannelWith(u.id))" class="ml-auto rounded bg-accent px-1.5 text-[11px] font-medium text-white">{{ store.channelUnreadCount(store.dmChannelWith(u.id)) }}</span>
         </div>
         <div v-if="!store.wsUsers.length" class="px-2 py-1 text-xs text-tertiary/60">// no other users</div>
       </template>
@@ -2036,7 +2036,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           </div>
           <div v-if="!store.widgetsOf(selectedDashboardId).length"
             class="flex h-32 cursor-pointer items-center justify-center rounded-lg border border-dashed border-subtle text-sm text-tertiary hover:bg-hover"
-            @click="showWidget = true">+ Add your first widget</div>
+            @click="showWidget = true"><span class="text-ok">$</span>&nbsp;add your first widget</div>
         </div>
       </template>
       <div v-else class="p-8 text-sm text-tertiary">Pick or create a dashboard →</div>
@@ -2270,9 +2270,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <span class="text-tertiary">{{ store.activeWorkspace?.name }}</span>
           <span class="text-tertiary">/</span>
           <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
-          <span class="text-tertiary">/</span>
-          <UIcon name="i-heroicons-arrow-path-rounded-square" class="text-tertiary" />
-          <span class="font-medium">Cycles</span>
+          <span class="text-tertiary">/</span>          <span class="font-medium">Cycles</span>
           <span class="text-tertiary">{{ store.teamCycles(selectedTeamId).length }}</span>
           <UButton class="ml-auto" size="xs" color="gray" variant="ghost" @click="openCreate('cycle')">[ new cycle ]</UButton>
         </div>
@@ -2332,9 +2330,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <span class="text-tertiary">{{ store.activeWorkspace?.name }}</span>
             <span class="text-tertiary">/</span>
             <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
-            <span class="text-tertiary">/</span>
-            <UIcon name="i-heroicons-flag" class="text-tertiary" />
-            <span class="font-medium">Milestones</span>
+            <span class="text-tertiary">/</span>            <span class="font-medium">Milestones</span>
             <span class="text-tertiary">{{ store.teamMilestones(selectedTeamId).length }}</span>
             <UButton class="ml-auto" size="xs" color="gray" variant="ghost" @click="openCreate('milestone')">[ new milestone ]</UButton>
           </div>
