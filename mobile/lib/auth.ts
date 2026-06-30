@@ -1,8 +1,17 @@
 // Auth: session-токен из POST /login (бэк уже отдаёт token в body), хранится в
 // expo-secure-store, шлётся как Bearer (см. connect.ts). Кэш в памяти, чтобы
 // интерсептор не дёргал secure-store на каждый RPC.
+import { Platform } from 'react-native'
 import * as SecureStore from 'expo-secure-store'
 import { API_BASE } from './config'
+
+// expo-secure-store не поддерживает web → на web падаем в localStorage (dev-удобство).
+const isWeb = Platform.OS === 'web'
+const store = {
+  get: (k: string) => (isWeb ? Promise.resolve(globalThis.localStorage?.getItem(k) ?? null) : SecureStore.getItemAsync(k)),
+  set: (k: string, v: string) => (isWeb ? Promise.resolve(globalThis.localStorage?.setItem(k, v)) : SecureStore.setItemAsync(k, v)),
+  del: (k: string) => (isWeb ? Promise.resolve(globalThis.localStorage?.removeItem(k)) : SecureStore.deleteItemAsync(k)),
+}
 
 const KEY = 'pms_token'
 let cached: string | null = null
@@ -12,18 +21,18 @@ export function getCachedToken() {
 }
 
 export async function loadToken() {
-  cached = await SecureStore.getItemAsync(KEY)
+  cached = await store.get(KEY)
   return cached
 }
 
 async function setToken(tok: string) {
   cached = tok
-  await SecureStore.setItemAsync(KEY, tok)
+  await store.set(KEY, tok)
 }
 
 async function clearToken() {
   cached = null
-  await SecureStore.deleteItemAsync(KEY)
+  await store.del(KEY)
 }
 
 export type User = { id: string; email: string; name: string }
