@@ -23,11 +23,19 @@ const PRIO_ICON = [
   'i-heroicons-exclamation-triangle',
 ]
 
+// Моно-глифы (терминальный стиль) вместо heroicons
+const STATUS_GLYPH: Record<string, string> = {
+  backlog: '○', unstarted: '◔', started: '◐', completed: '●', canceled: '⊘',
+}
+const PRIO_GLYPH = ['·', '▂', '▄', '▆', '█'] // none low med high urgent
+
 export function useColors() {
   return {
     statusColor: (cat: string) => STATUS[cat] || '#6b747e',
     statusIcon: (cat: string) => STATUS_ICON[cat] || 'i-heroicons-minus-circle',
+    statusGlyph: (cat: string) => STATUS_GLYPH[cat] || '○',
     prioColor: (p: number) => PRIO[p] ?? PRIO[0],
     prioIcon: (p: number) => PRIO_ICON[p] ?? PRIO_ICON[0],
+    prioGlyph: (p: number) => PRIO_GLYPH[p] ?? PRIO_GLYPH[0],
   }
 }
