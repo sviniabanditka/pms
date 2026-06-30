@@ -2044,7 +2044,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
       <template v-else-if="activeSection === 'inbox'">
         <div class="sticky top-0 z-10 flex items-center gap-2 border-b border-subtle bg-surface px-4 py-3 text-sm">
           <UIcon name="i-heroicons-inbox" class="text-tertiary" />
-          <span class="font-medium">Inbox</span>
+          <span class="font-medium">inbox</span>
           <span v-if="store.unreadCount" class="rounded bg-accent/20 px-1.5 text-xs text-accent">{{ store.unreadCount }}</span>
           <UButton v-if="store.unreadCount" class="ml-auto" size="xs" color="gray" variant="ghost" @click="store.markAllNotificationsRead()">[ mark all read ]</UButton>
         </div>
@@ -2268,7 +2268,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <span class="text-tertiary">{{ store.activeWorkspace?.name }}</span>
           <span class="text-tertiary">/</span>
           <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
-          <span class="text-tertiary">/</span>          <span class="font-medium">Cycles</span>
+          <span class="text-tertiary">/</span>          <span class="font-medium">cycles</span>
           <span class="text-tertiary">{{ store.teamCycles(selectedTeamId).length }}</span>
           <UButton class="ml-auto" size="xs" color="gray" variant="ghost" @click="openCreate('cycle')">[ new cycle ]</UButton>
         </div>
@@ -2326,7 +2326,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <span class="text-tertiary">{{ store.activeWorkspace?.name }}</span>
             <span class="text-tertiary">/</span>
             <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
-            <span class="text-tertiary">/</span>            <span class="font-medium">Milestones</span>
+            <span class="text-tertiary">/</span>            <span class="font-medium">milestones</span>
             <span class="text-tertiary">{{ store.teamMilestones(selectedTeamId).length }}</span>
             <UButton class="ml-auto" size="xs" color="gray" variant="ghost" @click="openCreate('milestone')">[ new milestone ]</UButton>
           </div>
@@ -2360,7 +2360,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
           <span class="text-tertiary">/</span>
           <UIcon name="i-heroicons-document-text" class="text-tertiary" />
-          <span class="font-medium">Docs</span>
+          <span class="font-medium">docs</span>
           <span class="text-tertiary">{{ store.teamDocs(selectedTeamId).length }}</span>
           <UButton class="ml-auto" size="xs" color="gray" variant="ghost" @click="openCreate('doc')">[ new doc ]</UButton>
         </div>
@@ -2388,7 +2388,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
           <span class="text-tertiary">/</span>
           <UIcon name="i-heroicons-square-3-stack-3d" class="text-tertiary" />
-          <span class="font-medium">Views</span>
+          <span class="font-medium">views</span>
           <span class="text-tertiary">{{ store.teamViews(selectedTeamId).length }}</span>
         </div>
         <div class="p-4">
@@ -2954,7 +2954,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     <aside v-if="store.threadParentId && activeSection === 'chats'" :style="{ width: threadPanel.w.value + 'px' }" class="flex shrink-0 flex-col overflow-hidden rounded-xl border border-subtle bg-surface text-sm">
       <div class="flex shrink-0 items-center gap-2 border-b border-subtle px-4 py-3">
         <UIcon name="i-heroicons-chat-bubble-left-right" class="text-tertiary" />
-        <span class="font-medium">Thread</span>
+        <span class="font-medium">thread</span>
         <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="store.closeThread()" />
       </div>
       <div class="flex-1 overflow-y-auto px-2 py-3">
@@ -2999,7 +2999,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     <UModal v-model="createOpen" :ui="modalUi">
       <div class="p-4">
         <div class="mb-4 flex items-center gap-2">
-          <span class="text-base font-semibold text-white"><span class="text-ok">$</span> New {{ createTypeLabel.toLowerCase() }}</span>
+          <span class="text-base font-semibold text-white"><span class="text-ok">$</span> new {{ createTypeLabel.toLowerCase() }}</span>
           <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="createOpen = false" />
         </div>
 
@@ -3106,7 +3106,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     <!-- Add-widget модалка -->
     <UModal v-model="showWidget" :ui="modalUi">
       <div class="space-y-3 p-4">
-        <span class="text-sm font-semibold text-white"><span class="text-ok">$</span> Add widget</span>
+        <span class="text-sm font-semibold text-white"><span class="text-ok">$</span> add widget</span>
         <USelectMenu v-model="wType" :options="labelOpts(['note', 'stat', 'view', 'chart'])" value-attribute="value" option-attribute="label" />
         <UInput v-model="wTitle" placeholder="Title (optional)" />
         <UTextarea v-if="wType==='note'" v-model="wNote" placeholder="Text…" :rows="3" />
@@ -3161,7 +3161,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     <!-- Ручная запись времени -->
     <UModal v-model="showTimeEntry" :ui="modalUi">
       <div class="space-y-3 p-4">
-        <span class="text-sm font-semibold text-white"><span class="text-ok">$</span> Log time</span>
+        <span class="text-sm font-semibold text-white"><span class="text-ok">$</span> log time</span>
         <div class="flex items-center gap-2">
           <DatePicker v-model="teForm.date" block class="flex-1" />
           <TimePicker v-model="teForm.start" class="w-28" />
@@ -3179,7 +3179,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     <!-- iCal subscribe модалка -->
     <UModal v-model="showIcal" :ui="modalUi">
       <div class="space-y-3 p-4">
-        <span class="text-sm font-semibold text-white"><span class="text-ok">$</span> Subscribe to your calendar</span>
+        <span class="text-sm font-semibold text-white"><span class="text-ok">$</span> subscribe to your calendar</span>
         <p class="text-xs text-tertiary">Add this URL in Google Calendar / Apple Calendar (subscribe by URL). Read-only: your events, assigned deadlines and meetings. Keep it private — anyone with the link can view.</p>
         <div class="flex items-center gap-2">
           <UInput :model-value="icalUrl" readonly class="flex-1" :ui="{ base: 'font-mono text-xs' }" @focus="(e: any) => e.target.select()" />
@@ -3197,7 +3197,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     <UModal v-model="showLabelModal" :ui="modalUi">
       <div v-if="selectedIssue" class="space-y-4 p-4">
         <div class="flex items-center gap-2">
-          <span class="text-base font-semibold text-white"><span class="text-ok">$</span> Add label</span>
+          <span class="text-base font-semibold text-white"><span class="text-ok">$</span> add label</span>
           <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showLabelModal = false" />
         </div>
         <div>
@@ -3225,7 +3225,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     <UModal v-model="showRelModal" :ui="modalUi">
       <div v-if="selectedIssue" class="space-y-4 p-4">
         <div class="flex items-center gap-2">
-          <span class="text-base font-semibold text-white"><span class="text-ok">$</span> Add relation</span>
+          <span class="text-base font-semibold text-white"><span class="text-ok">$</span> add relation</span>
           <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showRelModal = false" />
         </div>
         <div>
@@ -3248,7 +3248,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
     <UModal v-model="showStates" :ui="modalUi">
       <div class="space-y-3 p-4">
         <div class="flex items-center gap-2">
-          <span class="text-base font-semibold text-white"><span class="text-ok">$</span> Workflow statuses · {{ selectedTeam?.key }}</span>
+          <span class="text-base font-semibold text-white"><span class="text-ok">$</span> workflow statuses · {{ selectedTeam?.key }}</span>
           <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showStates = false" />
         </div>
         <div v-for="st in store.teamStates(selectedTeamId)" :key="st.id" class="flex items-center gap-2">
@@ -3284,7 +3284,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <!-- GENERAL -->
           <template v-if="settingsTab === 'general'">
             <div class="mb-4 flex items-center justify-between">
-              <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> General</h2>
+              <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> general</h2>
               <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
             </div>
             <div class="space-y-4 text-sm">
@@ -3317,7 +3317,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <!-- MEMBERS -->
           <template v-else-if="settingsTab === 'members'">
             <div class="mb-4 flex items-center justify-between">
-              <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> Members</h2>
+              <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> members</h2>
               <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
             </div>
             <div class="mb-4 flex gap-2">
@@ -3347,7 +3347,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <!-- TEAMS -->
           <template v-else-if="settingsTab === 'teams'">
             <div class="mb-4 flex items-center justify-between">
-              <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> Teams</h2>
+              <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> teams</h2>
               <div class="flex items-center gap-2">
                 <UButton size="xs" @click="showSettings = false; openCreate('team')">[ new team ]</UButton>
                 <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
@@ -3368,7 +3368,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <!-- LABELS -->
           <template v-else-if="settingsTab === 'labels'">
             <div class="mb-4 flex items-center justify-between">
-              <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> Labels</h2>
+              <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> labels</h2>
               <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
             </div>
             <div class="mb-4 flex items-center gap-2">
@@ -3440,7 +3440,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <!-- список правил -->
             <template v-else>
               <div class="mb-4 flex items-center justify-between">
-                <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> Automations</h2>
+                <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> automations</h2>
                 <div class="flex items-center gap-2">
                   <UButton color="gray" size="xs" @click="openAutoCreate">[ new rule ]</UButton>
                   <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
@@ -3463,7 +3463,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <!-- ACCOUNT -->
           <template v-else-if="settingsTab === 'account'">
             <div class="mb-4 flex items-center justify-between">
-              <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> Account</h2>
+              <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> account</h2>
               <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
             </div>
             <div class="mb-4 flex items-center gap-3">
@@ -3482,7 +3482,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <!-- APPEARANCE -->
           <template v-else-if="settingsTab === 'appearance'">
             <div class="mb-4 flex items-center justify-between">
-              <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> Appearance</h2>
+              <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> appearance</h2>
               <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
             </div>
             <div class="mb-1 text-xs text-tertiary">Density</div>
@@ -3498,7 +3498,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <!-- NOTIFICATIONS -->
           <template v-else-if="settingsTab === 'notifications'">
             <div class="mb-4 flex items-center justify-between">
-              <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> Notifications</h2>
+              <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> notifications</h2>
               <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
             </div>
             <p class="mb-3 text-xs text-tertiary">Which notifications to show in the Inbox.</p>
@@ -3511,7 +3511,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <!-- SECTIONS (sidebar) -->
           <template v-else-if="settingsTab === 'sections'">
             <div class="mb-4 flex items-center justify-between">
-              <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> Sidebar sections</h2>
+              <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> sidebar sections</h2>
               <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
             </div>
             <p class="mb-3 text-xs text-tertiary">Toggle rail sections and set their order.</p>
@@ -3532,7 +3532,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
       <div class="space-y-3 p-4">
         <div class="flex items-center gap-2">
           <UIcon name="i-heroicons-user-group" class="text-tertiary" />
-          <span class="text-base font-semibold text-white"><span class="text-ok">$</span> Members</span>
+          <span class="text-base font-semibold text-white"><span class="text-ok">$</span> members</span>
           <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showMembers = false" />
         </div>
         <!-- invite -->
