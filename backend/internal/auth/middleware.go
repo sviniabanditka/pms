@@ -25,8 +25,7 @@ func (s *Service) Authenticator(next http.Handler) http.Handler {
 		tok := extractToken(r)
 		if tok != "" {
 			if sess, err := s.sessions.Get(r.Context(), tok); err == nil && sess != nil {
-				ctx := context.WithValue(r.Context(), ctxUserID, sess.UserID)
-				ctx = context.WithValue(ctx, ctxToken, tok)
+				ctx := context.WithValue(WithUserID(r.Context(), sess.UserID), ctxToken, tok)
 				r = r.WithContext(ctx)
 			}
 		}
@@ -53,6 +52,11 @@ func RequireAuth(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// WithUserID кладёт id аутентифицированного пользователя в контекст (симметрично UserID).
+func WithUserID(ctx context.Context, uid uuid.UUID) context.Context {
+	return context.WithValue(ctx, ctxUserID, uid)
 }
 
 // UserID достаёт id пользователя из контекста.
