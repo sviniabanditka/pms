@@ -5,6 +5,7 @@ onMounted(() => { if (isAuthed()) navigateTo('/my/assigned') })
 
 const DESC = 'Issues, docs, chat, calendar and meetings in one fast workspace. Local-first and realtime — every change lands instantly for the whole team.'
 useHead({
+  titleTemplate: '%s', // полный маркетинг-тайтл без " · PMS"-суффикса
   title: 'PMS — the workspace that runs at your speed',
   meta: [
     { name: 'description', content: DESC },

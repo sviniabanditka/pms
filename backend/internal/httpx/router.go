@@ -182,8 +182,15 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 		_, _ = w.Write([]byte(ics))
 	})
 
-	// ConnectRPC-сервисы.
-	rpc.Mount(r, svcs)
+	// ConnectRPC-сервисы. Streaming-ответы (bootstrap) жмём gzip на HTTP-уровне
+	// (Content-Encoding) — браузер декодит прозрачно; connect-web не умеет
+	// connect-protocol compression, а bootstrap большой (×6-7 экономии). Unary
+	// connect-go жмёт сам через Accept-Encoding, поэтому в allowlist только
+	// streaming-типы (иначе риск двойного сжатия).
+	r.Group(func(cr chi.Router) {
+		cr.Use(middleware.Compress(5, "application/connect+json", "application/connect+proto"))
+		rpc.Mount(cr, svcs)
+	})
 
 	return r
 }

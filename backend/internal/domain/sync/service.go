@@ -105,9 +105,10 @@ func (s *Service) Bootstrap(ctx context.Context, actor, wsID uuid.UUID, only []s
 		if err := table("workspace_member", &[]models.WorkspaceMember{}); err != nil {
 			return err
 		}
-		// issues: только активные (не архив/удаление).
+		// issues: только активные (не архив/удаление). description НЕ шлём — тяжёлое
+		// тело (md) грузится лениво при открытии задачи (GetActivity) ради объёма bootstrap.
 		if err := table("issue", &[]models.Issue{}, func(q *bun.SelectQuery) {
-			q.Where("archived_at IS NULL").Where("deleted_at IS NULL")
+			q.ExcludeColumn("description").Where("archived_at IS NULL").Where("deleted_at IS NULL")
 		}); err != nil {
 			return err
 		}

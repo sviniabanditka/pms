@@ -15,7 +15,12 @@ const SECTIONS = [
   { key: 'chats', label: 'Chats', icon: 'i-heroicons-chat-bubble-left-right' },
   { key: 'meetings', label: 'Meetings', icon: 'i-heroicons-video-camera' },
 ]
-const activeSection = ref<'dashboard' | 'tasks' | 'inbox' | 'chats' | 'meetings' | 'calendar' | 'reports'>('tasks')
+// начальная секция из URL (SSR-safe, чтобы тайтл вкладки совпадал с роутом сразу;
+// полную привязку к сущностям делает applyRoute клиентски в onMounted)
+const SECTION_BY_SEG: Record<string, 'dashboard' | 'tasks' | 'inbox' | 'chats' | 'meetings' | 'calendar' | 'reports'> =
+  { inbox: 'inbox', chats: 'chats', chat: 'chats', meetings: 'meetings', calendar: 'calendar', reports: 'reports', dashboard: 'dashboard' }
+const activeSection = ref<'dashboard' | 'tasks' | 'inbox' | 'chats' | 'meetings' | 'calendar' | 'reports'>(
+  SECTION_BY_SEG[useRoute().path.split('/').filter(Boolean)[0] || ''] || 'tasks')
 // видимые разделы по конфигу пользователя (порядок + видимость); новые — в конец
 const railSections = computed(() => {
   const saved = (store.mySectionsConfig?.sections || []) as { key: string; visible?: boolean }[]
@@ -318,17 +323,24 @@ const cycleBreakdown = computed(() => {
     return rows
   }
   if (insightTab.value === 'labels') {
-    return Object.values(store.labels).map((l: any, n: number) => ({
-      kind: 'label', value: l.id, label: l.name, color: l.colorToken || BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length],
-      count: iss.filter((i) => store.labelsForIssue(i.id).some((x: any) => x.id === l.id)).length,
-    })).filter((r) => r.count).map((r) => ({ ...r, pct: pct(r.count) }))
+    // один проход по issues цикла через кэш-индекс labelsByIssue (раньше O(labels×issues×issueLabels))
+    const lbi = store.labelsByIssue
+    const counts = new Map<string, number>()
+    for (const i of iss) { const ids = lbi.get(i.id); if (ids) for (const lid of ids) counts.set(lid, (counts.get(lid) || 0) + 1) }
+    return Array.from(counts.entries()).map(([lid, count], n) => {
+      const l: any = store.labels[lid]
+      return { kind: 'label', value: lid, label: l?.name || '?', color: l?.colorToken || BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length], count, pct: pct(count) }
+    }).filter((r) => r.count)
   }
   if (insightTab.value === 'milestones') {
-    const rows = Object.values(store.milestones).map((m: any, n: number) => ({
-      field: 'milestone', value: m.id, label: m.name, color: BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length],
-      count: iss.filter((i) => i.milestoneId === m.id).length,
-    })).filter((r) => r.count).map((r) => ({ ...r, pct: pct(r.count) }))
-    const none = iss.filter((i) => !i.milestoneId).length
+    // один проход (раньше O(milestones×issues))
+    const counts = new Map<string, number>()
+    let none = 0
+    for (const i of iss) { if (i.milestoneId) counts.set(i.milestoneId, (counts.get(i.milestoneId) || 0) + 1); else none++ }
+    const rows = Array.from(counts.entries()).map(([mid, count], n) => ({
+      field: 'milestone', value: mid, label: (store.milestones[mid] as any)?.name || '?',
+      color: BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length], count, pct: pct(count),
+    }))
     if (none) rows.push({ field: 'milestone', value: NONE, label: 'No milestone', color: '#7c828c', count: none, pct: pct(none) })
     return rows
   }
@@ -1588,6 +1600,26 @@ watch(() => [activeSection.value, selectedTeamId.value, selectedIssueId.value, s
   () => { if (routeSyncing) return; const p = currentPath(); if (import.meta.client && p !== location.pathname) history.replaceState(history.state, '', p) })
 // URL → состояние только на back/forward (popstate) и при старте; наш replaceState popstate не вызывает
 function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
+
+// --- Тайтл вкладки (динамический по секции/выбранной сущности; глобальный titleTemplate добавит " · PMS") ---
+const SECTION_TITLES: Record<string, string> = { dashboard: 'Dashboards', inbox: 'Inbox', chats: 'Chat', meetings: 'Meetings', calendar: 'Calendar', reports: 'Reports', tasks: 'Tasks' }
+const PERSONAL_TITLES: Record<string, string> = { assigned: 'My issues', created: 'Created by me', active: 'Active' }
+const pageTitle = computed(() => {
+  if (selectedIssue.value) return `${selectedIssue.value.identifier} ${selectedIssue.value.title}`
+  if (selectedDoc.value) return selectedDoc.value.title || 'Untitled doc'
+  if (selectedMs.value) return selectedMs.value.name
+  const sec = activeSection.value
+  if (sec === 'chats') return currentChannel.value ? `#${currentChannel.value.name}` : 'Chat'
+  if (sec === 'dashboard') return selectedDashboard.value?.name || 'Dashboards'
+  if (sec === 'tasks') {
+    if (personalView.value) return PERSONAL_TITLES[personalView.value] || 'Tasks'
+    const cy = selectedCycleId.value && store.cycles[selectedCycleId.value]
+    if (cy) return `Cycle ${cy.number}${selectedTeam.value ? ' · ' + selectedTeam.value.name : ''}`
+    return selectedTeam.value?.name || 'Tasks'
+  }
+  return SECTION_TITLES[sec] || 'PMS'
+})
+useHead({ title: () => pageTitle.value })
 </script>
 
 <template>

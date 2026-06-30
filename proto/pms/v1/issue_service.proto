@@ -122,5 +122,6 @@ message GetActivityRequest {
 }
 
 message GetActivityResponse {
-  bytes activity = 1; // json-массив записей change_log
+  bytes activity = 1;     // json-массив записей change_log
+  string description = 2; // markdown тела задачи (lazy-load: bootstrap его не шлёт ради объёма)
 }

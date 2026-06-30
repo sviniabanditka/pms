@@ -10,7 +10,7 @@ const busy = ref(false)
 const api = useRuntimeConfig().public.apiBase as string
 
 useHead({
-  title: 'PMS — sign in',
+  title: 'Sign in',
   link: [
     { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
     { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },

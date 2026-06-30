@@ -2,6 +2,8 @@
 import { isAuthed } from '~/lib/token'
 import { useAppStore } from '~/stores/app'
 
+useHead({ title: 'Accept invitation' })
+
 const route = useRoute()
 const token = String(route.params.token || '')
 const state = ref<'pending' | 'error'>('pending')

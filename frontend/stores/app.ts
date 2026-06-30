@@ -124,57 +124,74 @@ export const useAppStore = defineStore('app', {
       Object.values(s.states)
         .filter((x) => x.teamId === teamId)
         .sort((a, b) => String(a.position).localeCompare(String(b.position))),
-    // активные issues в статусе, отфильтрованные Filter AST, по board_position
-    issuesFor: (s) => (teamId: string, stateId: string) => {
-      const lf = s.labelFilter
-      const byLabel = (x: any) => {
-        if (!lf.length) return true
-        const ids = Object.values(s.issueLabels).filter((il) => il.issueId === x.id).map((il) => il.labelId)
-        return lf.some((id) => ids.includes(id))
+    // --- Кэш-индексы (немемоизируемые геттеры → Pinia/Vue их кэширует,
+    // пересчёт только при изменении issues/issueLabels). Параметрик-геттеры читают
+    // из них O(1) вместо Object.values(all).filter() на каждый вызов. ---
+    activeIssuesByTeam(state): Map<string, any[]> {
+      const m = new Map<string, any[]>()
+      for (const i of Object.values(state.issues) as any[]) {
+        if (i.archivedAt || i.deletedAt) continue
+        let a = m.get(i.teamId); if (!a) { a = []; m.set(i.teamId, a) }
+        a.push(i)
       }
-      return Object.values(s.issues)
-        .filter((x) => x.teamId === teamId && x.stateId === stateId && !x.archivedAt && match(s.activeFilter, x) && byLabel(x))
-        .sort((a, b) => String(a.boardPosition || '').localeCompare(String(b.boardPosition || '')))
+      return m
+    },
+    labelsByIssue(state): Map<string, Set<string>> {
+      const m = new Map<string, Set<string>>()
+      for (const il of Object.values(state.issueLabels) as any[]) {
+        let set = m.get(il.issueId); if (!set) { set = new Set(); m.set(il.issueId, set) }
+        set.add(il.labelId)
+      }
+      return m
+    },
+    // активные issues в статусе, отфильтрованные Filter AST, по board_position
+    issuesFor(): (teamId: string, stateId: string) => any[] {
+      return (teamId: string, stateId: string) => {
+        const lf = this.labelFilter, lbi = this.labelsByIssue
+        const byLabel = (x: any) => { if (!lf.length) return true; const ids = lbi.get(x.id); return !!ids && lf.some((id) => ids.has(id)) }
+        return (this.activeIssuesByTeam.get(teamId) || [])
+          .filter((x) => x.stateId === stateId && match(this.activeFilter, x) && byLabel(x))
+          .sort((a, b) => String(a.boardPosition || '').localeCompare(String(b.boardPosition || '')))
+      }
     },
     teamViews: (s) => (teamId: string) =>
       Object.values(s.views).filter((v) => v.teamId === teamId && !v.deletedAt),
     // группы списка по выбранному измерению (status/priority/assignee)
-    issueGroups: (s) => (teamId: string) => {
-      const PL = ['None', 'Low', 'Med', 'High', 'Urgent']
-      const lf = s.labelFilter
-      // индексируем метки по issueId один раз (иначе O(issues×labels) при каждом рендере)
-      let labelsByIssue: Map<string, Set<string>> | null = null
-      if (lf.length) {
-        labelsByIssue = new Map()
-        for (const il of Object.values(s.issueLabels) as any[]) {
-          let set = labelsByIssue.get(il.issueId)
-          if (!set) { set = new Set(); labelsByIssue.set(il.issueId, set) }
-          set.add(il.labelId)
+    issueGroups(): (teamId: string) => any[] {
+      return (teamId: string) => {
+        const PL = ['None', 'Low', 'Med', 'High', 'Urgent']
+        const lf = this.labelFilter, lbi = this.labelsByIssue
+        const byLabel = (x: any) => { if (!lf.length) return true; const ids = lbi.get(x.id); return !!ids && lf.some((id) => ids.has(id)) }
+        const all = (this.activeIssuesByTeam.get(teamId) || [])
+          .filter((x) => match(this.activeFilter, x) && byLabel(x))
+          .sort((a, b) => String(a.boardPosition || '').localeCompare(String(b.boardPosition || '')))
+        if (this.groupBy === 'priority') {
+          const by = [0, 1, 2, 3, 4].map(() => [] as any[])
+          for (const i of all) by[i.priority]?.push(i)
+          return [4, 3, 2, 1, 0].map((p) => ({ key: 'p' + p, kind: 'priority', label: PL[p], prio: p, items: by[p] }))
         }
+        if (this.groupBy === 'assignee') {
+          const by = new Map<string, any[]>()
+          for (const i of all) { const k = i.assigneeId || 'none'; let a = by.get(k); if (!a) { a = []; by.set(k, a) } a.push(i) }
+          const g = Array.from(by.keys()).filter((k) => k !== 'none').map((u) => ({ key: u, kind: 'assignee', label: this.users[u]?.name || this.users[u]?.email || '—', items: by.get(u)! }))
+          g.push({ key: 'none', kind: 'assignee', label: 'No assignee', items: by.get('none') || [] })
+          return g
+        }
+        if (this.groupBy === 'milestone') {
+          const by = new Map<string, any[]>()
+          for (const i of all) { const k = i.milestoneId || 'none'; let a = by.get(k); if (!a) { a = []; by.set(k, a) } a.push(i) }
+          const ms = Object.values(this.milestones).filter((m: any) => m.teamId === teamId && !m.deletedAt) as any[]
+          const g = ms.map((m) => ({ key: m.id, kind: 'milestone', label: m.name, items: by.get(m.id) || [] }))
+          g.push({ key: 'none', kind: 'milestone', label: 'No milestone', items: by.get('none') || [] })
+          return g.filter((x) => x.items.length)
+        }
+        // status — группировка одним проходом (раньше O(states×issues))
+        const states = Object.values(this.states).filter((st: any) => st.teamId === teamId)
+          .sort((a: any, b: any) => String(a.position).localeCompare(String(b.position))) as any[]
+        const by = new Map<string, any[]>(states.map((st) => [st.id, [] as any[]]))
+        for (const i of all) { const a = by.get(i.stateId); if (a) a.push(i) }
+        return states.map((st) => ({ key: st.id, kind: 'status', label: st.name, category: st.category, stateId: st.id, items: by.get(st.id)! }))
       }
-      const byLabel = (x: any) => { if (!lf.length) return true; const ids = labelsByIssue!.get(x.id); return !!ids && lf.some((id) => ids!.has(id)) }
-      const all = Object.values(s.issues)
-        .filter((x) => x.teamId === teamId && !x.archivedAt && match(s.activeFilter, x) && byLabel(x))
-        .sort((a, b) => String(a.boardPosition || '').localeCompare(String(b.boardPosition || '')))
-      if (s.groupBy === 'priority') {
-        return [4, 3, 2, 1, 0].map((p) => ({ key: 'p' + p, kind: 'priority', label: PL[p], prio: p, items: all.filter((i) => i.priority === p) }))
-      }
-      if (s.groupBy === 'assignee') {
-        const ids = Array.from(new Set(all.map((i) => i.assigneeId).filter(Boolean)))
-        const g = ids.map((u) => ({ key: u as string, kind: 'assignee', label: s.users[u as string]?.name || s.users[u as string]?.email || '—', items: all.filter((i) => i.assigneeId === u) }))
-        g.push({ key: 'none', kind: 'assignee', label: 'No assignee', items: all.filter((i) => !i.assigneeId) })
-        return g
-      }
-      if (s.groupBy === 'milestone') {
-        const ms = Object.values(s.milestones).filter((m) => m.teamId === teamId && !m.deletedAt)
-        const g = ms.map((m) => ({ key: m.id, kind: 'milestone', label: m.name, items: all.filter((i) => i.milestoneId === m.id) }))
-        g.push({ key: 'none', kind: 'milestone', label: 'No milestone', items: all.filter((i) => !i.milestoneId) })
-        return g.filter((x) => x.items.length)
-      }
-      // status
-      return Object.values(s.states).filter((st) => st.teamId === teamId)
-        .sort((a, b) => String(a.position).localeCompare(String(b.position)))
-        .map((st) => ({ key: st.id, kind: 'status', label: st.name, category: st.category, stateId: st.id, items: all.filter((i) => i.stateId === st.id) }))
     },
     issueById: (s) => (id: string) => s.issues[id],
     issueByIdentifier: (s) => (ident: string) => Object.values(s.issues).find((i) => i.identifier === ident),
@@ -453,6 +470,8 @@ export const useAppStore = defineStore('app', {
         const k = isLabel ? `${e.issueId}:${e.labelId}` : isUnread ? e.channelId : isSnap ? `${e.cycleId}:${e.day}` : e.id
         seen.add(k)
         const cur = b[k]
+        // issue.description грузится лениво (bootstrap/дельта его не шлют) → сохраняем уже загруженное
+        if (entityType === 'issue' && cur && e.description === undefined && cur.description) e.description = cur.description
         if (cur && JSON.stringify(cur) === JSON.stringify(e)) continue
         b[k] = e
       }
@@ -681,6 +700,9 @@ export const useAppStore = defineStore('app', {
       const { issues } = useClients()
       const res = await issues.getActivity({ workspaceId: this.activeWorkspaceId, entityId: issueId })
       this.activity[issueId] = this._decode(res.activity)
+      // description приходит лениво (bootstrap его не шлёт) → мёржим в стор-issue
+      const iss = this.issues[issueId]
+      if (iss) iss.description = res.description ? { md: res.description } : (iss.description || {})
     },
     // --- Labels ---
     async createLabel(teamId: string, name: string, colorToken = '#6b747e'): Promise<string> {

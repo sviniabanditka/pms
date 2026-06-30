@@ -476,9 +476,12 @@ type activityDTO struct {
 }
 
 // GetActivity — история изменений сущности из change_log.
-func (s *Service) GetActivity(ctx context.Context, actor, wsID, entityID uuid.UUID) ([]byte, error) {
+// GetActivity — история изменений + тело задачи (description lazy-load: bootstrap
+// его не шлёт ради объёма, клиент догружает при открытии).
+func (s *Service) GetActivity(ctx context.Context, actor, wsID, entityID uuid.UUID) ([]byte, string, error) {
 	var rows []models.ChangeLog
 	var out []byte
+	var desc string
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
 		if err := tx.NewSelect().Model(&rows).Where("entity_id = ?", entityID).Order("seq DESC").Limit(100).Scan(ctx); err != nil {
 			return err
@@ -489,15 +492,18 @@ func (s *Service) GetActivity(ctx context.Context, actor, wsID, entityID uuid.UU
 		}
 		raw, _ := json.Marshal(dtos)
 		out = raw
+		// тело задачи (description->>'md')
+		_ = tx.NewSelect().Model((*models.Issue)(nil)).
+			ColumnExpr("COALESCE(description->>'md','')").Where("id = ?", entityID).Scan(ctx, &desc)
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if out == nil {
 		out = []byte("[]")
 	}
-	return out, nil
+	return out, desc, nil
 }
 
 func (s *Service) AddLabel(ctx context.Context, actor, wsID, issueID, labelID uuid.UUID) error {

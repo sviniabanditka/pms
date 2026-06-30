@@ -1083,11 +1083,11 @@ func (h *issueHandler) GetActivity(ctx context.Context, req *connect.Request[pms
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid entity_id"))
 	}
-	raw, err := h.svc.GetActivity(ctx, actor, wsID, entityID)
+	raw, desc, err := h.svc.GetActivity(ctx, actor, wsID, entityID)
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return connect.NewResponse(&pmsv1.GetActivityResponse{Activity: raw}), nil
+	return connect.NewResponse(&pmsv1.GetActivityResponse{Activity: raw, Description: desc}), nil
 }
 
 func (h *issueHandler) AddLabel(ctx context.Context, req *connect.Request[pmsv1.LabelRequest]) (*connect.Response[pmsv1.CommandResult], error) {

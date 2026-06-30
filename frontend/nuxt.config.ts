@@ -5,6 +5,7 @@ export default defineNuxtConfig({
   colorMode: { preference: 'dark', fallback: 'dark', storageKey: 'pms-theme' },
   app: {
     head: {
+      titleTemplate: '%s · PMS', // лендинг переопределяет на '%s' (полный маркетинг-тайтл)
       htmlAttrs: { class: 'dark' },
       link: [
         { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },

@@ -602,6 +602,24 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Строки с переносом лейблов (выше обычной) измеряются динамически — нет перекрытий.
 - [ ] Код задачи (`KEY-NNN`) всегда в одну строку — не переносится даже для длинных ключей (INFRA-12345): `whitespace-nowrap` + `min-w` (список, My issues, milestone-issues).
 
+## 78. Оптимизация больших объёмов
+- [ ] Описание задачи lazy-load: bootstrap НЕ шлёт `description` (легче payload); при открытии задачи тело подтягивается (GetActivity) и рендерится в детали.
+- [ ] После правки описания и delta-refresh тело не пропадает (applyChunk сохраняет уже загруженное при отсутствии в дельте).
+- [ ] Список/борд на сотнях задач рендерятся быстро: геттеры `issuesFor`/`issueGroups` читают из кэш-индексов (`activeIssuesByTeam`/`labelsByIssue`), не сканируют все issues на каждый вызов; группировка статусов — один проход.
+- [ ] Bootstrap по проводу сжат gzip (`Content-Encoding: gzip`, ~×7 меньше) — браузер декодит прозрачно; данные не побиты (issues/борд/детали корректны).
+
+## 79. Тайтлы вкладок
+- [ ] Глобальный `titleTemplate '%s · PMS'`; лендинг — полный маркетинг-тайтл без суффикса.
+- [ ] login → «Sign in · PMS», error → «Error · PMS», invite → «Accept invitation · PMS».
+- [ ] App: тайтл меняется по секции — Inbox/Meetings/Calendar/Reports/Dashboards/Chat/Tasks (SSR совпадает с роутом).
+- [ ] Открытая задача → «KEY-NNN title · PMS»; док → имя дока; канал → «#name»; цикл → «Cycle N · Team»; команда → имя команды; My issues/Created/Active.
+- [ ] При навигации (смена секции/открытие сущности) тайтл вкладки обновляется реактивно.
+
+## 80. Cycle breakdown — перф вкладок
+- [ ] Вкладка Labels в инсайтах цикла открывается мгновенно даже на большом цикле (раньше O(labels×issues×issueLabels) — кубически зависала).
+- [ ] Milestones/Labels считаются одним проходом через кэш-индекс; цифры/проценты совпадают с прежними.
+- [ ] Клик по строке breakdown по-прежнему фильтрует (label→labelFilter, milestone/priority/assignee/team→predicate).
+
 ## 77. Масштабный seed (`make seed`)
 - [ ] `make seed` отрабатывает без ошибок (~3с на scale=1), печатает counts; `make seed SCALE=0.1` — быстрый прогон.
 - [ ] Логин под сид-юзером работает (пароль `password`), напр. владелец воркспейса (см. вывод сида).
