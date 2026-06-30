@@ -2,6 +2,10 @@
 /backend/bin/
 *.test
 *.out
+# скомпилированные cmd-бинари (имя = папка cmd)
+/backend/seed
+/backend/server
+/backend/migrate
 
 # Node / Nuxt
 node_modules/

@@ -27,6 +27,13 @@ migrate:
 run:
 	cd backend && go run ./cmd/server
 
+# Наполнить БД крупным реалистичным набором (5 ws, пересекающиеся юзеры, сотни
+# задач/команду, чаты, доки, митинги, календари). ⚠️ -reset чистит домены.
+# Объём регулируется: `make seed SCALE=0.1` для быстрого прогона.
+SCALE ?= 1.0
+seed:
+	cd backend && go run ./cmd/seed -scale $(SCALE)
+
 test:
 	cd backend && go test ./...
 
