@@ -425,9 +425,15 @@ func (g *gen) buildTeam(wsID uuid.UUID, wsMembers, projIDs []uuid.UUID, key, nam
 	// 4-10 участников команды из участников ws
 	tmCount := min(len(wsMembers), g.randInt(4, 10))
 	teamMembers := sampleUUID(g.rng, wsMembers, tmCount)
+	// число задач команды (1..count); next_issue_number = count, чтобы CreateIssue
+	// в приложении продолжил нумерацию без коллизии с сид-задачами.
+	count := int(float64(g.randInt(200, 500)) * g.scale)
+	if count < 1 {
+		count = 1
+	}
 	g.teams = append(g.teams, models.Team{
 		ID: teamID, WorkspaceID: wsID, Path: ltreeLabel(teamID), Key: key, Name: name,
-		Private: g.chance(0.15), NextIssueNumber: 0, EnabledFeatures: jraw(`{}`), CycleConfig: jraw(`{}`),
+		Private: g.chance(0.15), NextIssueNumber: int64(count), EnabledFeatures: jraw(`{}`), CycleConfig: jraw(`{}`),
 		Settings: jraw(`{}`), CreatedAt: wsCreated, UpdatedAt: wsCreated,
 	})
 	for i, uid := range teamMembers {
@@ -504,11 +510,7 @@ func (g *gen) buildTeam(wsID uuid.UUID, wsMembers, projIDs []uuid.UUID, key, nam
 		mstoneIDs = append(mstoneIDs, mid)
 	}
 
-	// задачи
-	count := int(float64(g.randInt(200, 500)) * g.scale)
-	if count < 1 {
-		count = 1
-	}
+	// задачи (count рассчитан выше, до создания команды)
 	var issueIDs []uuid.UUID
 	pos := frac.First()
 	for n := 1; n <= count; n++ {
