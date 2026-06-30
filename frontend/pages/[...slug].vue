@@ -1376,59 +1376,6 @@ const copyInviteLink = () => { if (inviteLink.value) navigator.clipboard?.writeT
 // `dark:bg-gray-900` побеждает в twMerge при .dark теме (см. mergeConfig=defuTwMerge).
 const modalUi = { background: 'dark:bg-surface', ring: 'ring-1 ring-subtle' }
 
-// v-block-caret: терминальный блок-карет (шириной в символ) для input/textarea.
-// Нативный caret прячем, рисуем блок в позиции курсора (mono-mirror для измерения).
-const vBlockCaret = {
-  mounted(el: HTMLInputElement | HTMLTextAreaElement) {
-    if (!import.meta.client) return
-    const wrap = el.parentElement
-    if (!wrap) return
-    if (getComputedStyle(wrap).position === 'static') wrap.style.position = 'relative'
-    el.classList.add('bc-caret')
-    el.style.setProperty('caret-color', 'transparent', 'important')
-    const caret = document.createElement('div')
-    caret.style.cssText = 'position:absolute;pointer-events:none;background:#9ece6a;mix-blend-mode:difference;border-radius:1px;display:none;z-index:5;animation:caretBlink 1.05s steps(1) infinite;'
-    wrap.appendChild(caret)
-    const mirror = document.createElement('div')
-    mirror.style.cssText = 'position:absolute;visibility:hidden;top:0;left:-9999px;white-space:pre-wrap;word-wrap:break-word;overflow:hidden;'
-    const PROPS = ['boxSizing', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight', 'textTransform', 'wordSpacing', 'tabSize']
-    const isInput = el.tagName === 'INPUT'
-    if (isInput) { mirror.style.whiteSpace = 'pre'; mirror.style.wordWrap = 'normal' }
-    const update = () => {
-      const cs = getComputedStyle(el)
-      for (const p of PROPS) (mirror.style as any)[p] = (cs as any)[p]
-      mirror.style.width = el.clientWidth + 'px'
-      const cw = parseFloat(cs.fontSize) * 0.6 // JetBrains Mono advance ≈ 0.6em
-      caret.style.width = Math.max(6, cw) + 'px'
-      caret.style.height = (parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4) + 'px'
-      const pos = el.selectionStart ?? 0
-      const v = el.value
-      mirror.textContent = v.substring(0, pos)
-      const mark = document.createElement('span')
-      mark.textContent = v.substring(pos) || '​'
-      mirror.appendChild(mark)
-      document.body.appendChild(mirror)
-      const x = mark.offsetLeft, y = mark.offsetTop
-      document.body.removeChild(mirror)
-      caret.style.left = (el.offsetLeft + x - el.scrollLeft) + 'px'
-      caret.style.top = (el.offsetTop + y - el.scrollTop) + 'px'
-    }
-    const show = () => { caret.style.display = 'block'; update() }
-    const hide = () => { caret.style.display = 'none' }
-    const onKey = () => requestAnimationFrame(update)
-    el.addEventListener('focus', show)
-    el.addEventListener('blur', hide)
-    el.addEventListener('input', onKey)
-    el.addEventListener('keyup', onKey)
-    el.addEventListener('click', onKey)
-    el.addEventListener('scroll', update)
-    ;(el as any)._bc = { caret, show, hide, update, onKey }
-    if (document.activeElement === el) show()
-  },
-  unmounted(el: any) {
-    if (el._bc) el._bc.caret.remove()
-  },
-}
 
 // --- Settings-модалка (workspace) ---
 const showSettings = ref(false)
@@ -2206,8 +2153,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               <div v-else class="relative flex gap-2 px-3 py-2">
                 <MentionMenu :m="chatMention" />
                 <span class="select-none pt-px text-ok">&gt;</span>
-                <textarea v-block-caret ref="composerEl" v-model="msgDraft" rows="3" placeholder="message… (markdown, @mention, #ref, ↵ to send)"
-                  class="bc-caret w-full resize-none bg-transparent text-sm outline-none placeholder:text-tertiary"
+                <textarea ref="composerEl" v-model="msgDraft" rows="3" placeholder="message… (markdown, @mention, #ref, ↵ to send)"
+                  class="w-full resize-none bg-transparent text-sm outline-none placeholder:text-tertiary"
                   @paste="onChatPaste" @input="onComposerInput(); chatMention.detect()" @keydown="onComposerKeydown" />
               </div>
               <div class="flex items-center justify-between px-3 py-1.5">
@@ -2986,8 +2933,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <div class="relative flex flex-1 gap-2 rounded-md border border-subtle bg-elevated px-2.5 py-1.5">
               <MentionMenu :m="commentMention" />
               <span class="select-none pt-px text-ok">&gt;</span>
-              <textarea v-block-caret ref="commentEl" v-model="commentDraft" rows="1" placeholder="comment… (markdown, @mention, #ref)"
-                class="bc-caret block w-full resize-none bg-transparent text-sm outline-none placeholder:text-tertiary"
+              <textarea ref="commentEl" v-model="commentDraft" rows="1" placeholder="comment… (markdown, @mention, #ref)"
+                class="block w-full resize-none bg-transparent text-sm outline-none placeholder:text-tertiary"
                 @paste="onCommentPaste" @input="commentMention.detect()" @keydown="onCommentKeydown" />
             </div>
             <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="sm" square title="Attach" @click="commentFileEl?.click()" />
@@ -3032,7 +2979,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         <PendingAttachments v-if="threadPending.length" class="mb-2" :files="threadPending" @remove="(i) => threadPending = threadPending.filter((_, j) => j !== i)" />
         <div class="flex gap-2 rounded-md border border-subtle bg-elevated px-2 py-1.5">
           <span class="select-none pt-px text-ok">&gt;</span>
-          <textarea v-block-caret v-model="threadDraft" rows="2" placeholder="reply…" class="bc-caret w-full resize-none bg-transparent text-sm outline-none" @paste="onThreadPaste" @keydown.enter.exact.prevent="sendThread" />
+          <textarea v-model="threadDraft" rows="2" placeholder="reply…" class="w-full resize-none bg-transparent text-sm outline-none" @paste="onThreadPaste" @keydown.enter.exact.prevent="sendThread" />
         </div>
         <div class="mt-1 flex items-center justify-end gap-2">
           <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="2xs" square title="Attach" @click="threadFileEl?.click()" />
@@ -3633,8 +3580,8 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
       <div class="w-[32rem] rounded-md border border-subtle bg-elevated shadow-xl">
         <div class="flex items-center gap-2 border-b border-subtle px-4">
           <span class="text-ok">$</span>
-          <input v-block-caret ref="paletteInput" v-model="paletteQ" placeholder="search issues, teams, dashboards, views…"
-            class="bc-caret w-full bg-transparent py-3 text-sm outline-none focus:outline-none focus-visible:outline-none"
+          <input ref="paletteInput" v-model="paletteQ" placeholder="search issues, teams, dashboards, views…"
+            class="w-full bg-transparent py-3 text-sm outline-none focus:outline-none focus-visible:outline-none"
             @keydown.down.prevent="paletteMove(1)" @keydown.up.prevent="paletteMove(-1)"
             @keydown.enter.prevent="runResult(paletteResults[paletteIdx])" />
         </div>
