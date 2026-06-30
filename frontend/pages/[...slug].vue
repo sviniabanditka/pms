@@ -594,13 +594,15 @@ const issueActions = computed(() => {
       { label: 'Copy link', icon: 'i-heroicons-link', click: copyLink },
       { label: 'Copy ID', icon: 'i-heroicons-hashtag', click: () => copyText(i.identifier) },
     ],
-    [
-      ...(doneId && i.stateId !== doneId ? [{ label: 'Mark complete', icon: 'i-heroicons-check-circle', click: () => store.setIssueState(i.id, doneId) }] : []),
-      { label: 'Duplicate', icon: 'i-heroicons-document-duplicate', click: () => duplicateIssue(i) },
-    ],
-    [
-      { label: 'Archive', icon: 'i-heroicons-archive-box', click: () => { store.archiveIssue(i.id); selectedIssueId.value = '' } },
-    ],
+    ...(store.canWrite ? [
+      [
+        ...(doneId && i.stateId !== doneId ? [{ label: 'Mark complete', icon: 'i-heroicons-check-circle', click: () => store.setIssueState(i.id, doneId) }] : []),
+        { label: 'Duplicate', icon: 'i-heroicons-document-duplicate', click: () => duplicateIssue(i) },
+      ],
+      [
+        { label: 'Archive', icon: 'i-heroicons-archive-box', click: () => { store.archiveIssue(i.id); selectedIssueId.value = '' } },
+      ],
+    ] : []),
   ]
 })
 
@@ -2670,7 +2672,7 @@ useHead({ title: () => pageTitle.value })
               class="group flex cursor-pointer items-center gap-3 border-b border-subtle/40 px-4 py-2.5 hover:bg-hover"
               :class="{ 'bg-active': selectedIssueId === listRows[vRow.index].i.id || selectedIds.has(listRows[vRow.index].i.id) }"
               @click="openIssue(listRows[vRow.index].i.id)">
-              <TermCheck :model-value="selectedIds.has(listRows[vRow.index].i.id)" class="shrink-0 transition-opacity" :class="selCount || selectedIds.has(listRows[vRow.index].i.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'" @click.stop @update:model-value="toggleSel(listRows[vRow.index].i.id)" />
+              <TermCheck v-if="store.canWrite" :model-value="selectedIds.has(listRows[vRow.index].i.id)" class="shrink-0 transition-opacity" :class="selCount || selectedIds.has(listRows[vRow.index].i.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'" @click.stop @update:model-value="toggleSel(listRows[vRow.index].i.id)" />
               <span v-if="listRows[vRow.index].i.priority" class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: prioColor(listRows[vRow.index].i.priority) }">{{ prioGlyph(listRows[vRow.index].i.priority) }}</span>
               <UIcon v-else name="i-heroicons-minus" class="shrink-0 text-tertiary/50" />
               <span class="min-w-14 shrink-0 whitespace-nowrap text-sm text-accent2">{{ listRows[vRow.index].i.identifier }}</span>
@@ -2683,7 +2685,7 @@ useHead({ title: () => pageTitle.value })
               </span>
               <span v-if="listRows[vRow.index].i.dueDate || listRows[vRow.index].i.scheduledDate" class="shrink-0 text-sm tabular-nums text-tertiary">{{ String(listRows[vRow.index].i.scheduledDate || listRows[vRow.index].i.dueDate).slice(5, 10) }}</span>
               <span v-if="listRows[vRow.index].i.assigneeId" class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-elevated text-[10px]" :title="store.userName(listRows[vRow.index].i.assigneeId)">{{ (store.userName(listRows[vRow.index].i.assigneeId) || '?')[0].toUpperCase() }}</span>
-              <UButton icon="i-heroicons-trash" color="gray" variant="ghost" size="xs" square
+              <UButton v-if="store.canWrite" icon="i-heroicons-trash" color="gray" variant="ghost" size="xs" square
                 class="shrink-0 opacity-0 hover:opacity-100" title="Archive" @click.stop="store.archiveIssue(listRows[vRow.index].i.id)" />
             </div>
           </div>
@@ -2795,7 +2797,7 @@ useHead({ title: () => pageTitle.value })
       <div class="px-4 py-4">
         <!-- title -->
         <UInput :model-value="selectedIssue.title" variant="none" size="xl" class="mb-3 w-full font-semibold" :padded="false"
-          :ui="{ base: 'text-white' }"
+          :ui="{ base: 'text-white' }" :disabled="!store.canWrite"
           @change="(v:any) => store.setIssueTitle(selectedIssue.id, v)" />
 
         <!-- description -->
@@ -2821,15 +2823,15 @@ useHead({ title: () => pageTitle.value })
           </div>
           <div v-else-if="selectedIssue.description?.md"
             class="prose-invert -mx-2 cursor-text rounded-md px-2 py-1.5 text-sm leading-relaxed text-secondary hover:bg-elevated [&_a]:text-accent [&_code]:rounded [&_code]:bg-elevated [&_code]:px-1 [&_h1]:mb-1 [&_h1]:mt-2 [&_h1]:text-base [&_h1]:font-semibold [&_h1]:text-white [&_h2]:mb-1 [&_h2]:mt-2 [&_h2]:font-semibold [&_h2]:text-white [&_li]:ml-4 [&_li]:list-disc [&_p]:mb-1.5 [&_strong]:text-white"
-            @click="startDescEdit" v-html="renderMarkdown(selectedIssue.description.md)" />
-          <button v-else class="-mx-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-tertiary hover:bg-elevated" @click="startDescEdit">
+            @click="store.canWrite && startDescEdit()" v-html="renderMarkdown(selectedIssue.description.md)" />
+          <button v-else-if="store.canWrite" class="-mx-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-tertiary hover:bg-elevated" @click="startDescEdit">
             <UIcon name="i-heroicons-bars-3-bottom-left" /> Add description…
           </button>
         </div>
 
-        <!-- Properties -->
+        <!-- Properties (guest = read-only: inert отключает все контролы, значения видны) -->
         <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Properties</div>
-        <div class="mb-6 space-y-1">
+        <div class="mb-6 space-y-1" :inert="!store.canWrite" :class="{ 'opacity-70': !store.canWrite }">
           <div class="flex min-h-8 items-center gap-3">
             <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(store.states[selectedIssue.stateId]?.category) }">{{ statusGlyph(store.states[selectedIssue.stateId]?.category) }}</span> Status</span>
             <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" :model-value="selectedIssue.stateId" value-attribute="value" option-attribute="label"
@@ -2918,7 +2920,7 @@ useHead({ title: () => pageTitle.value })
         <!-- Labels -->
         <div class="mb-5">
           <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Labels</div>
-          <div class="flex flex-wrap items-center gap-1.5">
+          <div class="flex flex-wrap items-center gap-1.5" :inert="!store.canWrite" :class="{ 'opacity-70': !store.canWrite }">
             <span v-for="l in store.labelsForIssue(selectedIssue.id)" :key="l.id" class="group/lbl flex items-center gap-1 rounded-full border border-subtle px-2 py-0.5 text-xs">
               <span :style="{ color: l.colorToken }">#{{ l.name }}</span>
               <UIcon name="i-heroicons-x-mark" class="cursor-pointer text-tertiary hover:text-danger" @click="store.removeLabel(selectedIssue.id, l.id)" />
@@ -2951,9 +2953,9 @@ useHead({ title: () => pageTitle.value })
             class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
             <span class="text-tertiary">{{ r.label }}</span>
             <span class="cursor-pointer hover:text-accent" @click="openIssue(r.otherId)">{{ store.issueById(r.otherId)?.identifier || '—' }}</span>
-            <UButton class="ml-auto opacity-0 group-hover:opacity-100" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="store.removeRelation(r.id)" />
+            <UButton v-if="store.canWrite" class="ml-auto opacity-0 group-hover:opacity-100" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="store.removeRelation(r.id)" />
           </div>
-          <button class="mt-1 flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-tertiary hover:bg-hover hover:text-secondary" @click="showRelModal = true">
+          <button v-if="store.canWrite" class="mt-1 flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-tertiary hover:bg-hover hover:text-secondary" @click="showRelModal = true">
             <UIcon name="i-heroicons-plus" /> Add relation
           </button>
         </div>
@@ -3066,7 +3068,7 @@ useHead({ title: () => pageTitle.value })
     </div><!-- /flex flex-1 -->
 
     <!-- Bulk-бар (мультивыбор в List) -->
-    <div v-if="selCount && selectedTeam" class="fixed bottom-6 left-1/2 z-[90] flex -translate-x-1/2 items-center gap-2 rounded-xl border border-subtle bg-elevated px-3 py-2 text-sm shadow-xl">
+    <div v-if="selCount && selectedTeam && store.canWrite" class="fixed bottom-6 left-1/2 z-[90] flex -translate-x-1/2 items-center gap-2 rounded-xl border border-subtle bg-elevated px-3 py-2 text-sm shadow-xl">
       <span class="px-1 font-medium">{{ selCount }} selected</span>
       <span class="h-4 w-px bg-subtle" />
       <USelectMenu placeholder="Status" size="xs" class="w-28" value-attribute="value" option-attribute="label"
