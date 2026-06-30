@@ -2149,10 +2149,11 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
                 <UButton class="ml-auto" :icon="showPreview ? 'i-heroicons-pencil' : 'i-heroicons-eye'" color="gray" variant="ghost" size="2xs" square @click="showPreview = !showPreview" />
               </div>
               <div v-if="showPreview" class="prose-chat min-h-[60px] px-3 py-2 text-sm" v-html="renderMarkdown(msgDraft) || '<span class=&quot;text-tertiary&quot;>Nothing to preview</span>'" />
-              <div v-else class="relative">
+              <div v-else class="relative flex gap-2 px-3 py-2">
                 <MentionMenu :m="chatMention" />
-                <textarea ref="composerEl" v-model="msgDraft" rows="3" placeholder="> message… (markdown, @mention, #ref, ↵ to send)"
-                  class="w-full resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-tertiary"
+                <span class="select-none pt-px text-ok">&gt;</span>
+                <textarea ref="composerEl" v-model="msgDraft" rows="3" placeholder="message… (markdown, @mention, #ref, ↵ to send)"
+                  class="w-full resize-none bg-transparent text-sm outline-none placeholder:text-tertiary"
                   @paste="onChatPaste" @input="onComposerInput(); chatMention.detect()" @keydown="onComposerKeydown" />
               </div>
               <div class="flex items-center justify-between px-3 py-1.5">
@@ -2928,10 +2929,11 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           </div>
           <PendingAttachments v-if="commentPending.length" class="mt-2" :files="commentPending" @remove="(i) => commentPending = commentPending.filter((_, j) => j !== i)" />
           <div class="mt-2 flex items-end gap-2">
-            <div class="relative flex-1">
+            <div class="relative flex flex-1 gap-2 rounded-md border border-subtle bg-elevated px-2.5 py-1.5">
               <MentionMenu :m="commentMention" />
-              <textarea ref="commentEl" v-model="commentDraft" rows="1" placeholder="> comment… (markdown, @mention, #ref)"
-                class="block w-full resize-none rounded-md border border-subtle bg-elevated px-2.5 py-1.5 text-sm outline-none placeholder:text-tertiary"
+              <span class="select-none pt-px text-ok">&gt;</span>
+              <textarea ref="commentEl" v-model="commentDraft" rows="1" placeholder="comment… (markdown, @mention, #ref)"
+                class="block w-full resize-none bg-transparent text-sm outline-none placeholder:text-tertiary"
                 @paste="onCommentPaste" @input="commentMention.detect()" @keydown="onCommentKeydown" />
             </div>
             <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="sm" square title="Attach" @click="commentFileEl?.click()" />
@@ -2974,7 +2976,10 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
       </div>
       <div class="shrink-0 border-t border-subtle p-2">
         <PendingAttachments v-if="threadPending.length" class="mb-2" :files="threadPending" @remove="(i) => threadPending = threadPending.filter((_, j) => j !== i)" />
-        <textarea v-model="threadDraft" rows="2" placeholder="> reply…" class="w-full resize-none rounded-md border border-subtle bg-elevated px-2 py-1.5 text-sm outline-none" @paste="onThreadPaste" @keydown.enter.exact.prevent="sendThread" />
+        <div class="flex gap-2 rounded-md border border-subtle bg-elevated px-2 py-1.5">
+          <span class="select-none pt-px text-ok">&gt;</span>
+          <textarea v-model="threadDraft" rows="2" placeholder="reply…" class="w-full resize-none bg-transparent text-sm outline-none" @paste="onThreadPaste" @keydown.enter.exact.prevent="sendThread" />
+        </div>
         <div class="mt-1 flex items-center justify-end gap-2">
           <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="2xs" square title="Attach" @click="threadFileEl?.click()" />
           <input ref="threadFileEl" type="file" multiple class="hidden" @change="onThreadFilePick" />

@@ -13,11 +13,27 @@ html, body, #__nuxt {
 ::-webkit-scrollbar-thumb:hover { background: #2f3344; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* фокус-кольцо только для клавиатуры (a11y) */
+/* фокус-кольцо только для клавиатуры (a11y) — но НЕ на инпутах (терминальный стиль) */
 :focus-visible { outline: 2px solid #7aa2f7; outline-offset: 1px; border-radius: 4px; }
 :focus:not(:focus-visible) { outline: none; }
 
+/* инпуты без синей рамки фокуса: outline убран, ring → subtle (бордер не прыгает в синий) */
+input:focus, input:focus-visible,
+textarea:focus, textarea:focus-visible,
+select:focus, select:focus-visible,
+[contenteditable]:focus, [contenteditable]:focus-visible {
+  outline: none !important;
+  --tw-ring-color: #20222e !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+}
+
+/* терминальный caret (зелёный) */
+input, textarea, [contenteditable] { caret-color: #9ece6a; }
+
 ::selection { background: rgba(122, 162, 247, 0.32); }
+
+/* терминальный курсор мыши */
+body { cursor: url('/cursor.svg') 3 2, auto; }
 
 /* стабильный gutter — контент не прыгает при появлении/исчезновении скроллбара */
 main, aside { scrollbar-gutter: stable; }
