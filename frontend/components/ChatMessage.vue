@@ -52,7 +52,7 @@ function notifTime(at: any) {
         <Attachments v-if="store.attachmentsFor('message', m.id).length" class="mt-1.5" entity-type="message" :entity-id="m.id" readonly />
         <div v-if="reactionGroups(m).length" class="mt-1 flex flex-wrap gap-1">
           <button v-for="g in reactionGroups(m)" :key="g.emoji"
-            class="flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs"
+            class="flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs"
             :class="g.mine ? 'border-accent bg-accent/15 text-white' : 'border-subtle hover:bg-hover'"
             @click="react(g.emoji)">{{ g.emoji }} {{ g.count }}</button>
         </div>

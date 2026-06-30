@@ -1758,7 +1758,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         <template v-for="t in store.teamList" :key="t.id">
           <div class="group flex h-8 cursor-pointer items-center gap-1.5 rounded px-1.5 hover:bg-hover"
             :style="{ paddingLeft: 6 + depth(t.path) * 12 + 'px' }" @click="expandTeam[t.id] = !expandTeam[t.id]">
-            <UIcon :name="expandTeam[t.id] ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'" class="shrink-0 text-sm text-tertiary" />
+            <span class="shrink-0 text-tertiary">{{ expandTeam[t.id] ? '▾' : '▸' }}</span>
             <UIcon name="i-heroicons-cube" class="shrink-0 text-tertiary" />
             <span class="truncate font-medium text-secondary">{{ t.name }}</span>
             <span class="text-xs text-tertiary">{{ t.key }}</span>
@@ -1772,7 +1772,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <div class="flex h-8 cursor-pointer items-center gap-1 rounded px-2 text-sm hover:bg-hover"
               :class="selectedTeamId === t.id && teamSection === 'cycles' ? 'bg-active text-white' : 'text-tertiary'"
               @click="openTeamSection(t.id, 'cycles')">
-              <UIcon :name="expandCycles[t.id] ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'" class="rounded text-sm hover:bg-active" @click.stop="expandCycles[t.id] = !expandCycles[t.id]" /><UIcon name="i-heroicons-arrow-path-rounded-square" /> Cycles
+              <span class="cursor-pointer rounded text-tertiary hover:bg-active" @click.stop="expandCycles[t.id] = !expandCycles[t.id]">{{ expandCycles[t.id] ? '▾' : '▸' }}</span> Cycles
             </div>
             <div v-if="expandCycles[t.id]" class="pl-6">
               <div class="flex h-8 cursor-pointer items-center rounded px-2 text-sm hover:bg-hover"
@@ -1790,7 +1790,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <div class="flex h-8 cursor-pointer items-center gap-1 rounded px-2 text-sm hover:bg-hover"
               :class="selectedTeamId === t.id && teamSection === 'docs' ? 'bg-active text-white' : 'text-tertiary'"
               @click="openTeamSection(t.id, 'docs')">
-              <UIcon :name="expandDocs[t.id] ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'" class="rounded text-sm hover:bg-active" @click.stop="expandDocs[t.id] = !expandDocs[t.id]" /><UIcon name="i-heroicons-document-text" /> Docs
+              <span class="cursor-pointer rounded text-tertiary hover:bg-active" @click.stop="expandDocs[t.id] = !expandDocs[t.id]">{{ expandDocs[t.id] ? '▾' : '▸' }}</span> Docs
             </div>
             <div v-if="expandDocs[t.id]" class="pl-6">
               <div v-for="nd in store.teamDocTree(t.id)" :key="nd.doc.id"
@@ -1802,7 +1802,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
             <div class="flex h-8 cursor-pointer items-center gap-1 rounded px-2 text-sm hover:bg-hover"
               :class="selectedTeamId === t.id && teamSection === 'views' ? 'bg-active text-white' : 'text-tertiary'"
               @click="openTeamSection(t.id, 'views')">
-              <UIcon :name="expandViews[t.id] ? 'i-heroicons-chevron-down' : 'i-heroicons-chevron-right'" class="rounded text-sm hover:bg-active" @click.stop="expandViews[t.id] = !expandViews[t.id]" /><UIcon name="i-heroicons-square-3-stack-3d" /> Views
+              <span class="cursor-pointer rounded text-tertiary hover:bg-active" @click.stop="expandViews[t.id] = !expandViews[t.id]">{{ expandViews[t.id] ? '▾' : '▸' }}</span> Views
             </div>
             <div v-if="expandViews[t.id]" class="pl-6">
               <div v-for="v in store.teamViews(t.id)" :key="v.id"
@@ -2268,9 +2268,9 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
       <template v-else-if="teamSection === 'cycles' && selectedTeam">
         <div class="sticky top-0 z-10 flex items-center gap-1.5 border-b border-subtle bg-surface px-4 py-3 text-sm">
           <span class="text-tertiary">{{ store.activeWorkspace?.name }}</span>
-          <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+          <span class="text-tertiary">/</span>
           <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
-          <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+          <span class="text-tertiary">/</span>
           <UIcon name="i-heroicons-arrow-path-rounded-square" class="text-tertiary" />
           <span class="font-medium">Cycles</span>
           <span class="text-tertiary">{{ store.teamCycles(selectedTeamId).length }}</span>
@@ -2301,11 +2301,11 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <div class="sticky top-0 z-10 border-b border-subtle bg-surface px-4 py-3">
             <div class="flex items-center gap-1.5 text-sm">
               <span class="text-tertiary">{{ store.activeWorkspace?.name }}</span>
-              <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+              <span class="text-tertiary">/</span>
               <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
-              <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+              <span class="text-tertiary">/</span>
               <button class="text-tertiary hover:text-secondary" @click="selectedMsId = ''">Milestones</button>
-              <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+              <span class="text-tertiary">/</span>
               <UIcon name="i-heroicons-flag" :class="selectedMs.status === 'done' ? 'text-accent' : selectedMs.status === 'active' ? 'text-warn' : 'text-tertiary'" />
               <span class="font-medium">{{ selectedMs.name }}</span>
               <USelectMenu :model-value="selectedMs.status" :options="labelOpts(['planned', 'active', 'done'])" value-attribute="value" option-attribute="label" size="xs" class="w-28" @update:model-value="(st) => store.updateMilestone(selectedMs.id, { status: st })" />
@@ -2330,9 +2330,9 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         <template v-else>
           <div class="sticky top-0 z-10 flex items-center gap-1.5 border-b border-subtle bg-surface px-4 py-3 text-sm">
             <span class="text-tertiary">{{ store.activeWorkspace?.name }}</span>
-            <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+            <span class="text-tertiary">/</span>
             <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
-            <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+            <span class="text-tertiary">/</span>
             <UIcon name="i-heroicons-flag" class="text-tertiary" />
             <span class="font-medium">Milestones</span>
             <span class="text-tertiary">{{ store.teamMilestones(selectedTeamId).length }}</span>
@@ -2366,9 +2366,9 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
       <template v-else-if="teamSection === 'docs' && selectedTeam">
         <div class="sticky top-0 z-10 flex items-center gap-1.5 border-b border-subtle bg-surface px-4 py-3 text-sm">
           <span class="text-tertiary">{{ store.activeWorkspace?.name }}</span>
-          <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+          <span class="text-tertiary">/</span>
           <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
-          <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+          <span class="text-tertiary">/</span>
           <UIcon name="i-heroicons-document-text" class="text-tertiary" />
           <span class="font-medium">Docs</span>
           <span class="text-tertiary">{{ store.teamDocs(selectedTeamId).length }}</span>
@@ -2394,9 +2394,9 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
       <template v-else-if="teamSection === 'views' && selectedTeam">
         <div class="sticky top-0 z-10 flex items-center gap-1.5 border-b border-subtle bg-surface px-4 py-3 text-sm">
           <span class="text-tertiary">{{ store.activeWorkspace?.name }}</span>
-          <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+          <span class="text-tertiary">/</span>
           <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
-          <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+          <span class="text-tertiary">/</span>
           <UIcon name="i-heroicons-square-3-stack-3d" class="text-tertiary" />
           <span class="font-medium">Views</span>
           <span class="text-tertiary">{{ store.teamViews(selectedTeamId).length }}</span>
@@ -2420,9 +2420,9 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
         <div class="sticky top-0 z-10 flex items-center gap-1.5 border-b border-subtle bg-surface px-4 py-3 text-sm">
           <template v-if="store.teams[selectedDoc.teamId]">
             <button class="text-tertiary hover:text-secondary" @click="selectTeamIssues(store.teams[selectedDoc.teamId])">{{ store.teams[selectedDoc.teamId].name }}</button>
-            <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+            <span class="text-tertiary">/</span>
             <button class="text-tertiary hover:text-secondary" @click="openTeamSection(selectedDoc.teamId, 'docs')">Docs</button>
-            <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+            <span class="text-tertiary">/</span>
           </template>
           <UIcon name="i-heroicons-document-text" class="text-tertiary" />
           <UInput :model-value="selectedDoc.title" variant="none" :padded="false" class="flex-1 font-medium"
@@ -2463,10 +2463,10 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
           <div class="flex items-center gap-1.5 px-4 py-2.5 text-sm">
             <!-- breadcrumbs -->
             <span class="text-tertiary">{{ store.activeWorkspace?.name }}</span>
-            <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+            <span class="text-tertiary">/</span>
             <button class="font-medium hover:text-secondary" @click="selectTeamIssues(selectedTeam)">{{ selectedTeam.name }}</button>
             <template v-if="selectedCycleId">
-              <UIcon name="i-heroicons-chevron-right" class="text-xs text-tertiary" />
+              <span class="text-tertiary">/</span>
               <span>Cycle {{ store.cycles[selectedCycleId]?.number }}</span>
             </template>
             <div class="ml-auto flex items-center gap-1">
@@ -2922,7 +2922,7 @@ function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
               <Attachments v-if="store.attachmentsFor('comment', c.id).length" class="mt-1.5" entity-type="comment" :entity-id="c.id" readonly />
               <div v-if="reactionGroups(c).length" class="mt-1 flex flex-wrap gap-1">
                 <button v-for="g in reactionGroups(c)" :key="g.emoji"
-                  class="rounded-full border px-1.5 py-0.5 text-xs"
+                  class="rounded border px-1.5 py-0.5 text-xs"
                   :class="g.mine ? 'border-accent bg-accent/15 text-accent' : 'border-subtle text-secondary hover:bg-hover'"
                   @click="commentReact(c, g.emoji)">{{ g.emoji }} {{ g.count }}</button>
               </div>
