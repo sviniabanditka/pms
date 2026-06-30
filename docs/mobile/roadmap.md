@@ -3,17 +3,26 @@
 Lean MVP, online-first. Each phase ships something runnable on a real device.
 See [README.md](./README.md) for stack/architecture decisions.
 
-## Phase M0 — Scaffold & auth (foundation)
+## Phase M0 — Scaffold & auth (foundation) ✅ code done
 
 Goal: app boots on iOS+Android sim, logs in, makes one authenticated RPC.
 
-- [ ] `mobile/` Expo app (TS, expo-router, nativewind). npm/pnpm workspace at repo root.
-- [ ] `buf.gen.yaml`: add second `protoc-gen-es` target `out: mobile/gen`; regenerate.
-- [ ] `mobile/lib/connect.ts`: `createConnectTransport` + Bearer auth interceptor
-      (token from `expo-secure-store`) + Unauthenticated→login guard. Mirror of web.
-- [ ] Login screen → `POST /login` → store token → `GET /me` confirms.
-- [ ] `apiBase` config (dev: LAN IP of the Go server; prod: real host).
-- **Exit:** login works on device, an authenticated RPC returns data.
+- [x] `mobile/` Expo app (SDK 57, TS, expo-router). Standalone (no root workspace
+      yet — ponytail: add only when a shared package appears).
+- [x] `buf.gen.yaml`: second `protoc-gen-es` target `out: mobile/gen` (gitignored,
+      run `buf generate`). 22 services generated.
+- [x] `mobile/lib/connect.ts`: `createConnectTransport` (JSON format for RN-safe
+      fetch) + Bearer interceptor (token cached, from `expo-secure-store`) +
+      Unauthenticated→`setOnUnauthorized` guard. `lib/auth.ts` (login/me/logout/
+      myWorkspaces), `lib/authState.ts` (useSyncExternalStore auth gate).
+- [x] Screens: `_layout.tsx` (boot → loadToken → /me → gate), `login.tsx`,
+      `index.tsx` (workspaces + a live connect `query.search` self-check).
+- [x] `apiBase` via `EXPO_PUBLIC_API_BASE` (`.env.example`); brand: name/scheme `stdtask`.
+- [x] **Verified:** `tsc --noEmit` clean; `expo export -p ios` bundles (1236 modules —
+      connect-web/protobuf/gen all resolve under RN/Hermes).
+- **Pending (needs a device/sim — user):** run on iOS sim + Android, log in against
+  the dev Go server (set LAN IP), confirm the connect self-check shows `connect OK`.
+  This closes the roadmap "verify connect-web on device early" gate.
 
 ## Phase M1 — Navigation shell + My Issues
 

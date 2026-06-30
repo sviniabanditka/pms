@@ -702,3 +702,12 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] disable вебхука → события не доставляются; enable → снова.
 - [ ] Невалидный url (не http/https) / без событий → 400. list/JSON не отдаёт secret.
 - [ ] Бэклог не фолбэчится: вебхук, созданный сейчас, НЕ получает события, случившиеся ДО создания (курсор стартует с max seq).
+
+## 91. Mobile M0 — scaffold & auth (нативный клиент)
+- [ ] `mobile/`: `npm install` + `buf generate` (из корня) → `npx expo start`, открыть в iOS sim / Android.
+- [ ] На реальном устройстве задать `EXPO_PUBLIC_API_BASE=http://<LAN-IP>:8080` (mobile/.env), сервер слушает доступно по сети.
+- [ ] Логин: ввод email/пароль → POST /login → попадаем на home (токен в expo-secure-store).
+- [ ] Перезапуск приложения: остаёмся залогинены (токен поднялся, /me прошёл).
+- [ ] Home: список воркспейсов (GET /me/workspaces, Bearer), строка self-check показывает `connect OK · search → N` (доказывает connect+Bearer+интерсептор).
+- [ ] Протухший/битый токен → авто-увод на /login (Unauthenticated guard).
+- [ ] Выход: [ выйти ] → POST /logout + чистка токена → экран логина.

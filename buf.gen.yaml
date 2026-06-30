@@ -11,3 +11,7 @@ plugins:
   - local: ./frontend/node_modules/.bin/protoc-gen-es
     out: frontend/gen
     opt: target=ts
+  # Тот же кодген для нативного клиента (mobile/). Рантайм @bufbuild/protobuf — та же мажорная версия.
+  - local: ./frontend/node_modules/.bin/protoc-gen-es
+    out: mobile/gen
+    opt: target=ts
