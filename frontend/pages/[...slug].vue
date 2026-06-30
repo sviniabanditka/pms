@@ -3541,19 +3541,19 @@ useHead({ title: () => pageTitle.value })
               <div class="mb-4 flex items-center justify-between">
                 <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> automations</h2>
                 <div class="flex items-center gap-2">
-                  <UButton color="gray" size="xs" @click="openAutoCreate">[ new rule ]</UButton>
+                  <UButton v-if="store.isWsAdmin" color="gray" size="xs" @click="openAutoCreate">[ new rule ]</UButton>
                   <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
                 </div>
               </div>
               <p class="mb-3 text-xs text-tertiary">When something happens to an issue, run actions automatically.</p>
               <div v-for="a in store.automationsList" :key="a.id" class="group mb-1.5 flex items-center gap-3 rounded-md border border-subtle px-3 py-2">
-                <TermCheck :model-value="a.enabled" @update:model-value="(v:any) => store.toggleAutomation(a.id, v)" />
-                <div class="min-w-0 flex-1 cursor-pointer" @click="openAutoEdit(a)">
+                <TermCheck :model-value="a.enabled" :disabled="!store.isWsAdmin" @update:model-value="(v:any) => store.isWsAdmin && store.toggleAutomation(a.id, v)" />
+                <div class="min-w-0 flex-1" :class="store.isWsAdmin ? 'cursor-pointer' : ''" @click="store.isWsAdmin && openAutoEdit(a)">
                   <div class="truncate text-sm font-medium" :class="a.enabled ? 'text-white' : 'text-tertiary'">{{ a.name }}</div>
                   <div class="truncate text-xs text-tertiary">{{ autoSummary(a) }}<span v-if="a.teamId"> · {{ store.teams[a.teamId]?.key }}</span></div>
                 </div>
-                <UButton icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square @click="openAutoEdit(a)" />
-                <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square @click="store.deleteAutomation(a.id)" />
+                <UButton v-if="store.isWsAdmin" icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square @click="openAutoEdit(a)" />
+                <UButton v-if="store.isWsAdmin" icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square @click="store.deleteAutomation(a.id)" />
               </div>
               <div v-if="!store.automationsList.length" class="py-6 text-center text-sm text-tertiary">No automations yet. Create your first rule.</div>
             </template>
