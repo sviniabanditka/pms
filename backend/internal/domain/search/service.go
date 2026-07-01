@@ -25,13 +25,18 @@ var (
 	reWS      = regexp.MustCompile(`\s+`)
 )
 
-// cleanSnippet — markdown/mention/url → читаемый текст для превью (≤80).
-func cleanSnippet(body string) string {
+// cleanSnippetFull — markdown/mention/url → читаемый текст (без обрезки).
+func cleanSnippetFull(body string) string {
 	s := reMention.ReplaceAllString(body, "@$1")
 	s = reImage.ReplaceAllString(s, "")
 	s = reLink.ReplaceAllString(s, "$1")
 	s = strings.NewReplacer("#", "", "*", "", "_", "", "`", "", "~", "", ">", "").Replace(s)
-	s = strings.TrimSpace(reWS.ReplaceAllString(s, " "))
+	return strings.TrimSpace(reWS.ReplaceAllString(s, " "))
+}
+
+// cleanSnippet — то же, обрезано под превью (≤80).
+func cleanSnippet(body string) string {
+	s := cleanSnippetFull(body)
 	if len([]rune(s)) > 80 {
 		s = string([]rune(s)[:80]) + "…"
 	}
@@ -502,5 +507,133 @@ func (s *Service) Themes(ctx context.Context, actor, wsID uuid.UUID) ([]byte, er
 		themes = themes[:12]
 	}
 	raw, _ := json.Marshal(themes)
+	return raw, nil
+}
+
+// --- Фаза 4 (остаток): аномалии, резюме, sentiment ---
+
+type Outlier struct {
+	Identifier string  `json:"identifier"`
+	Title      string  `json:"title"`
+	Score      float64 `json:"score"`
+}
+
+// Anomalies — issue, эмбеддинги которых наиболее «выбиваются» (IsolationForest).
+// RLS-scoped. Топ-N по outlier-скору (порог 0.6).
+func (s *Service) Anomalies(ctx context.Context, actor, wsID uuid.UUID, limit int) ([]byte, error) {
+	if s.embed == nil {
+		return nil, ErrNoEmbed
+	}
+	if limit <= 0 || limit > 20 {
+		limit = 8
+	}
+	var rows []struct {
+		Identifier string `bun:"identifier"`
+		Title      string `bun:"title"`
+		Vec        string `bun:"vec"`
+	}
+	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		return tx.NewRaw(
+			`SELECT i.identifier, i.title, e.embedding::text AS vec
+			 FROM issues i JOIN embeddings e ON e.entity_type='issue' AND e.entity_id = i.id
+			 WHERE i.deleted_at IS NULL AND i.archived_at IS NULL`).Scan(ctx, &rows)
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) < 20 {
+		return []byte("[]"), nil
+	}
+	vecs := make([][]float32, 0, len(rows))
+	for _, r := range rows {
+		vecs = append(vecs, embed.ParseVecLiteral(r.Vec))
+	}
+	scores, err := s.embed.Anomaly(ctx, vecs)
+	if err != nil || len(scores) != len(rows) {
+		return nil, err
+	}
+	out := make([]Outlier, 0, len(rows))
+	for i, r := range rows {
+		if scores[i] >= 0.6 {
+			out = append(out, Outlier{Identifier: r.Identifier, Title: r.Title, Score: scores[i]})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Score > out[j].Score })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	raw, _ := json.Marshal(out)
+	return raw, nil
+}
+
+// Summarize — экстрактивное резюме описания issue (TextRank в сайдкаре). RLS-scoped.
+func (s *Service) Summarize(ctx context.Context, actor, wsID, issueID uuid.UUID, maxSentences int) ([]byte, error) {
+	if s.embed == nil {
+		return nil, ErrNoEmbed
+	}
+	var row struct {
+		Title string `bun:"title"`
+		MD    string `bun:"md"`
+	}
+	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		return tx.NewRaw(
+			`SELECT title, COALESCE(description->>'md','') AS md
+			 FROM issues WHERE id = ? AND deleted_at IS NULL`, issueID).Scan(ctx, &row)
+	})
+	if err != nil {
+		return nil, err
+	}
+	text := strings.TrimSpace(row.Title + ". " + cleanSnippetFull(row.MD))
+	if maxSentences <= 0 || maxSentences > 6 {
+		maxSentences = 3
+	}
+	sum, err := s.embed.Summarize(ctx, text, maxSentences)
+	if err != nil {
+		return nil, err
+	}
+	raw, _ := json.Marshal(map[string]string{"summary": sum})
+	return raw, nil
+}
+
+// Mood — агрегат тональности по последним комментам воркспейса (Фаза 4). RLS-scoped.
+func (s *Service) Mood(ctx context.Context, actor, wsID uuid.UUID) ([]byte, error) {
+	if s.embed == nil {
+		return nil, ErrNoEmbed
+	}
+	var bodies []string
+	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		return tx.NewRaw(
+			`SELECT body FROM comments WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 200`).Scan(ctx, &bodies)
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(bodies) < 5 {
+		return []byte(`{"n":0,"avg":0,"pos":0,"neg":0,"neu":0}`), nil
+	}
+	clean := make([]string, len(bodies))
+	for i, b := range bodies {
+		clean[i] = cleanSnippetFull(b)
+	}
+	scores, err := s.embed.Sentiment(ctx, clean)
+	if err != nil {
+		return nil, err
+	}
+	var sum float64
+	var pos, neg, neu int
+	for _, sc := range scores {
+		sum += sc
+		switch {
+		case sc > 0.15:
+			pos++
+		case sc < -0.15:
+			neg++
+		default:
+			neu++
+		}
+	}
+	raw, _ := json.Marshal(map[string]any{
+		"n": len(scores), "avg": sum / float64(len(scores)), "pos": pos, "neg": neg, "neu": neu,
+	})
 	return raw, nil
 }

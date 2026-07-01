@@ -102,6 +102,15 @@ function descWrap(pre: string, post = pre) {
   descDraft.value = v.slice(0, s) + pre + v.slice(s, e) + post + v.slice(e)
   nextTick(() => { el.focus(); el.selectionStart = s + pre.length; el.selectionEnd = e + pre.length })
 }
+// AI-резюме описания (Фаза 4)
+const descSummary = ref(''); const descSummaryLoading = ref(false)
+async function summarizeDesc() {
+  if (!selectedIssue.value) return
+  descSummaryLoading.value = true
+  descSummary.value = await store.summarizeIssue(selectedIssue.value.id)
+  descSummaryLoading.value = false
+}
+watch(selectedIssueId, () => { descSummary.value = '' })
 const aiSuggest = ref<any>(null)
 const simIssues = computed(() => (aiSuggest.value?.similar || []).filter((s: any) => s.id !== selectedIssueId.value))
 function openIssue(id: string) {
@@ -1158,11 +1167,18 @@ function exportReportCsv() {
 }
 const dayShort = (ds: string) => parseD(ds).toLocaleDateString('en', { month: 'short', day: 'numeric' })
 watch([() => activeSection.value, repFrom, repTo, repGroup, repUser], () => { if (activeSection.value === 'reports') loadReport() }, { immediate: false })
-// AI-темы (Фаза 4): топик-кластеры воркспейса
-const aiThemes = ref<any[]>([]); const aiThemesLoaded = ref(false)
+// AI-инсайты (Фаза 4): темы + аномалии + настроение
+const aiThemes = ref<any[]>([]); const aiOutliers = ref<any[]>([]); const aiMood = ref<any>(null)
+const aiLoaded = ref(false)
 watch(() => activeSection.value, (s) => {
-  if (s === 'reports' && !aiThemesLoaded.value) { aiThemesLoaded.value = true; store.themes().then((t) => { aiThemes.value = t }) }
+  if (s === 'reports' && !aiLoaded.value) {
+    aiLoaded.value = true
+    store.themes().then((t) => { aiThemes.value = t })
+    store.anomalies().then((o) => { aiOutliers.value = o })
+    store.mood().then((m) => { aiMood.value = m })
+  }
 })
+const moodPct = computed(() => aiMood.value?.n ? Math.round((aiMood.value.avg + 1) / 2 * 100) : 0)
 // iCal-подписка
 const showIcal = ref(false)
 const icalUrl = ref('')
@@ -2178,14 +2194,40 @@ useHead({ title: () => pageTitle.value })
             </div>
           </template>
 
-          <!-- AI themes (Фаза 4): топик-кластеры воркспейса -->
-          <div v-if="aiThemes.length" class="mt-8 border-t border-subtle pt-6">
-            <div class="mb-3 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-accent2">≈ </span>AI themes</div>
-            <div class="space-y-1.5">
-              <div v-for="t in aiThemes" :key="t.label" class="flex items-center gap-3 rounded-lg border border-subtle bg-elevated px-3 py-2">
-                <span class="w-10 shrink-0 text-right text-sm tabular-nums text-white">{{ t.size }}</span>
-                <span class="min-w-0 flex-1 truncate text-sm text-secondary" :title="t.label">{{ t.label }}</span>
-                <span class="shrink-0 text-xs text-tertiary">{{ (t.sample || []).join(' · ') }}</span>
+          <!-- AI insights (Фаза 4): темы + аномалии + настроение -->
+          <div v-if="aiThemes.length || aiOutliers.length || (aiMood && aiMood.n)" class="mt-8 border-t border-subtle pt-6">
+            <!-- настроение команды -->
+            <div v-if="aiMood && aiMood.n" class="mb-6">
+              <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-accent2">≈ </span>Team mood <span class="text-tertiary/60">({{ aiMood.n }} comments)</span></div>
+              <div class="flex items-center gap-3">
+                <div class="h-2 flex-1 overflow-hidden rounded-full bg-elevated">
+                  <div class="h-full rounded-full transition-all" :style="{ width: moodPct + '%', background: aiMood.avg >= 0 ? '#9ece6a' : '#f7768e' }" />
+                </div>
+                <span class="w-24 shrink-0 text-right text-xs text-tertiary">{{ aiMood.pos }}+ / {{ aiMood.neg }}− / {{ aiMood.neu }}·</span>
+              </div>
+            </div>
+
+            <!-- топик-кластеры -->
+            <div v-if="aiThemes.length" class="mb-6">
+              <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-accent2">≈ </span>AI themes</div>
+              <div class="space-y-1.5">
+                <div v-for="t in aiThemes" :key="t.label" class="flex items-center gap-3 rounded-lg border border-subtle bg-elevated px-3 py-2">
+                  <span class="w-10 shrink-0 text-right text-sm tabular-nums text-white">{{ t.size }}</span>
+                  <span class="min-w-0 flex-1 truncate text-sm text-secondary" :title="t.label">{{ t.label }}</span>
+                  <span class="shrink-0 text-xs text-tertiary">{{ (t.sample || []).join(' · ') }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- аномалии (выбивающиеся задачи) -->
+            <div v-if="aiOutliers.length">
+              <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-accent2">≈ </span>Outliers <span class="text-tertiary/60">(unusual vs the rest)</span></div>
+              <div class="space-y-1.5">
+                <div v-for="o in aiOutliers" :key="o.identifier" class="flex items-center gap-3 rounded-lg border border-subtle bg-elevated px-3 py-2">
+                  <span class="shrink-0 text-xs font-medium text-accent2">{{ o.identifier }}</span>
+                  <span class="min-w-0 flex-1 truncate text-sm text-secondary" :title="o.title">{{ o.title }}</span>
+                  <span class="shrink-0 text-xs text-tertiary tabular-nums">{{ Math.round(o.score * 100) }}%</span>
+                </div>
               </div>
             </div>
           </div>
@@ -2937,9 +2979,19 @@ useHead({ title: () => pageTitle.value })
                 placeholder="Add description… (markdown, @mention, #ref)" @paste="onAttachPaste($event, 'issue', selectedIssue.id)" @input="descMention.detect()" @keydown="onDescKeydown"></textarea>
             </div>
           </div>
-          <div v-else-if="selectedIssue.description?.md"
-            class="prose-invert -mx-2 cursor-text rounded-md px-2 py-1.5 text-sm leading-relaxed text-secondary hover:bg-elevated [&_a]:text-accent [&_code]:rounded [&_code]:bg-elevated [&_code]:px-1 [&_h1]:mb-1 [&_h1]:mt-2 [&_h1]:text-base [&_h1]:font-semibold [&_h1]:text-white [&_h2]:mb-1 [&_h2]:mt-2 [&_h2]:font-semibold [&_h2]:text-white [&_li]:ml-4 [&_li]:list-disc [&_p]:mb-1.5 [&_strong]:text-white"
-            @click="store.canWrite && startDescEdit()" v-html="renderMarkdown(selectedIssue.description.md)" />
+          <template v-else-if="selectedIssue.description?.md">
+            <div
+              class="prose-invert -mx-2 cursor-text rounded-md px-2 py-1.5 text-sm leading-relaxed text-secondary hover:bg-elevated [&_a]:text-accent [&_code]:rounded [&_code]:bg-elevated [&_code]:px-1 [&_h1]:mb-1 [&_h1]:mt-2 [&_h1]:text-base [&_h1]:font-semibold [&_h1]:text-white [&_h2]:mb-1 [&_h2]:mt-2 [&_h2]:font-semibold [&_h2]:text-white [&_li]:ml-4 [&_li]:list-disc [&_p]:mb-1.5 [&_strong]:text-white"
+              @click="store.canWrite && startDescEdit()" v-html="renderMarkdown(selectedIssue.description.md)" />
+            <!-- AI-резюме для длинных описаний -->
+            <div v-if="(selectedIssue.description.md || '').length > 280" class="mt-1.5">
+              <button v-if="!descSummary && !descSummaryLoading" class="text-xs text-tertiary hover:text-accent2" @click="summarizeDesc">≈ summarize</button>
+              <span v-else-if="descSummaryLoading" class="text-xs text-tertiary">≈ summarizing…</span>
+              <div v-else class="rounded-md border border-subtle bg-elevated px-3 py-2 text-xs leading-relaxed text-secondary">
+                <span class="text-accent2">≈ TL;DR </span>{{ descSummary }}
+              </div>
+            </div>
+          </template>
           <button v-else-if="store.canWrite" class="-mx-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-tertiary hover:bg-elevated" @click="startDescEdit">
             <UIcon name="i-heroicons-bars-3-bottom-left" /> Add description…
           </button>

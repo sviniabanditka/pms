@@ -200,6 +200,58 @@ func (h *queryHandler) Themes(ctx context.Context, req *connect.Request[pmsv1.Th
 	return connect.NewResponse(&pmsv1.ThemesResponse{Result: raw}), nil
 }
 
+func (h *queryHandler) Anomalies(ctx context.Context, req *connect.Request[pmsv1.AnomaliesRequest]) (*connect.Response[pmsv1.AnomaliesResponse], error) {
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wsID, err := uuid.Parse(req.Msg.WorkspaceId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid workspace_id"))
+	}
+	raw, err := h.svc.Anomalies(ctx, actor, wsID, int(req.Msg.Limit))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.AnomaliesResponse{Result: raw}), nil
+}
+
+func (h *queryHandler) Summarize(ctx context.Context, req *connect.Request[pmsv1.SummarizeRequest]) (*connect.Response[pmsv1.SummarizeResponse], error) {
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wsID, err := uuid.Parse(req.Msg.WorkspaceId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid workspace_id"))
+	}
+	issueID, err := uuid.Parse(req.Msg.IssueId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid issue_id"))
+	}
+	raw, err := h.svc.Summarize(ctx, actor, wsID, issueID, int(req.Msg.MaxSentences))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.SummarizeResponse{Result: raw}), nil
+}
+
+func (h *queryHandler) Mood(ctx context.Context, req *connect.Request[pmsv1.MoodRequest]) (*connect.Response[pmsv1.MoodResponse], error) {
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wsID, err := uuid.Parse(req.Msg.WorkspaceId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid workspace_id"))
+	}
+	raw, err := h.svc.Mood(ctx, actor, wsID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.MoodResponse{Result: raw}), nil
+}
+
 // protoToFilterNode конвертирует protobuf Filter-AST в JSON-форму компилятора (filter.Node).
 func protoToFilterNode(n *pmsv1.FilterNode) *filter.Node {
 	if n == nil {

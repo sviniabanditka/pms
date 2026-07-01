@@ -972,6 +972,36 @@ export const useAppStore = defineStore('app', {
         return []
       }
     },
+    async anomalies(): Promise<any[]> {
+      if (!this.activeWorkspaceId) return []
+      const { query } = useClients()
+      try {
+        const res = await query.anomalies({ workspaceId: this.activeWorkspaceId, limit: 8 })
+        return (this._decode(res.result) as any[]) || []
+      } catch {
+        return []
+      }
+    },
+    async mood(): Promise<any> {
+      if (!this.activeWorkspaceId) return null
+      const { query } = useClients()
+      try {
+        const res = await query.mood({ workspaceId: this.activeWorkspaceId })
+        return this._decode(res.result) as any
+      } catch {
+        return null
+      }
+    },
+    async summarizeIssue(issueId: string): Promise<string> {
+      if (!this.activeWorkspaceId) return ''
+      const { query } = useClients()
+      try {
+        const res = await query.summarize({ workspaceId: this.activeWorkspaceId, issueId, maxSentences: 3 })
+        return ((this._decode(res.result) as any)?.summary as string) || ''
+      } catch {
+        return ''
+      }
+    },
     async loadComments(issueId: string) {
       const { comments } = useClients()
       const res = await comments.getComments({ workspaceId: this.activeWorkspaceId, issueId })

@@ -3,6 +3,7 @@
 import os
 from typing import List, Literal, Optional
 
+import re
 import joblib
 import numpy as np
 from fastapi import FastAPI
@@ -10,6 +11,7 @@ from pydantic import BaseModel
 from fastembed import TextEmbedding
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.cluster import HDBSCAN
+from sklearn.ensemble import IsolationForest
 
 MODEL = os.environ.get("EMBED_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 MODELS_DIR = os.environ.get("MODELS_DIR", "/models")
@@ -135,3 +137,100 @@ def cluster(req: ClusterRequest):
     clu = HDBSCAN(min_cluster_size=mcs, metric="euclidean")
     labels = clu.fit_predict(Xn)
     return ClusterResponse(labels=[int(l) for l in labels])
+
+
+# --- Аномалии (Фаза 4): IsolationForest по эмбеддингам воркспейса ---
+class AnomalyRequest(BaseModel):
+    vectors: List[List[float]]
+
+
+class AnomalyResponse(BaseModel):
+    scores: List[float]   # 0..1, выше = аномальнее
+
+
+@app.post("/anomaly", response_model=AnomalyResponse)
+def anomaly(req: AnomalyRequest):
+    n = len(req.vectors)
+    if n < 20:
+        return AnomalyResponse(scores=[0.0] * n)
+    X = np.array(req.vectors, dtype=np.float32)
+    iso = IsolationForest(contamination="auto", random_state=0)
+    iso.fit(X)
+    raw = -iso.score_samples(X)  # выше = аномальнее
+    lo, hi = float(raw.min()), float(raw.max())
+    span = hi - lo or 1.0
+    return AnomalyResponse(scores=[float((s - lo) / span) for s in raw])
+
+
+# --- Экстрактивное резюме (Фаза 4): TextRank по эмбеддингам предложений ---
+class SummarizeRequest(BaseModel):
+    text: str
+    max_sentences: int = 3
+
+
+class SummarizeResponse(BaseModel):
+    summary: str
+
+
+_SENT_SPLIT = re.compile(r"(?<=[.!?…])\s+|\n+")
+
+
+@app.post("/summarize", response_model=SummarizeResponse)
+def summarize(req: SummarizeRequest):
+    sents = [s.strip() for s in _SENT_SPLIT.split(req.text or "") if len(s.strip()) > 15]
+    k = max(1, req.max_sentences)
+    if len(sents) <= k:
+        return SummarizeResponse(summary=" ".join(sents))
+    V = np.array(list(_embed.embed(sents)), dtype=np.float32)
+    norms = np.linalg.norm(V, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    Vn = V / norms
+    sim = Vn @ Vn.T
+    np.fill_diagonal(sim, 0.0)
+    sim[sim < 0] = 0.0
+    # PageRank (power iteration) по графу похожести предложений
+    deg = sim.sum(axis=1, keepdims=True)
+    deg[deg == 0] = 1.0
+    P = sim / deg
+    r = np.ones(len(sents)) / len(sents)
+    for _ in range(30):
+        r = 0.15 / len(sents) + 0.85 * (P.T @ r)
+    top = sorted(sorted(range(len(sents)), key=lambda i: r[i], reverse=True)[:k])
+    return SummarizeResponse(summary=" ".join(sents[i] for i in top))
+
+
+# --- Sentiment (Фаза 4): билингвальный лексикон RU+EN.
+# ponytail: лексиконная эвристика, потолок ~ключевые слова; апгрейд — multilingual
+# sentiment-ONNX модель, если понадобится точность на сарказме/отрицаниях.
+_POS = set("""good great awesome nice excellent perfect love thanks thank helpful
+works fixed solved done ready clear happy cool amazing wonderful appreciate glad win
+хорошо отлично супер класс спасибо круто рад работает готово исправлено решено ясно
+отличн прекрасно люблю нравится удобно быстро успех молодец топ""".split())
+_NEG = set("""bad broken bug error fail failed crash slow blocked stuck confusing
+wrong issue problem hate annoying terrible awful useless angry frustrated sorry cannot
+плохо ошибка баг сломан падает медленно блокирует застрял непонятно неправильно
+проблема ненавижу ужасно бесит бесполезно злой раздражает жаль нельзя косяк""".split())
+_WORD = re.compile(r"[a-zA-Zа-яА-ЯёЁ]+")
+
+
+class SentimentRequest(BaseModel):
+    texts: List[str]
+
+
+class SentimentResponse(BaseModel):
+    scores: List[float]   # -1..1 на текст
+
+
+@app.post("/sentiment", response_model=SentimentResponse)
+def sentiment(req: SentimentRequest):
+    out = []
+    for t in req.texts:
+        pos = neg = 0
+        for w in _WORD.findall((t or "").lower()):
+            # префиксный матч ловит словоформы (работает/работал → работает)
+            if w in _POS or any(w.startswith(p) for p in _POS if len(p) > 4):
+                pos += 1
+            elif w in _NEG or any(w.startswith(p) for p in _NEG if len(p) > 4):
+                neg += 1
+        out.append((pos - neg) / (pos + neg + 1))
+    return SentimentResponse(scores=out)

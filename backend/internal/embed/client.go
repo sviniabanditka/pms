@@ -143,3 +143,53 @@ func (c *Client) Cluster(ctx context.Context, vectors [][]float32, minClusterSiz
 	}
 	return out.Labels, nil
 }
+
+// --- Фаза 4 (остаток): аномалии, резюме, sentiment ---
+
+func (c *Client) post(ctx context.Context, path string, payload any, out any) error {
+	body, _ := json.Marshal(payload)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.url+path, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("sidecar %s %d", path, resp.StatusCode)
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// Anomaly — outlier-скор 0..1 на каждый вектор (IsolationForest).
+func (c *Client) Anomaly(ctx context.Context, vectors [][]float32) ([]float64, error) {
+	var out struct {
+		Scores []float64 `json:"scores"`
+	}
+	if err := c.post(ctx, "/anomaly", map[string]any{"vectors": vectors}, &out); err != nil {
+		return nil, err
+	}
+	return out.Scores, nil
+}
+
+// Summarize — экстрактивное резюме (TextRank по предложениям).
+func (c *Client) Summarize(ctx context.Context, text string, maxSentences int) (string, error) {
+	var out struct {
+		Summary string `json:"summary"`
+	}
+	if err := c.post(ctx, "/summarize", map[string]any{"text": text, "max_sentences": maxSentences}, &out); err != nil {
+		return "", err
+	}
+	return out.Summary, nil
+}
+
+// Sentiment — тональность -1..1 на каждый текст (билингвальный лексикон).
+func (c *Client) Sentiment(ctx context.Context, texts []string) ([]float64, error) {
+	var out struct {
+		Scores []float64 `json:"scores"`
+	}
+	if err := c.post(ctx, "/sentiment", map[string]any{"texts": texts}, &out); err != nil {
+		return nil, err
+	}
+	return out.Scores, nil
+}

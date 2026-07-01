@@ -15,6 +15,9 @@ service QueryService {
   rpc SimilarIssues(SimilarIssuesRequest) returns (SimilarIssuesResponse);
   rpc Suggest(SuggestRequest) returns (SuggestResponse);
   rpc Themes(ThemesRequest) returns (ThemesResponse);
+  rpc Anomalies(AnomaliesRequest) returns (AnomaliesResponse);
+  rpc Summarize(SummarizeRequest) returns (SummarizeResponse);
+  rpc Mood(MoodRequest) returns (MoodResponse);
 }
 
 message SearchRequest {
@@ -84,4 +87,28 @@ message ThemesRequest {
 }
 message ThemesResponse {
   bytes result = 1; // json Theme[]
+}
+
+message AnomaliesRequest {
+  string workspace_id = 1;
+  int32 limit = 2;
+}
+message AnomaliesResponse {
+  bytes result = 1; // json Outlier[]: [{identifier,title,score}]
+}
+
+message SummarizeRequest {
+  string workspace_id = 1;
+  string issue_id = 2;
+  int32 max_sentences = 3;
+}
+message SummarizeResponse {
+  bytes result = 1; // json { summary }
+}
+
+message MoodRequest {
+  string workspace_id = 1;
+}
+message MoodResponse {
+  bytes result = 1; // json { n, avg, pos, neg, neu }
 }
