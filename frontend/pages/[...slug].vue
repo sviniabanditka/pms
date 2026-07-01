@@ -102,7 +102,12 @@ function descWrap(pre: string, post = pre) {
   descDraft.value = v.slice(0, s) + pre + v.slice(s, e) + post + v.slice(e)
   nextTick(() => { el.focus(); el.selectionStart = s + pre.length; el.selectionEnd = e + pre.length })
 }
-function openIssue(id: string) { selectedIssueId.value = id; descEditing.value = false; store.loadComments(id); store.loadActivity(id) }
+const simIssues = ref<any[]>([])
+function openIssue(id: string) {
+  selectedIssueId.value = id; descEditing.value = false; store.loadComments(id); store.loadActivity(id)
+  simIssues.value = []
+  store.similarIssues(id).then((r) => { if (selectedIssueId.value === id) simIssues.value = r })
+}
 // bulk selection (List)
 const selectedIds = ref<Set<string>>(new Set())
 const selCount = computed(() => selectedIds.value.size)
@@ -3032,6 +3037,17 @@ useHead({ title: () => pageTitle.value })
         <div class="mb-5">
           <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Attachments</div>
           <Attachments entity-type="issue" :entity-id="selectedIssue.id" />
+        </div>
+
+        <!-- Similar issues (AI Фаза 1) -->
+        <div v-if="simIssues.length" class="mb-4">
+          <div class="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-tertiary">
+            <span class="text-accent2">≈ </span>Similar
+          </div>
+          <button v-for="s in simIssues" :key="s.id" class="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-sm hover:bg-hover" @click="openIssue(s.id)">
+            <span class="shrink-0 text-xs text-accent2">{{ s.identifier }}</span>
+            <span class="min-w-0 flex-1 truncate text-secondary">{{ s.title }}</span>
+          </button>
         </div>
 
         <!-- Comments -->
