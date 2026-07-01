@@ -752,3 +752,10 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Ошибка рендера → брендовый экран `// something broke` + [ retry ] (не красный краш).
 - [ ] Тема тёмная (splash #0b0c12), bundle id `com.stdtask.app`.
 - [ ] Сборка: `eas build --profile preview -p ios|android` даёт устанавливаемый билд (нужен EAS-аккаунт; шаги в mobile/SHIP.md).
+
+## 97. Mobile — terminal design (паритет с десктопом)
+- [ ] Весь UI в JetBrains Mono (моно-шрифт грузится на старте; до загрузки — спиннер).
+- [ ] Точная палитра десктопа (base #0b0c12, surface/elevated, accent #7aa2f7, ok #9ece6a, bright #eef0fa и т.д.).
+- [ ] Терминальные элементы: `~/ws`, `# section`, `$` в инпутах, кнопки `[ label ]`, акцентные CTA.
+- [ ] Таб-бар моно, без иконок (issues/inbox/profile), тёмный.
+- [ ] Все экраны (login/issues/inbox/profile/detail/create) единый стиль, не выглядят как прототип.

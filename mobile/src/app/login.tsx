@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { StyleSheet, TextInput, View } from 'react-native'
 
 import { login, myWorkspaces } from '~/lib/auth'
 import { setAuthed } from '~/lib/authState'
 import { getActiveWs, loadActiveWs } from '~/lib/workspace'
 import { loadMeta } from '~/lib/meta'
 import { registerForPush } from '~/lib/push'
+import { C, F } from '~/lib/theme'
+import { Primary, Prompt, T } from '~/lib/ui'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -23,65 +25,66 @@ export default function Login() {
       const ws = getActiveWs()
       if (ws) await loadMeta(ws)
       registerForPush()
-      setAuthed(true) // _layout уведёт на /
+      setAuthed(true)
     } catch (e: any) {
       setErr(e?.message ?? 'Sign-in failed')
-    } finally {
       setBusy(false)
     }
   }
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.brand}>
-        <Text style={{ color: '#9ece6a' }}>~/</Text>stdtask
-      </Text>
-      <Text style={styles.sub}>// sign in to your workspace</Text>
+      <T w="b" s={30}>
+        <Prompt />stdtask
+      </T>
+      <T v="faint" style={{ marginBottom: 20 }}>
+        // sign in to your workspace
+      </T>
 
-      <TextInput
-        style={styles.input}
-        placeholder="email"
-        placeholderTextColor="#565f89"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        autoCorrect={false}
-        value={email}
-        onChangeText={setEmail}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="password"
-        placeholderTextColor="#565f89"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-        onSubmitEditing={onSubmit}
-      />
+      <View style={styles.field}>
+        <T v="ok" w="m" style={styles.dollar}>
+          $
+        </T>
+        <TextInput
+          style={styles.input}
+          placeholder="email"
+          placeholderTextColor={C.tertiary}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          autoCorrect={false}
+          value={email}
+          onChangeText={setEmail}
+        />
+      </View>
+      <View style={styles.field}>
+        <T v="ok" w="m" style={styles.dollar}>
+          $
+        </T>
+        <TextInput
+          style={styles.input}
+          placeholder="password"
+          placeholderTextColor={C.tertiary}
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+          onSubmitEditing={onSubmit}
+        />
+      </View>
 
-      {err ? <Text style={styles.err}>{err}</Text> : null}
+      {err ? (
+        <T v="danger" s={13}>
+          {err}
+        </T>
+      ) : null}
 
-      <Pressable style={[styles.btn, busy && { opacity: 0.5 }]} disabled={busy} onPress={onSubmit}>
-        {busy ? <ActivityIndicator color="#0b0c12" /> : <Text style={styles.btnText}>[ sign in ]</Text>}
-      </Pressable>
+      <Primary label="sign in" busy={busy} onPress={onSubmit} style={{ marginTop: 6 }} />
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, justifyContent: 'center', paddingHorizontal: 28, backgroundColor: '#0b0c12', gap: 12 },
-  brand: { color: '#c0caf5', fontSize: 30, fontWeight: '700' },
-  sub: { color: '#565f89', marginBottom: 16 },
-  input: {
-    borderWidth: 1,
-    borderColor: '#1f2335',
-    backgroundColor: '#13151f',
-    color: '#c0caf5',
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  err: { color: '#f7768e', fontSize: 13 },
-  btn: { backgroundColor: '#7aa2f7', borderRadius: 8, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
-  btnText: { color: '#0b0c12', fontWeight: '700', fontSize: 16 },
+  wrap: { flex: 1, justifyContent: 'center', paddingHorizontal: 28, backgroundColor: C.base, gap: 12 },
+  field: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: C.subtle, backgroundColor: C.elevated, borderRadius: 8, paddingHorizontal: 12 },
+  dollar: { marginRight: 8 },
+  input: { flex: 1, color: C.text, paddingVertical: 12, fontSize: 15, fontFamily: F.r },
 })

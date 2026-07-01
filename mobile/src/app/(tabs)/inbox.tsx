@@ -1,12 +1,13 @@
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useState } from 'react'
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
+import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native'
 
 import { cachedNotifications, issueById, listNotifications, markAllRead, markRead, type Notification } from '~/lib/api'
 import { userById } from '~/lib/meta'
 import { useActiveWs } from '~/lib/workspace'
+import { C } from '~/lib/theme'
+import { Bracket, Prompt, Spinner, T } from '~/lib/ui'
 
-// type → человекочитаемо
 const LABEL: Record<string, string> = {
   due_soon: 'due soon',
   assigned: 'assigned to you',
@@ -71,43 +72,39 @@ export default function Inbox() {
   return (
     <View style={styles.wrap}>
       <View style={styles.header}>
-        <Text style={styles.h1}>
-          <Text style={{ color: '#9ece6a' }}>#</Text> inbox {unread ? <Text style={styles.count}>{unread}</Text> : null}
-        </Text>
-        {unread ? (
-          <Pressable onPress={allRead}>
-            <Text style={styles.markAll}>[ mark all read ]</Text>
-          </Pressable>
-        ) : null}
+        <T w="b" s={20}>
+          <Prompt char="#" color={C.accent} /> inbox {unread ? <T v="accent" s={15}>{unread}</T> : null}
+        </T>
+        {unread ? <Bracket label="mark all read" color={C.tertiary} onPress={allRead} /> : null}
       </View>
 
       {loading ? (
-        <ActivityIndicator color="#7aa2f7" style={{ marginTop: 40 }} />
+        <Spinner />
       ) : err ? (
         <View style={styles.center}>
-          <Text style={styles.err}>{err}</Text>
-          <Pressable onPress={() => load()} style={styles.retry}>
-            <Text style={styles.retryText}>[ retry ]</Text>
-          </Pressable>
+          <T v="danger">{err}</T>
+          <Bracket label="retry" onPress={() => load()} />
         </View>
       ) : (
         <FlatList
           data={items}
           keyExtractor={(n) => n.id}
-          contentContainerStyle={items.length === 0 && styles.center}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#7aa2f7" />}
-          ListEmptyComponent={<Text style={styles.muted}>// inbox zero</Text>}
+          contentContainerStyle={items.length === 0 ? styles.center : { paddingBottom: 24 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={C.accent} />}
+          ListEmptyComponent={<T v="faint">// inbox zero</T>}
           renderItem={({ item }) => {
             const actor = userById(item.actorId)?.name
             return (
               <Pressable style={styles.row} onPress={() => open(item)}>
                 {!item.readAt ? <View style={styles.unreadDot} /> : <View style={styles.dotSpace} />}
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.type, !item.readAt && { color: '#c0caf5' }]}>{LABEL[item.type] ?? item.type}</Text>
-                  <Text style={styles.sub}>
+                  <T v={item.readAt ? 'faint' : 'bright'} s={15} w={item.readAt ? 'r' : 'm'}>
+                    {LABEL[item.type] ?? item.type}
+                  </T>
+                  <T v="faint" s={12} style={{ marginTop: 2 }}>
                     {actor ? actor + ' · ' : ''}
                     {item.entityType}
-                  </Text>
+                  </T>
                 </View>
               </Pressable>
             )
@@ -119,19 +116,10 @@ export default function Inbox() {
 }
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: '#0b0c12', paddingTop: 64, paddingHorizontal: 16 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  h1: { color: '#c0caf5', fontSize: 20, fontWeight: '700' },
-  count: { color: '#7aa2f7', fontSize: 15 },
-  markAll: { color: '#565f89', fontSize: 13 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#13151f' },
-  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#7aa2f7' },
+  wrap: { flex: 1, backgroundColor: C.base, paddingTop: 64, paddingHorizontal: 16 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: C.subtle },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.accent },
   dotSpace: { width: 8 },
-  type: { color: '#565f89', fontSize: 15 },
-  sub: { color: '#565f89', fontSize: 12, marginTop: 2 },
-  center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  muted: { color: '#565f89' },
-  err: { color: '#f7768e' },
-  retry: { borderWidth: 1, borderColor: '#1f2335', borderRadius: 6, paddingVertical: 8, paddingHorizontal: 16 },
-  retryText: { color: '#7aa2f7' },
+  center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
 })

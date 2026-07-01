@@ -1,18 +1,23 @@
 import { Tabs } from 'expo-router'
 
+import { C, F } from '~/lib/theme'
+
 export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: { backgroundColor: '#0b0c12', borderTopColor: '#1f2335' },
-        tabBarActiveTintColor: '#7aa2f7',
-        tabBarInactiveTintColor: '#565f89',
+        tabBarStyle: { backgroundColor: C.base, borderTopColor: C.subtle, borderTopWidth: 1 },
+        tabBarActiveTintColor: C.accent,
+        tabBarInactiveTintColor: C.tertiary,
+        tabBarLabelStyle: { fontFamily: F.m, fontSize: 11 },
+        tabBarIconStyle: { display: 'none' },
+        tabBarItemStyle: { paddingTop: 8 },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Issues' }} />
-      <Tabs.Screen name="inbox" options={{ title: 'Inbox' }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
+      <Tabs.Screen name="index" options={{ title: 'issues' }} />
+      <Tabs.Screen name="inbox" options={{ title: 'inbox' }} />
+      <Tabs.Screen name="profile" options={{ title: 'profile' }} />
     </Tabs>
   )
 }

@@ -1,10 +1,12 @@
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native'
 
 import { addComment, assignIssue, getComments, getIssue, issueById, updateIssueState, type Comment, type Issue } from '~/lib/api'
 import { allUsers, stateById, stateColor, statesForTeam, userById } from '~/lib/meta'
 import { getActiveWs } from '~/lib/workspace'
+import { C, F } from '~/lib/theme'
+import { Bracket, Chip, Prompt, T } from '~/lib/ui'
 
 type Picker = null | 'state' | 'assignee'
 
@@ -21,7 +23,6 @@ export default function IssueDetail() {
 
   const refresh = () => setIssue(getIssue(id) ? { ...getIssue(id)! } : undefined)
 
-  // cold deep-link (push/уведомление): issue нет в кэше → подгружаем по id
   useEffect(() => {
     if (!issue && id) issueById(getActiveWs()!, id).then((i) => i && setIssue({ ...i }))
   }, [id])
@@ -31,7 +32,7 @@ export default function IssueDetail() {
     try {
       setComments(await getComments(ws, issue.id))
     } catch {
-      /* пусто при ошибке */
+      /* пусто */
     }
   }, [issue?.id])
 
@@ -42,10 +43,8 @@ export default function IssueDetail() {
   if (!issue) {
     return (
       <View style={styles.center}>
-        <Text style={styles.muted}>// issue not loaded — open it from the list</Text>
-        <Pressable onPress={() => router.back()} style={styles.retry}>
-          <Text style={styles.retryText}>[ back ]</Text>
-        </Pressable>
+        <T v="faint">// loading issue…</T>
+        <Bracket label="back" onPress={() => router.back()} />
       </View>
     )
   }
@@ -88,74 +87,96 @@ export default function IssueDetail() {
   return (
     <View style={styles.wrap}>
       <View style={styles.topbar}>
-        <Pressable onPress={() => router.back()}>
-          <Text style={styles.back}>‹ back</Text>
-        </Pressable>
-        {saving ? <ActivityIndicator color="#7aa2f7" size="small" /> : null}
+        <Bracket label="‹ back" color={C.accent} onPress={() => router.back()} />
+        {saving ? <ActivityIndicator color={C.accent} size="small" /> : null}
       </View>
 
       <FlatList
         data={comments}
         keyExtractor={(c) => c.id}
         keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: 16 }}
         ListHeaderComponent={
-          <View style={{ gap: 12, marginBottom: 12 }}>
-            <Text style={styles.ident}>{issue.identifier}</Text>
-            <Text style={styles.title}>{issue.title}</Text>
+          <View style={{ gap: 14, marginBottom: 14 }}>
+            <T v="accent" s={13}>
+              {issue.identifier}
+            </T>
+            <T v="bright" w="b" s={21} style={{ lineHeight: 27 }}>
+              {issue.title}
+            </T>
 
             <View style={styles.chips}>
-              <Pressable style={styles.chip} onPress={() => setPicker('state')}>
+              <Chip onPress={() => setPicker('state')}>
                 <View style={[styles.dot, { backgroundColor: stateColor(st?.colorToken) }]} />
-                <Text style={styles.chipText}>{st?.name ?? 'status'}</Text>
-              </Pressable>
-              <Pressable style={styles.chip} onPress={() => setPicker('assignee')}>
-                <Text style={styles.chipText}>{asg ? asg.name : 'unassigned'}</Text>
-              </Pressable>
+                <T s={13}>{st?.name ?? 'status'}</T>
+              </Chip>
+              <Chip onPress={() => setPicker('assignee')}>
+                <T s={13} v={asg ? 'body' : 'faint'}>
+                  {asg ? asg.name : 'unassigned'}
+                </T>
+              </Chip>
             </View>
 
-            {issue.description?.md ? <Text style={styles.desc}>{issue.description.md}</Text> : <Text style={styles.muted}>// no description</Text>}
+            {issue.description?.md ? (
+              <T v="dim" s={14} style={{ lineHeight: 21 }}>
+                {issue.description.md}
+              </T>
+            ) : (
+              <T v="faint" s={13}>
+                // no description
+              </T>
+            )}
 
-            <Text style={styles.section}># comments</Text>
+            <T v="accent" s={13} style={{ marginTop: 8 }}>
+              # comments
+            </T>
           </View>
         }
-        ListEmptyComponent={<Text style={styles.muted}>// no comments</Text>}
+        ListEmptyComponent={<T v="faint">// no comments</T>}
         renderItem={({ item }) => (
           <View style={styles.comment}>
-            <Text style={styles.author}>{userById(item.authorId)?.name ?? 'user'}</Text>
-            <Text style={styles.body}>{item.body}</Text>
+            <T v="ok" s={12}>
+              {userById(item.authorId)?.name ?? 'user'}
+            </T>
+            <T s={14} style={{ marginTop: 3 }}>
+              {item.body}
+            </T>
           </View>
         )}
-        contentContainerStyle={{ paddingBottom: 16 }}
       />
 
       <View style={styles.composer}>
         <TextInput
           style={styles.input}
-          placeholder="add a comment…"
-          placeholderTextColor="#565f89"
+          placeholder="$ add a comment…"
+          placeholderTextColor={C.tertiary}
           value={draft}
           onChangeText={setDraft}
           multiline
         />
         <Pressable style={[styles.send, (sending || !draft.trim()) && { opacity: 0.4 }]} disabled={sending || !draft.trim()} onPress={send}>
-          <Text style={styles.sendText}>{sending ? '…' : 'send'}</Text>
+          <T w="b" s={13} style={{ color: C.base }}>
+            {sending ? '…' : 'send'}
+          </T>
         </Pressable>
       </View>
 
       <Modal visible={picker !== null} transparent animationType="fade" onRequestClose={() => setPicker(null)}>
         <Pressable style={styles.backdrop} onPress={() => setPicker(null)}>
           <View style={styles.sheet}>
-            <Text style={styles.sheetTitle}>{picker === 'state' ? 'status' : 'assignee'}</Text>
+            <T v="faint" s={12} style={{ marginBottom: 8 }}>
+              # {picker === 'state' ? 'status' : 'assignee'}
+            </T>
             {picker === 'state'
               ? statesForTeam(issue.teamId).map((s) => (
                   <Pressable key={s.id} style={styles.opt} onPress={() => pickState(s.id)}>
                     <View style={[styles.dot, { backgroundColor: stateColor(s.colorToken) }]} />
-                    <Text style={styles.optText}>{s.name}</Text>
+                    <T s={15}>{s.name}</T>
                   </Pressable>
                 ))
               : [{ id: '', name: 'unassigned', email: '' }, ...allUsers()].map((u) => (
                   <Pressable key={u.id || 'none'} style={styles.opt} onPress={() => pickAssignee(u.id)}>
-                    <Text style={styles.optText}>{u.name}</Text>
+                    <T s={15}>{u.name}</T>
                   </Pressable>
                 ))}
           </View>
@@ -166,31 +187,16 @@ export default function IssueDetail() {
 }
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: '#0b0c12', paddingTop: 56, paddingHorizontal: 16 },
-  topbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  back: { color: '#7aa2f7', fontSize: 15 },
-  ident: { color: '#7aa2f7', fontSize: 13 },
-  title: { color: '#c0caf5', fontSize: 20, fontWeight: '700' },
+  wrap: { flex: 1, backgroundColor: C.base, paddingTop: 56, paddingHorizontal: 16 },
+  topbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   chips: { flexDirection: 'row', gap: 8 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#1f2335', borderRadius: 6, paddingVertical: 6, paddingHorizontal: 10 },
-  chipText: { color: '#c0caf5', fontSize: 13 },
   dot: { width: 9, height: 9, borderRadius: 5 },
-  desc: { color: '#a9b1d6', fontSize: 14, lineHeight: 20 },
-  section: { color: '#7aa2f7', fontSize: 13, marginTop: 8 },
-  comment: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#13151f', gap: 3 },
-  author: { color: '#9ece6a', fontSize: 12 },
-  body: { color: '#c0caf5', fontSize: 14 },
-  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#1f2335' },
-  input: { flex: 1, color: '#c0caf5', backgroundColor: '#13151f', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, maxHeight: 100, fontSize: 15 },
-  send: { backgroundColor: '#7aa2f7', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 14 },
-  sendText: { color: '#0b0c12', fontWeight: '700' },
-  backdrop: { flex: 1, backgroundColor: '#000000aa', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#13151f', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, gap: 4, maxHeight: '70%' },
-  sheetTitle: { color: '#565f89', fontSize: 13, marginBottom: 8 },
+  comment: { paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: C.subtle },
+  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: C.subtle },
+  input: { flex: 1, color: C.text, backgroundColor: C.elevated, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, maxHeight: 100, fontSize: 15, fontFamily: F.r },
+  send: { backgroundColor: C.accent, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 16 },
+  backdrop: { flex: 1, backgroundColor: '#000000bb', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: C.elevated, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderWidth: 1, borderColor: C.subtle, padding: 16, maxHeight: '70%' },
   opt: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12 },
-  optText: { color: '#c0caf5', fontSize: 15 },
-  center: { flex: 1, backgroundColor: '#0b0c12', alignItems: 'center', justifyContent: 'center', gap: 12 },
-  muted: { color: '#565f89', fontSize: 13 },
-  retry: { borderWidth: 1, borderColor: '#1f2335', borderRadius: 6, paddingVertical: 8, paddingHorizontal: 16 },
-  retryText: { color: '#7aa2f7' },
+  center: { flex: 1, backgroundColor: C.base, alignItems: 'center', justifyContent: 'center', gap: 14 },
 })

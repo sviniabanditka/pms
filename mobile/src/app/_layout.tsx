@@ -1,7 +1,15 @@
+import {
+  JetBrainsMono_400Regular,
+  JetBrainsMono_500Medium,
+  JetBrainsMono_600SemiBold,
+  JetBrainsMono_700Bold,
+  useFonts,
+} from '@expo-google-fonts/jetbrains-mono'
 import { Stack, useRouter, useSegments, type ErrorBoundaryProps } from 'expo-router'
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 
+import { C } from '~/lib/theme'
 import { loadToken, me, myWorkspaces } from '~/lib/auth'
 import { setAuthed, useAuthed } from '~/lib/authState'
 import { setOnUnauthorized } from '~/lib/connect'
@@ -25,15 +33,16 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
 }
 
 const eb = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: '#0b0c12', alignItems: 'center', justifyContent: 'center', padding: 28, gap: 14 },
-  title: { color: '#f7768e', fontSize: 18, fontWeight: '700' },
-  msg: { color: '#565f89', fontSize: 13, textAlign: 'center' },
-  btn: { borderWidth: 1, borderColor: '#1f2335', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 20 },
-  btnText: { color: '#7aa2f7', fontWeight: '700' },
+  wrap: { flex: 1, backgroundColor: C.base, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 14 },
+  title: { color: C.danger, fontSize: 18, fontFamily: 'JetBrainsMono_700Bold' },
+  msg: { color: C.tertiary, fontSize: 13, textAlign: 'center', fontFamily: 'JetBrainsMono_400Regular' },
+  btn: { borderWidth: 1, borderColor: C.subtle, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 20 },
+  btnText: { color: C.accent, fontFamily: 'JetBrainsMono_500Medium' },
 })
 
 export default function RootLayout() {
   const [booting, setBooting] = useState(true)
+  const [fontsLoaded] = useFonts({ JetBrainsMono_400Regular, JetBrainsMono_500Medium, JetBrainsMono_600SemiBold, JetBrainsMono_700Bold })
   const authed = useAuthed()
   const router = useRouter()
   const segments = useSegments()
@@ -66,16 +75,16 @@ export default function RootLayout() {
   // тап по пушу → deep-link на issue
   useEffect(() => onPushTap((path) => router.push(path as any)), [])
 
-  if (booting) {
+  if (booting || !fontsLoaded) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0b0c12' }}>
-        <ActivityIndicator color="#7aa2f7" />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.base }}>
+        <ActivityIndicator color={C.accent} />
       </View>
     )
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0b0c12' } }}>
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.base } }}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="login" />
       <Stack.Screen name="issue/[id]" />
