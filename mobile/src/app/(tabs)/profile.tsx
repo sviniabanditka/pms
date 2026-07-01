@@ -5,6 +5,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Sidebar, type Section } from '~/components/Sidebar'
+import { sectionRoute } from '~/components/Screen'
 import { getCurrentUserId, logout } from '~/lib/auth'
 import { setAuthed } from '~/lib/authState'
 import { unregisterForPush } from '~/lib/push'
@@ -85,7 +86,7 @@ export default function Profile() {
         </View>
       </ScrollView>
 
-      <Sidebar visible={drawer} onClose={() => setDrawer(false)} active="settings" onSelect={onSection} />
+      <Sidebar visible={drawer} onClose={() => setDrawer(false)} active="settings" onSelect={(x) => sectionRoute(router, x)} />
     </Backdrop>
   )
 }

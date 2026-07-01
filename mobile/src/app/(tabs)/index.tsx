@@ -6,6 +6,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Sidebar, type Section } from '~/components/Sidebar'
+import { sectionRoute } from '~/components/Screen'
 import { getCurrentUserId } from '~/lib/auth'
 import { cachedIssues, myIssues, type Issue, type IssueScope } from '~/lib/api'
 import { Avatar, Backdrop, Glass, GlowDot } from '~/lib/glass'
@@ -179,7 +180,7 @@ export default function Issues() {
         </LinearGradient>
       </Pressable>
 
-      <Sidebar visible={drawer} onClose={() => setDrawer(false)} active="issues" onSelect={onSection} />
+      <Sidebar visible={drawer} onClose={() => setDrawer(false)} active="issues" onSelect={(x) => sectionRoute(router, x)} />
     </Backdrop>
   )
 }

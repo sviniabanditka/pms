@@ -5,6 +5,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Sidebar, type Section } from '~/components/Sidebar'
+import { sectionRoute } from '~/components/Screen'
 import { cachedNotifications, issueById, listNotifications, markAllRead, markRead, type Notification } from '~/lib/api'
 import { Avatar, Backdrop, Glass, GlowDot } from '~/lib/glass'
 import { userById } from '~/lib/meta'
@@ -150,7 +151,7 @@ export default function Inbox() {
         </Glass>
       )}
 
-      <Sidebar visible={drawer} onClose={() => setDrawer(false)} active="inbox" onSelect={onSection} />
+      <Sidebar visible={drawer} onClose={() => setDrawer(false)} active="inbox" onSelect={(x) => sectionRoute(router, x)} />
     </Backdrop>
   )
 }
