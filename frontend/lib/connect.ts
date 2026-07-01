@@ -21,6 +21,7 @@ import { TimeService } from '~/gen/pms/v1/time_service_pb'
 import { AutomationService } from '~/gen/pms/v1/automation_service_pb'
 import { AttachmentService } from '~/gen/pms/v1/attachment_service_pb'
 import { QueryService } from '~/gen/pms/v1/query_service_pb'
+import { TemplateService } from '~/gen/pms/v1/template_service_pb'
 
 // Протухшая сессия (Unauthenticated на любом RPC) → редирект на /login.
 const authGuard: Interceptor = (next) => async (req) => {
@@ -59,5 +60,6 @@ export function useClients() {
     automations: createClient(AutomationService, transport),
     attachments: createClient(AttachmentService, transport),
     query: createClient(QueryService, transport),
+    templates: createClient(TemplateService, transport),
   }
 }

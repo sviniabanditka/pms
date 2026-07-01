@@ -1102,6 +1102,35 @@ function autoSummary(a: any) {
   return `${ev}${cond} ⇒ ${acts}`
 }
 
+// --- Issue templates + recurring ---
+const showTmpl = ref(false)
+const REC_OPTS = [{ value: 'none', label: 'No repeat' }, { value: 'daily', label: 'Daily' }, { value: 'weekly', label: 'Weekly' }, { value: 'monthly', label: 'Monthly' }]
+const tmplForm = reactive({ id: '', name: '', teamId: '', title: '', descriptionMd: '', priority: 0, assigneeId: '', estimate: 0, labelIds: [] as string[], recurrence: 'none' })
+function openTmplCreate() {
+  Object.assign(tmplForm, { id: '', name: '', teamId: store.teamList[0]?.id || '', title: '', descriptionMd: '', priority: 0, assigneeId: '', estimate: 0, labelIds: [], recurrence: 'none' })
+  showTmpl.value = true
+}
+function openTmplEdit(t: any) {
+  Object.assign(tmplForm, {
+    id: t.id, name: t.name, teamId: t.teamId, title: t.title || '', descriptionMd: t.description?.md || '',
+    priority: t.priority || 0, assigneeId: t.assigneeId || '', estimate: t.estimate || 0,
+    labelIds: [...(t.labelIds || [])], recurrence: t.recurrence || 'none',
+  })
+  showTmpl.value = true
+}
+const saveTmpl = () => wrap(async () => {
+  if (!tmplForm.name.trim()) { err.value = 'Name required'; return }
+  if (!tmplForm.teamId) { err.value = 'Team required'; return }
+  const p = { ...tmplForm }
+  if (tmplForm.id) await store.updateTemplate(tmplForm.id, p)
+  else await store.createTemplate(p)
+  showTmpl.value = false
+})
+const spawnTmpl = (id: string) => wrap(async () => { const iid = await store.spawnTemplate(id); showSettings.value = false; openIssue(iid) })
+// лейблы команды для пикера шаблона
+const tmplLabelOpts = computed(() => Object.values(store.labels).filter((l: any) => !l.deletedAt && (!tmplForm.teamId || l.teamId === tmplForm.teamId)).map((l: any) => ({ value: l.id, label: l.name })))
+const tmplAssigneeOpts = computed(() => [{ value: '', label: 'Unassigned' }, ...store.wsUsers.map((u: any) => ({ value: u.id, label: u.name || u.email }))])
+
 // --- Ручная запись времени (задним числом) ---
 const showTimeEntry = ref(false)
 const teForm = reactive({ issueId: '', date: '', start: '09:00', end: '10:00', description: '' })
@@ -1491,13 +1520,14 @@ const modalUi = { background: 'dark:bg-surface', ring: 'ring-1 ring-subtle' }
 
 // --- Settings-модалка (workspace) ---
 const showSettings = ref(false)
-const settingsTab = ref<'general' | 'members' | 'teams' | 'labels' | 'automations' | 'apitokens' | 'webhooks' | 'sections'>('general')
+const settingsTab = ref<'general' | 'members' | 'teams' | 'labels' | 'automations' | 'templates' | 'apitokens' | 'webhooks' | 'sections'>('general')
 const SETTINGS_TABS = [
   { key: 'general', label: 'General', icon: 'i-heroicons-cog-6-tooth', group: 'Workspace' },
   { key: 'members', label: 'Members', icon: 'i-heroicons-user-group', group: 'Workspace' },
   { key: 'teams', label: 'Teams', icon: 'i-heroicons-rectangle-stack', group: 'Workspace' },
   { key: 'labels', label: 'Labels', icon: 'i-heroicons-tag', group: 'Workspace' },
   { key: 'automations', label: 'Automations', icon: 'i-heroicons-bolt', group: 'Workspace' },
+  { key: 'templates', label: 'Templates', icon: 'i-heroicons-document-duplicate', group: 'Workspace' },
   { key: 'apitokens', label: 'API tokens', icon: 'i-heroicons-key', group: 'Workspace' },
   { key: 'webhooks', label: 'Webhooks', icon: 'i-heroicons-globe-alt', group: 'Workspace' },
   { key: 'account', label: 'Account', icon: 'i-heroicons-user-circle', group: 'Personal' },
@@ -3761,6 +3791,68 @@ useHead({ title: () => pageTitle.value })
                 <UButton v-if="store.isWsAdmin" icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square @click="store.deleteAutomation(a.id)" />
               </div>
               <div v-if="!store.automationsList.length" class="py-6 text-center text-sm text-tertiary">No automations yet. Create your first rule.</div>
+            </template>
+          </template>
+
+          <!-- TEMPLATES + recurring -->
+          <template v-else-if="settingsTab === 'templates'">
+            <template v-if="showTmpl">
+              <div class="mb-4 flex items-center gap-2">
+                <UButton icon="i-heroicons-arrow-left" color="gray" variant="ghost" size="xs" square @click="showTmpl = false" />
+                <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> {{ tmplForm.id ? 'Edit template' : 'New template' }}</h2>
+              </div>
+              <div class="space-y-3">
+                <UInput v-model="tmplForm.name" placeholder="Template name (e.g. Weekly standup)" autofocus />
+                <div class="flex items-center gap-2">
+                  <span class="w-16 shrink-0 text-xs text-tertiary">Team</span>
+                  <USelectMenu v-model="tmplForm.teamId" class="flex-1" :options="store.teamList.map((t:any) => ({ value: t.id, label: t.name }))" value-attribute="value" option-attribute="label" />
+                </div>
+                <div class="rounded-md border border-subtle p-2.5 space-y-2">
+                  <div class="text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Issue defaults</div>
+                  <UInput v-model="tmplForm.title" placeholder="Issue title (defaults to template name)" />
+                  <UTextarea v-model="tmplForm.descriptionMd" placeholder="Description (markdown)" :rows="3" />
+                  <div class="flex flex-wrap items-center gap-2">
+                    <USelectMenu v-model="tmplForm.priority" class="w-32" :options="[0,1,2,3,4].map((p) => ({ value: p, label: PRIO[p] }))" value-attribute="value" option-attribute="label" />
+                    <USelectMenu v-model="tmplForm.assigneeId" class="w-40" :options="tmplAssigneeOpts" value-attribute="value" option-attribute="label" placeholder="Assignee" />
+                    <UInput v-model.number="tmplForm.estimate" type="number" min="0" step="0.5" class="w-24" placeholder="Est." />
+                    <USelectMenu v-model="tmplForm.labelIds" class="w-48" :options="tmplLabelOpts" value-attribute="value" option-attribute="label" multiple searchable placeholder="Labels" />
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-16 shrink-0 text-xs text-tertiary">Repeat</span>
+                  <USelectMenu v-model="tmplForm.recurrence" class="flex-1" :options="REC_OPTS" value-attribute="value" option-attribute="label" />
+                </div>
+                <p v-if="tmplForm.recurrence !== 'none'" class="text-xs text-tertiary">A new issue will be created automatically {{ tmplForm.recurrence }}.</p>
+                <div class="flex items-center gap-2 pt-1">
+                  <UButton class="ml-auto" color="gray" variant="ghost" @click="showTmpl = false">[ cancel ]</UButton>
+                  <UButton color="gray" @click="saveTmpl">[ {{ tmplForm.id ? 'save' : 'create' }} ]</UButton>
+                </div>
+              </div>
+            </template>
+
+            <template v-else>
+              <div class="mb-4 flex items-center justify-between">
+                <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> templates</h2>
+                <div class="flex items-center gap-2">
+                  <UButton color="gray" size="xs" @click="openTmplCreate">[ new template ]</UButton>
+                  <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showSettings = false" />
+                </div>
+              </div>
+              <p class="mb-3 text-xs text-tertiary">Reusable issue blueprints. Give one a repeat cadence and it spawns issues automatically.</p>
+              <div v-for="t in store.templatesList" :key="t.id" class="group mb-1.5 flex items-center gap-3 rounded-md border border-subtle px-3 py-2">
+                <div class="min-w-0 flex-1 cursor-pointer" @click="openTmplEdit(t)">
+                  <div class="truncate text-sm font-medium text-white">{{ t.name }}</div>
+                  <div class="truncate text-xs text-tertiary">
+                    {{ store.teams[t.teamId]?.key }}
+                    <span v-if="t.recurrence && t.recurrence !== 'none'" class="text-accent2"> · ↻ {{ t.recurrence }}</span>
+                    <span v-if="t.nextRunAt && t.recurrence !== 'none'"> · next {{ dayShort(String(t.nextRunAt).slice(0,10)) }}</span>
+                  </div>
+                </div>
+                <UButton color="gray" variant="ghost" size="2xs" title="Create issue now" @click="spawnTmpl(t.id)">[ create issue ]</UButton>
+                <UButton icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square @click="openTmplEdit(t)" />
+                <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square @click="store.deleteTemplate(t.id)" />
+              </div>
+              <div v-if="!store.templatesList.length" class="py-6 text-center text-sm text-tertiary">No templates yet. Create your first one.</div>
             </template>
           </template>
 

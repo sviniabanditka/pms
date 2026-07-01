@@ -9,7 +9,7 @@ import { match, type FilterNode } from '~/lib/filter'
 
 type Entity = Record<string, any>
 
-const BUCKET: Record<string, 'workspaces' | 'teams' | 'states' | 'issues' | 'views' | 'relations' | 'projects' | 'cycles' | 'customFields' | 'customFieldValues' | 'dashboards' | 'dashboardWidgets' | 'members' | 'notifications' | 'documents' | 'channels' | 'channelMembers' | 'users' | 'labels' | 'issueLabels' | 'invitations' | 'milestones' | 'meetings' | 'meetingParticipants' | 'attachments' | 'channelUnread' | 'cycleSnapshots' | 'calendarEvents' | 'timeEntries' | 'automations' | 'teamMembers'> = {
+const BUCKET: Record<string, 'workspaces' | 'teams' | 'states' | 'issues' | 'views' | 'relations' | 'projects' | 'cycles' | 'customFields' | 'customFieldValues' | 'dashboards' | 'dashboardWidgets' | 'members' | 'notifications' | 'documents' | 'channels' | 'channelMembers' | 'users' | 'labels' | 'issueLabels' | 'invitations' | 'milestones' | 'meetings' | 'meetingParticipants' | 'attachments' | 'channelUnread' | 'cycleSnapshots' | 'calendarEvents' | 'timeEntries' | 'automations' | 'teamMembers' | 'issueTemplates'> = {
   workspace: 'workspaces',
   team: 'teams',
   team_member: 'teamMembers',
@@ -40,6 +40,7 @@ const BUCKET: Record<string, 'workspaces' | 'teams' | 'states' | 'issues' | 'vie
   attachment: 'attachments',
   channel_unread: 'channelUnread',
   cycle_snapshot: 'cycleSnapshots',
+  issue_template: 'issueTemplates',
 }
 
 // Полностью присылаемые в bootstrap справочники → отсутствующие можно удалять из стора.
@@ -48,7 +49,7 @@ const FULL_BUCKETS = new Set([
   'issue', 'team', 'workflow_state', 'label', 'issue_label', 'issue_relation', 'cycle',
   'view', 'custom_field', 'custom_field_value', 'dashboard', 'dashboard_widget',
   'document', 'channel', 'channel_member', 'workspace_member', 'team_member', 'user', 'invitation', 'milestone',
-  'meeting', 'meeting_participant', 'calendar_event', 'time_entry', 'automation', 'attachment', 'channel_unread', 'cycle_snapshot',
+  'meeting', 'meeting_participant', 'calendar_event', 'time_entry', 'automation', 'attachment', 'channel_unread', 'cycle_snapshot', 'issue_template',
 ])
 
 // Метки направления связи (прямое / зеркальное).
@@ -96,6 +97,7 @@ export const useAppStore = defineStore('app', {
     calendarEvents: {} as Record<string, Entity>,
     timeEntries: {} as Record<string, Entity>,
     automations: {} as Record<string, Entity>,
+    issueTemplates: {} as Record<string, Entity>,
     attachments: {} as Record<string, Entity>,
     channelUnread: {} as Record<string, Entity>, // channelId -> { count, lastReadAt }
     cycleSnapshots: {} as Record<string, Entity>, // "cycleId:day" -> snapshot
@@ -394,7 +396,8 @@ export const useAppStore = defineStore('app', {
     // --- Calendar ---
     calendarEventsList: (s) => Object.values(s.calendarEvents).filter((e) => !e.deletedAt),
     // --- Automations ---
-    automationsList: (s) => Object.values(s.automations).filter((a) => !a.deletedAt)
+    automationsList: (s) => Object.values(s.automations).filter((a) => !a.deletedAt),
+    templatesList: (s) => Object.values(s.issueTemplates).filter((t) => !t.deletedAt).sort((a, b) => String(a.name).localeCompare(String(b.name)))
       .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))),
     // --- Time tracking ---
     timeEntriesForIssue: (s) => (issueId: string) => Object.values(s.timeEntries)
@@ -1272,6 +1275,32 @@ export const useAppStore = defineStore('app', {
     async deleteAutomation(id: string) {
       const { automations } = useClients()
       await automations.deleteAutomation({ workspaceId: this.activeWorkspaceId, id })
+    },
+    // --- Issue templates + recurring ---
+    _tmplInput(p: any) {
+      return {
+        teamId: p.teamId || '', name: p.name || '', title: p.title || '', descriptionMd: p.descriptionMd || '',
+        priority: p.priority || 0, assigneeId: p.assigneeId || '', estimate: p.estimate || 0,
+        labelIds: p.labelIds || [], recurrence: p.recurrence || 'none',
+      }
+    },
+    async createTemplate(p: any) {
+      const { templates } = useClients()
+      await templates.createTemplate({ workspaceId: this.activeWorkspaceId, input: this._tmplInput(p) })
+    },
+    async updateTemplate(id: string, p: any) {
+      const { templates } = useClients()
+      await templates.updateTemplate({ workspaceId: this.activeWorkspaceId, id, input: this._tmplInput(p) })
+    },
+    async deleteTemplate(id: string) {
+      const { templates } = useClients()
+      await templates.deleteTemplate({ workspaceId: this.activeWorkspaceId, id })
+    },
+    async spawnTemplate(id: string): Promise<string> {
+      const { templates } = useClients()
+      const res = await templates.spawnTemplate({ workspaceId: this.activeWorkspaceId, id })
+      await this.bootstrap(this.activeWorkspaceId) // подтянуть новый issue
+      return res.issueId
     },
     // iCal-фид: вернуть полный URL подписки (создаёт токен при первом вызове).
     async icalFeedUrl(rotate = false): Promise<string> {
