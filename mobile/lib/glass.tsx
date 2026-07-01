@@ -1,15 +1,28 @@
 // Liquid-glass примитивы: матовые полупрозрачные панели (expo-blur) поверх тёмной
 // базы + терминальные акценты. Web-фолбэк BlurView даёт backdrop-filter.
 import { BlurView } from 'expo-blur'
+import { LinearGradient } from 'expo-linear-gradient'
 import { StyleSheet, View, type ViewStyle } from 'react-native'
 
 import { C, F } from './theme'
 import { T } from './ui'
 
-// Glass — матовая панель (карточка/бар/шит)
+// Backdrop — фон экрана: глубокая база + мягкие цветовые washes (глубина, не плоскота)
+export function Backdrop({ children }: { children: React.ReactNode }) {
+  return (
+    <View style={{ flex: 1, backgroundColor: C.base }}>
+      <LinearGradient colors={['rgba(122,162,247,0.12)', 'rgba(122,162,247,0.03)', 'transparent']} style={g.washTop} pointerEvents="none" />
+      <LinearGradient colors={['transparent', 'rgba(187,154,247,0.06)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={g.washBottom} pointerEvents="none" />
+      {children}
+    </View>
+  )
+}
+
+// Glass — матовая панель со стеклянным sheen сверху
 export function Glass({ children, style, intensity = 24 }: { children?: React.ReactNode; style?: ViewStyle | ViewStyle[]; intensity?: number }) {
   return (
     <BlurView intensity={intensity} tint="dark" style={[g.glass, style]}>
+      <LinearGradient colors={['rgba(255,255,255,0.06)', 'transparent']} style={g.sheen} pointerEvents="none" />
       {children}
     </BlurView>
   )
@@ -56,11 +69,14 @@ export function Avatar({ name, id, size = 26 }: { name?: string; id?: string; si
 }
 
 const g = StyleSheet.create({
+  washTop: { position: 'absolute', top: 0, left: 0, right: 0, height: 420 },
+  washBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 320 },
+  sheen: { position: 'absolute', top: 0, left: 0, right: 0, height: 44 },
   glass: {
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    backgroundColor: 'rgba(120,140,200,0.04)',
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(120,140,200,0.045)',
     overflow: 'hidden',
   },
   pill: {
