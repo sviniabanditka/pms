@@ -896,15 +896,45 @@ export const useAppStore = defineStore('app', {
     async serverSearch(q: string): Promise<any[]> {
       if (!q.trim() || !this.activeWorkspaceId) return []
       const { query } = useClients()
-      const res = await query.search({ workspaceId: this.activeWorkspaceId, query: q })
-      const all = this._decode(res.results) as any[]
-      return all.map((r) => {
+      const [kwRes, sem] = await Promise.all([
+        query.search({ workspaceId: this.activeWorkspaceId, query: q }),
+        this.semanticSearch(q),
+      ])
+      const kw = (this._decode(kwRes.results) as any[]).map((r) => {
         if (r.type === 'issue') return { type: 'issue', id: r.id, label: `${r.subtitle} ${r.title}`, teamId: r.teamId }
         if (r.type === 'doc') return { type: 'doc', id: r.id, label: `Doc · ${r.title}`, teamId: r.teamId }
         if (r.type === 'channel') return { type: 'channel', id: r.id, label: `Channel · ${r.title}` }
         if (r.type === 'message') return { type: 'message', id: r.id, label: `${r.subtitle} · ${r.title}` }
         return { type: r.type, id: r.id, label: r.title, teamId: r.teamId }
       })
+      // семантика — после точных совпадений, без дублей
+      const seen = new Set(kw.map((r) => r.id))
+      return [...kw, ...sem.filter((r) => !seen.has(r.id))]
+    },
+
+    // Семантический поиск issue (AI Фаза 1). Пусто при ошибке/недоступности эмбеддингов.
+    async semanticSearch(q: string): Promise<any[]> {
+      if (!q.trim() || !this.activeWorkspaceId) return []
+      const { query } = useClients()
+      try {
+        const res = await query.semanticSearch({ workspaceId: this.activeWorkspaceId, query: q, limit: 6 })
+        const issues = this._decode(res.results) as any[]
+        return issues.map((i) => ({ type: 'issue', id: i.id, label: `${i.identifier} ${i.title}`, teamId: i.teamId, semantic: true }))
+      } catch {
+        return []
+      }
+    },
+
+    // Похожие issue по вектору (для панели «similar / возможный дубль»).
+    async similarIssues(issueId: string): Promise<any[]> {
+      if (!this.activeWorkspaceId) return []
+      const { query } = useClients()
+      try {
+        const res = await query.similarIssues({ workspaceId: this.activeWorkspaceId, issueId, limit: 6 })
+        return this._decode(res.results) as any[]
+      } catch {
+        return []
+      }
     },
     async loadComments(issueId: string) {
       const { comments } = useClients()
