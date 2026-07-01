@@ -2,11 +2,12 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useState } from 'react'
 import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native'
+import Animated, { FadeInDown } from 'react-native-reanimated'
 
 import { Sidebar, type Section } from '~/components/Sidebar'
 import { getCurrentUserId } from '~/lib/auth'
 import { cachedIssues, myIssues, type Issue, type IssueScope } from '~/lib/api'
-import { Avatar, Backdrop, Glass, Pill } from '~/lib/glass'
+import { Avatar, Backdrop, Glass, GlowDot } from '~/lib/glass'
 import { loadMeta, stateById, stateColor, teamById, useMeta, userById } from '~/lib/meta'
 import { getWorkspaces, useActiveWs } from '~/lib/workspace'
 import { C } from '~/lib/theme'
@@ -78,12 +79,11 @@ export default function Issues() {
 
   return (
     <Backdrop>
-      {/* header */}
       <Glass style={styles.header} intensity={34}>
         <Pressable onPress={() => setDrawer(true)} hitSlop={10} style={styles.menu}>
-          <View style={styles.bar} />
-          <View style={[styles.bar, { width: 11 }]} />
-          <View style={styles.bar} />
+          <View style={styles.barIcon} />
+          <View style={[styles.barIcon, { width: 11 }]} />
+          <View style={styles.barIcon} />
         </Pressable>
         <View style={{ flex: 1 }}>
           <T w="sb" s={15} numberOfLines={1}>
@@ -97,12 +97,13 @@ export default function Issues() {
         <Pressable style={styles.searchBtn} hitSlop={8}>
           <T v="dim" s={15}>
             {'>'}
-            <T v="faint" s={15}>_</T>
+            <T v="faint" s={15}>
+              _
+            </T>
           </T>
         </Pressable>
       </Glass>
 
-      {/* segmented scope */}
       <View style={styles.segWrap}>
         <View style={styles.seg}>
           {(['assigned', 'created'] as IssueScope[]).map((s) => (
@@ -127,55 +128,48 @@ export default function Issues() {
           </Pressable>
         </View>
       ) : (
-        <FlatList
-          data={items}
-          keyExtractor={(i) => i.id}
-          contentContainerStyle={items.length === 0 ? styles.center : { paddingHorizontal: 14, paddingTop: 4, paddingBottom: 110, gap: 11 }}
-          showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={C.accent} />}
-          ListEmptyComponent={<T v="faint">// no {scope} issues</T>}
-          renderItem={({ item }) => {
-            const p = PRI[item.priority]
-            const st = stateById(item.stateId)
-            const asg = userById(item.assigneeId)
-            const tk = teamById(item.teamId)?.key
-            return (
-              <Pressable onPress={() => router.push(`/issue/${item.id}`)} style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.985 : 1 }] })}>
-                <Glass style={styles.card} intensity={22}>
-                  {p ? <View style={[styles.edge, { backgroundColor: p.color, shadowColor: p.color }]} /> : null}
-                  <View style={styles.cardIn}>
-                    <View style={styles.cardTop}>
-                      {st ? <Pill color={stateColor(st.colorToken)} label={st.name} /> : <View />}
-                      <View style={{ flex: 1 }} />
-                      {p ? (
-                        <T s={11} w="m" style={{ color: p.color }}>
-                          {p.label}
+        <Glass style={styles.list} intensity={18}>
+          <FlatList
+            data={items}
+            keyExtractor={(i) => i.id}
+            contentContainerStyle={items.length === 0 ? styles.center : { paddingVertical: 4 }}
+            showsVerticalScrollIndicator={false}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={C.accent} />}
+            ItemSeparatorComponent={() => <View style={styles.sep} />}
+            ListEmptyComponent={<T v="faint">// no {scope} issues</T>}
+            renderItem={({ item, index }) => {
+              const p = PRI[item.priority]
+              const st = stateById(item.stateId)
+              const asg = userById(item.assigneeId)
+              const tk = teamById(item.teamId)?.key
+              return (
+                <Animated.View entering={FadeInDown.duration(240).delay(Math.min(index, 14) * 26)}>
+                  <Pressable onPress={() => router.push(`/issue/${item.id}`)} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
+                    <View style={[styles.priBar, { backgroundColor: p ? p.color : 'transparent', shadowColor: p?.color }]} />
+                    {st ? <GlowDot color={stateColor(st.colorToken)} size={9} /> : null}
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <T v="bright" s={14.5} w="m" numberOfLines={1}>
+                        {item.title}
+                      </T>
+                      <View style={styles.meta}>
+                        <T v="accent" s={11}>
+                          {item.identifier}
                         </T>
-                      ) : null}
+                        {tk ? <T v="faint" s={11}>· {tk}</T> : null}
+                        <T v="faint" s={11}>
+                          · {ago(item.updatedAt)}
+                        </T>
+                      </View>
                     </View>
-                    <T v="bright" s={16} w="m" numberOfLines={2} style={{ lineHeight: 21 }}>
-                      {item.title}
-                    </T>
-                    <View style={styles.cardBot}>
-                      <T v="accent" s={11.5} w="m">
-                        {item.identifier}
-                      </T>
-                      {tk ? <T v="faint" s={11.5}>· {tk}</T> : null}
-                      <T v="faint" s={11.5}>
-                        · {ago(item.updatedAt)}
-                      </T>
-                      <View style={{ flex: 1 }} />
-                      {asg ? <Avatar name={asg.name} id={asg.id} size={24} /> : null}
-                    </View>
-                  </View>
-                </Glass>
-              </Pressable>
-            )
-          }}
-        />
+                    {asg ? <Avatar name={asg.name} id={asg.id} size={22} /> : null}
+                  </Pressable>
+                </Animated.View>
+              )
+            }}
+          />
+        </Glass>
       )}
 
-      {/* FAB */}
       <Pressable onPress={() => router.push('/create')} style={({ pressed }) => [styles.fab, { transform: [{ scale: pressed ? 0.92 : 1 }] }]}>
         <LinearGradient colors={['#8fb0ff', '#7aa2f7']} style={styles.fabGrad}>
           <T style={{ color: C.base, fontSize: 28, marginTop: -3, fontWeight: '600' }}>+</T>
@@ -188,19 +182,20 @@ export default function Issues() {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', gap: 13, marginTop: 54, marginHorizontal: 12, paddingHorizontal: 15, paddingVertical: 11, borderRadius: 16 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 13, marginTop: 54, marginHorizontal: 12, paddingHorizontal: 15, paddingVertical: 11, borderRadius: 18 },
   menu: { gap: 3.5, paddingVertical: 2 },
-  bar: { width: 17, height: 2, borderRadius: 2, backgroundColor: C.secondary },
+  barIcon: { width: 17, height: 2, borderRadius: 2, backgroundColor: C.secondary },
   searchBtn: { paddingHorizontal: 4 },
-  segWrap: { paddingHorizontal: 14, paddingVertical: 14 },
-  seg: { flexDirection: 'row', gap: 4, backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 11, padding: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', alignSelf: 'flex-start' },
-  segItem: { paddingVertical: 6, paddingHorizontal: 16, borderRadius: 8 },
+  segWrap: { paddingHorizontal: 14, paddingVertical: 12 },
+  seg: { flexDirection: 'row', gap: 4, backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', alignSelf: 'flex-start' },
+  segItem: { paddingVertical: 6, paddingHorizontal: 16, borderRadius: 9 },
   segOn: { backgroundColor: 'rgba(122,162,247,0.14)' },
-  card: { borderRadius: 16 },
-  edge: { position: 'absolute', left: 0, top: 12, bottom: 12, width: 3, borderRadius: 2, shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: 0 } },
-  cardIn: { padding: 14, paddingLeft: 17, gap: 9 },
-  cardTop: { flexDirection: 'row', alignItems: 'center' },
-  cardBot: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  list: { flex: 1, marginHorizontal: 12, marginBottom: 12, borderRadius: 20 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 10, paddingHorizontal: 14 },
+  rowPressed: { backgroundColor: 'rgba(122,162,247,0.07)' },
+  priBar: { width: 3, height: 26, borderRadius: 2, shadowOpacity: 0.9, shadowRadius: 4, shadowOffset: { width: 0, height: 0 } },
+  meta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  sep: { height: 1, backgroundColor: 'rgba(255,255,255,0.05)', marginLeft: 42 },
   fab: { position: 'absolute', right: 20, bottom: 30, borderRadius: 30, shadowColor: C.accent, shadowOpacity: 0.5, shadowRadius: 16, shadowOffset: { width: 0, height: 6 } },
   fabGrad: { width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center' },
   center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingTop: 60 },
