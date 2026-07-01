@@ -148,7 +148,7 @@ export default function IssueDetail() {
       <View style={styles.composer}>
         <TextInput
           style={styles.input}
-          placeholder="$ add a comment…"
+          placeholder="> add a comment…"
           placeholderTextColor={C.tertiary}
           value={draft}
           onChangeText={setDraft}

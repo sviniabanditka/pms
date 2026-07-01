@@ -43,7 +43,7 @@ export default function Login() {
 
       <View style={styles.field}>
         <T v="ok" w="m" style={styles.dollar}>
-          $
+          >
         </T>
         <TextInput
           style={styles.input}
@@ -58,7 +58,7 @@ export default function Login() {
       </View>
       <View style={styles.field}>
         <T v="ok" w="m" style={styles.dollar}>
-          $
+          >
         </T>
         <TextInput
           style={styles.input}

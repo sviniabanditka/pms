@@ -93,6 +93,39 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 		_ = json.NewEncoder(w).Encode(meta)
 	})
 
+	// Полный снапшот воркспейса (все сущности) — unary-эквивалент bootstrap-стрима
+	// для нативного клиента (local-first стор). Дельты — через SyncService.Changes.
+	r.With(auth.RequireAuth).Get("/me/workspaces/{id}/snapshot", func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := auth.UserID(req.Context())
+		wsID, err := uuid.Parse(chi.URLParam(req, "id"))
+		if err != nil {
+			http.Error(w, "invalid workspace id", http.StatusBadRequest)
+			return
+		}
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		chunks, cursor, err := svcs.Sync.Bootstrap(req.Context(), uid, wsID, nil)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		type outChunk struct {
+			EntityType string          `json:"entityType"`
+			Entities   json.RawMessage `json:"entities"`
+		}
+		out := struct {
+			Cursor int64      `json:"cursor"`
+			Chunks []outChunk `json:"chunks"`
+		}{Cursor: cursor}
+		for _, c := range chunks {
+			out.Chunks = append(out.Chunks, outChunk{EntityType: c.EntityType, Entities: c.Entities})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	})
+
 	// Inbox: последние уведомления пользователя в воркспейсе (unary для нативного клиента).
 	r.With(auth.RequireAuth).Get("/me/workspaces/{id}/notifications", func(w http.ResponseWriter, req *http.Request) {
 		uid, _ := auth.UserID(req.Context())
