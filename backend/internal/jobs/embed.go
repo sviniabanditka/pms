@@ -2,7 +2,7 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/riverqueue/river"
@@ -11,8 +11,10 @@ import (
 	"github.com/pms/backend/internal/embed"
 )
 
-// Embed-sweep: считает эмбеддинги для issue без вектора / со stale (embedded_at < updated_at).
-// Кросс-тенантно (pms_jobs BYPASSRLS). Покрывает и бэкфилл, и текущие изменения.
+// Embed-sweep (AI Фаза 1–2): считает эмбеддинги для issue/doc/comment без вектора
+// или со stale (embedded_at < changed_at) → единая таблица embeddings. Кросс-тенантно
+// (pms_jobs BYPASSRLS). Каждый тик — маленький батч каждого типа (отдельный /embed
+// запрос ≤32 → без OOM-пиков).
 
 type EmbedSweepArgs struct{}
 
@@ -24,30 +26,44 @@ type EmbedSweepWorker struct {
 	embed *embed.Client
 }
 
-func descText(raw json.RawMessage) string {
-	if len(raw) == 0 {
-		return ""
-	}
-	var d struct {
-		MD string `json:"md"`
-	}
-	_ = json.Unmarshal(raw, &d)
-	return d.MD
+// цель свипа: тип + SQL-текст (jsonb md извлекаем в SQL) + выражение «когда изменено».
+type embedTarget struct {
+	entityType string
+	table      string
+	textSQL    string
+	changedSQL string
+}
+
+var embedTargets = []embedTarget{
+	{"issue", "issues", "t.title || ' ' || COALESCE(t.description->>'md','')", "t.updated_at"},
+	{"doc", "documents", "COALESCE(t.title,'') || ' ' || COALESCE(t.body->>'md','')", "t.updated_at"},
+	{"comment", "comments", "t.body", "COALESCE(t.edited_at, t.created_at)"},
 }
 
 func (w *EmbedSweepWorker) Work(ctx context.Context, _ *river.Job[EmbedSweepArgs]) error {
 	if w.embed == nil {
 		return nil
 	}
-	var rows []struct {
-		ID          uuid.UUID       `bun:"id"`
-		Title       string          `bun:"title"`
-		Description json.RawMessage `bun:"description"`
+	for _, tgt := range embedTargets {
+		_ = w.sweep(ctx, tgt) // не роняем весь свип из-за одного типа
 	}
-	if err := w.db.NewSelect().Table("issues").Column("id", "title", "description").
-		Where("(embedding IS NULL OR embedded_at IS NULL OR embedded_at < updated_at)").
-		Where("deleted_at IS NULL").
-		OrderExpr("updated_at DESC").Limit(32).Scan(ctx, &rows); err != nil {
+	return nil
+}
+
+func (w *EmbedSweepWorker) sweep(ctx context.Context, t embedTarget) error {
+	var rows []struct {
+		ID          uuid.UUID `bun:"id"`
+		WorkspaceID uuid.UUID `bun:"workspace_id"`
+		Text        string    `bun:"text"`
+	}
+	q := fmt.Sprintf(`
+		SELECT t.id, t.workspace_id, (%s) AS text
+		FROM %s t
+		LEFT JOIN embeddings em ON em.entity_type = ? AND em.entity_id = t.id
+		WHERE t.deleted_at IS NULL AND (em.entity_id IS NULL OR em.embedded_at < %s)
+		ORDER BY %s DESC
+		LIMIT 32`, t.textSQL, t.table, t.changedSQL, t.changedSQL)
+	if err := w.db.NewRaw(q, t.entityType).Scan(ctx, &rows); err != nil {
 		return err
 	}
 	if len(rows) == 0 {
@@ -55,24 +71,20 @@ func (w *EmbedSweepWorker) Work(ctx context.Context, _ *river.Job[EmbedSweepArgs
 	}
 	texts := make([]string, len(rows))
 	for i, r := range rows {
-		t := r.Title
-		if d := descText(r.Description); d != "" {
-			t += " " + d
-		}
-		texts[i] = t
+		texts[i] = r.Text
 	}
 	vecs, err := w.embed.Embed(ctx, texts, "passage")
-	if err != nil {
+	if err != nil || len(vecs) != len(rows) {
 		return err
 	}
-	if len(vecs) != len(rows) {
-		return nil
-	}
 	for i, r := range rows {
-		if _, err := w.db.NewUpdate().Table("issues").
-			Set("embedding = ?::vector", embed.VecLiteral(vecs[i])).
-			Set("embedded_at = now()").
-			Where("id = ?", r.ID).Exec(ctx); err != nil {
+		if _, err := w.db.NewRaw(
+			`INSERT INTO embeddings (workspace_id, entity_type, entity_id, embedding, embedded_at)
+			 VALUES (?, ?, ?, ?::vector, now())
+			 ON CONFLICT (entity_type, entity_id)
+			 DO UPDATE SET embedding = EXCLUDED.embedding, embedded_at = now(), workspace_id = EXCLUDED.workspace_id`,
+			r.WorkspaceID, t.entityType, r.ID, embed.VecLiteral(vecs[i]),
+		).Exec(ctx); err != nil {
 			continue
 		}
 	}

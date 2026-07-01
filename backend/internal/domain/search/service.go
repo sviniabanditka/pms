@@ -47,8 +47,9 @@ func NewService(bdb *bun.DB, e *embed.Client) *Service { return &Service{db: bdb
 
 var ErrNoEmbed = errors.New("embeddings unavailable")
 
-// SemanticSearch — семантический поиск issue по эмбеддингу запроса (cosine, HNSW).
-// Изоляция по воркспейсу — через RLS (db.WithWorkspace). Возвращает JSON-массив issue.
+// SemanticSearch — cross-entity семантический поиск (issue/doc/comment) через единую
+// таблицу embeddings. RLS-scoped. Возвращает JSON Result[]: comment → навигация на
+// родительский issue, doc → сам doc.
 func (s *Service) SemanticSearch(ctx context.Context, actor, wsID uuid.UUID, query string, limit int) ([]byte, error) {
 	if s.embed == nil {
 		return nil, ErrNoEmbed
@@ -61,35 +62,96 @@ func (s *Service) SemanticSearch(ctx context.Context, actor, wsID uuid.UUID, que
 		return nil, ErrNoEmbed
 	}
 	lit := embed.VecLiteral(vecs[0])
-	var iss []models.Issue
+
+	var ranked []struct {
+		EntityType string    `bun:"entity_type"`
+		EntityID   uuid.UUID `bun:"entity_id"`
+	}
+	results := []Result{}
 	err = db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
-		return tx.NewSelect().Model(&iss).
-			Where("archived_at IS NULL AND deleted_at IS NULL AND embedding IS NOT NULL").
-			OrderExpr("embedding <=> ?::vector", lit).Limit(limit).Scan(ctx)
+		if err := tx.NewRaw(`SELECT entity_type, entity_id FROM embeddings ORDER BY embedding <=> ?::vector LIMIT ?`, lit, limit).Scan(ctx, &ranked); err != nil {
+			return err
+		}
+		if len(ranked) == 0 {
+			return nil
+		}
+		var issueIDs, docIDs, commentIDs []uuid.UUID
+		for _, r := range ranked {
+			switch r.EntityType {
+			case "issue":
+				issueIDs = append(issueIDs, r.EntityID)
+			case "doc":
+				docIDs = append(docIDs, r.EntityID)
+			case "comment":
+				commentIDs = append(commentIDs, r.EntityID)
+			}
+		}
+		byID := map[string]Result{}
+		if len(issueIDs) > 0 {
+			var rows []struct {
+				ID         uuid.UUID `bun:"id"`
+				Identifier string    `bun:"identifier"`
+				Title      string    `bun:"title"`
+				TeamID     uuid.UUID `bun:"team_id"`
+			}
+			_ = tx.NewSelect().Table("issues").Column("id", "identifier", "title", "team_id").Where("id IN (?)", bun.In(issueIDs)).Scan(ctx, &rows)
+			for _, r := range rows {
+				byID["issue:"+r.ID.String()] = Result{Type: "issue", ID: r.ID.String(), Title: r.Identifier + " " + r.Title, TeamID: r.TeamID.String()}
+			}
+		}
+		if len(docIDs) > 0 {
+			var rows []struct {
+				ID    uuid.UUID `bun:"id"`
+				Title string    `bun:"title"`
+			}
+			_ = tx.NewSelect().Table("documents").Column("id", "title").Where("id IN (?)", bun.In(docIDs)).Scan(ctx, &rows)
+			for _, r := range rows {
+				t := r.Title
+				if t == "" {
+					t = "Untitled doc"
+				}
+				byID["doc:"+r.ID.String()] = Result{Type: "doc", ID: r.ID.String(), Title: "Doc · " + t}
+			}
+		}
+		if len(commentIDs) > 0 {
+			var rows []struct {
+				ID      uuid.UUID `bun:"id"`
+				IssueID uuid.UUID `bun:"issue_id"`
+				Body    string    `bun:"body"`
+			}
+			_ = tx.NewSelect().Table("comments").Column("id", "issue_id", "body").Where("id IN (?)", bun.In(commentIDs)).Scan(ctx, &rows)
+			for _, r := range rows {
+				byID["comment:"+r.ID.String()] = Result{Type: "issue", ID: r.IssueID.String(), Title: "💬 " + cleanSnippet(r.Body)}
+			}
+		}
+		for _, r := range ranked {
+			if res, ok := byID[r.EntityType+":"+r.EntityID.String()]; ok {
+				results = append(results, res)
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	raw, _ := json.Marshal(iss)
-	if raw == nil || string(raw) == "null" {
-		return []byte("[]"), nil
-	}
+	raw, _ := json.Marshal(results)
 	return raw, nil
 }
 
-// SimilarIssues — похожие на заданный issue (по его вектору, исключая сам issue).
+// SimilarIssues — похожие на заданный issue (по вектору из embeddings, исключая сам).
 func (s *Service) SimilarIssues(ctx context.Context, actor, wsID, issueID uuid.UUID, limit int) ([]byte, error) {
 	if limit <= 0 || limit > 20 {
 		limit = 8
 	}
 	var iss []models.Issue
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
-		return tx.NewSelect().Model(&iss).
-			Where("archived_at IS NULL AND deleted_at IS NULL AND embedding IS NOT NULL").
-			Where("id <> ?", issueID).
-			Where("(SELECT embedding FROM issues WHERE id = ?) IS NOT NULL", issueID).
-			OrderExpr("embedding <=> (SELECT embedding FROM issues WHERE id = ?)", issueID).
-			Limit(limit).Scan(ctx)
+		return tx.NewRaw(
+			`SELECT i.* FROM issues i
+			 JOIN embeddings e ON e.entity_type = 'issue' AND e.entity_id = i.id
+			 WHERE i.id <> ? AND i.deleted_at IS NULL AND i.archived_at IS NULL
+			   AND EXISTS (SELECT 1 FROM embeddings WHERE entity_type='issue' AND entity_id = ?)
+			 ORDER BY e.embedding <=> (SELECT embedding FROM embeddings WHERE entity_type='issue' AND entity_id = ?)
+			 LIMIT ?`, issueID, issueID, issueID, limit).Scan(ctx, &iss)
 	})
 	if err != nil {
 		return nil, err
@@ -132,11 +194,16 @@ func (s *Service) Suggest(ctx context.Context, actor, wsID uuid.UUID, text, team
 		LabelID uuid.UUID `bun:"label_id"`
 	}
 	err = db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
-		q := tx.NewSelect().Model(&neigh).Where("embedding IS NOT NULL AND deleted_at IS NULL AND archived_at IS NULL")
+		sql := `SELECT i.* FROM issues i JOIN embeddings e ON e.entity_type='issue' AND e.entity_id=i.id
+		        WHERE i.deleted_at IS NULL AND i.archived_at IS NULL`
+		args := []any{}
 		if teamID != "" {
-			q = q.Where("team_id = ?", teamID)
+			sql += ` AND i.team_id = ?`
+			args = append(args, teamID)
 		}
-		if err := q.OrderExpr("embedding <=> ?::vector", lit).Limit(k).Scan(ctx); err != nil {
+		sql += ` ORDER BY e.embedding <=> ?::vector LIMIT ?`
+		args = append(args, lit, k)
+		if err := tx.NewRaw(sql, args...).Scan(ctx, &neigh); err != nil {
 			return err
 		}
 		if len(neigh) == 0 {

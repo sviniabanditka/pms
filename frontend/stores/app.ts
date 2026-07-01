@@ -918,8 +918,9 @@ export const useAppStore = defineStore('app', {
       const { query } = useClients()
       try {
         const res = await query.semanticSearch({ workspaceId: this.activeWorkspaceId, query: q, limit: 6 })
-        const issues = this._decode(res.results) as any[]
-        return issues.map((i) => ({ type: 'issue', id: i.id, label: `${i.identifier} ${i.title}`, teamId: i.teamId, semantic: true }))
+        // теперь cross-entity Result[] {type,id,title,teamId} (issue/doc; comment→issue)
+        const rs = this._decode(res.results) as any[]
+        return rs.map((r) => ({ type: r.type, id: r.id, label: r.title, teamId: r.teamId, semantic: true }))
       } catch {
         return []
       }
