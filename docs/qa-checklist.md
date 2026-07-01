@@ -778,3 +778,12 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Reports → `≈ Outliers`: топ выбивающихся issue (IsolationForest, скор ≥0.6, %-скор). <20 эмбеддингов → пусто. RLS-scoped.
 - [ ] Reports → `≈ Team mood`: агрегат тональности последних ≤200 комментов (bar + pos/neg/neu). <5 комментов → скрыт.
 - [ ] Issue detail, описание >280 симв: кнопка `≈ summarize` → экстрактивное TL;DR (TextRank), при смене issue сбрасывается. Сайдкар down → без падений.
+
+## 99. Issue templates + recurring (migration 000045)
+- [ ] Создать шаблон (name/title/description/priority/assignee/labels/estimate) → появляется в списке; RLS-scoped, только участник может создать/править/удалить (гость 403).
+- [ ] «Create issue from template» → создаётся issue с полями шаблона (title/priority/description/estimate/labels), открывается.
+- [ ] Recurrence = daily/weekly/monthly → `next_run_at` проставляется на следующую каденцию; none → `next_run_at` пуст.
+- [ ] RecurringIssueWorker (period `RECURRING_EVERY`, dev 30с / prod 1ч): по наступлении `next_run_at` создаёт issue, ставит `last_spawned_at`, проматывает `next_run_at` вперёд (мимо now, без всплеска если воркер простаивал).
+- [ ] Спавн best-effort: недоступная команда/создатель → шаблон пропускается, остальные не блокируются.
+- [ ] Правка recurrence на новую каденцию → `next_run_at` пересчитывается; на none → очищается.
+- [ ] Удаление шаблона (soft) → перестаёт плодиться; из bootstrap-чанка `issue_template` уходит.

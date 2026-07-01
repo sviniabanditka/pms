@@ -32,6 +32,7 @@ import (
 	"github.com/pms/backend/internal/domain/search"
 	syncsvc "github.com/pms/backend/internal/domain/sync"
 	"github.com/pms/backend/internal/domain/teams"
+	"github.com/pms/backend/internal/domain/templates"
 	"github.com/pms/backend/internal/domain/timetracking"
 	"github.com/pms/backend/internal/domain/views"
 	"github.com/pms/backend/internal/domain/webhooks"
@@ -62,6 +63,7 @@ type Services struct {
 	Sync          *syncsvc.Service
 	ApiTokens     *apitokens.Service
 	Webhooks      *webhooks.Service
+	Templates     *templates.Service
 }
 
 // Mount монтирует connect-сервисы. Все unary-RPC проходят через membership-гейт
@@ -88,6 +90,7 @@ func Mount(r chi.Router, svcs Services) {
 	mount(pmsv1connect.NewAttachmentServiceHandler(&attachmentHandler{svc: svcs.Attachments}, wsAuth))
 	mount(pmsv1connect.NewSyncServiceHandler(&syncHandler{svc: svcs.Sync}, wsAuth))
 	mount(pmsv1connect.NewQueryServiceHandler(&queryHandler{svc: svcs.Search}, wsAuth))
+	mount(pmsv1connect.NewTemplateServiceHandler(&templateHandler{svc: svcs.Templates}, wsAuth))
 }
 
 type queryHandler struct {
@@ -2057,6 +2060,93 @@ func (h *automationHandler) DeleteAutomation(ctx context.Context, req *connect.R
 		return nil, mapErr(err)
 	}
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
+}
+
+type templateHandler struct {
+	pmsv1connect.UnimplementedTemplateServiceHandler
+	svc *templates.Service
+}
+
+func templateInput(in *pmsv1.TemplateInput) (templates.Input, error) {
+	if in == nil {
+		return templates.Input{}, errors.New("input required")
+	}
+	teamID, err := uuid.Parse(in.TeamId)
+	if err != nil {
+		return templates.Input{}, errors.New("invalid team_id")
+	}
+	out := templates.Input{
+		TeamID: teamID, Name: in.Name, Title: in.Title, DescriptionMD: in.DescriptionMd,
+		Priority: int(in.Priority), AssigneeID: optUUID(in.AssigneeId), Recurrence: in.Recurrence,
+	}
+	if in.Estimate > 0 {
+		e := in.Estimate
+		out.Estimate = &e
+	}
+	for _, l := range in.LabelIds {
+		if id, e := uuid.Parse(l); e == nil {
+			out.LabelIDs = append(out.LabelIDs, id)
+		}
+	}
+	return out, nil
+}
+
+func (h *templateHandler) CreateTemplate(ctx context.Context, req *connect.Request[pmsv1.CreateTemplateRequest]) (*connect.Response[pmsv1.CreateTemplateResponse], error) {
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wsID, err := uuid.Parse(req.Msg.WorkspaceId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid workspace_id"))
+	}
+	in, err := templateInput(req.Msg.Input)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	id, err := h.svc.Create(ctx, actor, wsID, in)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.CreateTemplateResponse{Id: id.String()}), nil
+}
+
+func (h *templateHandler) UpdateTemplate(ctx context.Context, req *connect.Request[pmsv1.UpdateTemplateRequest]) (*connect.Response[pmsv1.UpdateTemplateResponse], error) {
+	actor, wsID, id, err := issueRef(ctx, req.Msg.WorkspaceId, req.Msg.Id)
+	if err != nil {
+		return nil, err
+	}
+	in, err := templateInput(req.Msg.Input)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if err := h.svc.Update(ctx, actor, wsID, id, in); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.UpdateTemplateResponse{}), nil
+}
+
+func (h *templateHandler) DeleteTemplate(ctx context.Context, req *connect.Request[pmsv1.DeleteTemplateRequest]) (*connect.Response[pmsv1.DeleteTemplateResponse], error) {
+	actor, wsID, id, err := issueRef(ctx, req.Msg.WorkspaceId, req.Msg.Id)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.Delete(ctx, actor, wsID, id); err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.DeleteTemplateResponse{}), nil
+}
+
+func (h *templateHandler) SpawnTemplate(ctx context.Context, req *connect.Request[pmsv1.SpawnTemplateRequest]) (*connect.Response[pmsv1.SpawnTemplateResponse], error) {
+	actor, wsID, id, err := issueRef(ctx, req.Msg.WorkspaceId, req.Msg.Id)
+	if err != nil {
+		return nil, err
+	}
+	issueID, err := h.svc.Spawn(ctx, actor, wsID, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.SpawnTemplateResponse{IssueId: issueID.String()}), nil
 }
 
 // jsonRaw: пустая строка → nil, иначе json.RawMessage.

@@ -262,6 +262,9 @@ func (s *Service) Bootstrap(ctx context.Context, actor, wsID uuid.UUID, only []s
 		if err := table("automation", &[]models.Automation{}, live, inTeamsN("team_id")); err != nil {
 			return err
 		}
+		if err := table("issue_template", &[]models.IssueTemplate{}, live, inTeamsN("team_id")); err != nil {
+			return err
+		}
 		if err := table("attachment", &[]models.Attachment{}, live); err != nil {
 			return err
 		}

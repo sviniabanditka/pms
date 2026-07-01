@@ -31,6 +31,7 @@ import (
 	"github.com/pms/backend/internal/domain/search"
 	syncsvc "github.com/pms/backend/internal/domain/sync"
 	"github.com/pms/backend/internal/domain/teams"
+	"github.com/pms/backend/internal/domain/templates"
 	"github.com/pms/backend/internal/domain/timetracking"
 	"github.com/pms/backend/internal/domain/views"
 	"github.com/pms/backend/internal/domain/webhooks"
@@ -85,6 +86,8 @@ func main() {
 	}
 	defer pool.Close()
 	embedClient := embed.New(cfg.EmbedURL)
+	// recurring issue-шаблоны: templates.Service поверх jobsDB (BYPASSRLS) для кросс-тенантного скана
+	recurringSvc := templates.NewService(jobsDB, issues.NewService(jobsDB, pub), pub)
 	riverClient, err := jobs.Start(context.Background(), jobs.Deps{
 		Pool: pool, JobsDB: jobsDB, Pub: pub, Mailer: mailer.New(cfg),
 		DueSoonInterval:  river.PeriodicInterval(cfg.DueSoonInterval),
@@ -96,7 +99,9 @@ func main() {
 		EmbedEvery:       river.PeriodicInterval(cfg.EmbedEvery),
 		TrainEvery:       river.PeriodicInterval(cfg.TrainEvery),
 		ClusterEvery:     river.PeriodicInterval(cfg.ClusterEvery),
+		RecurringEvery:   river.PeriodicInterval(cfg.RecurringEvery),
 		Embed:            embedClient,
+		Recurring:        recurringSvc,
 		LiveKitAPIURL:    cfg.LiveKitAPIURL,
 		LiveKitAPIKey:    cfg.LiveKitAPIKey,
 		LiveKitSecret:    cfg.LiveKitSecret,
@@ -128,6 +133,7 @@ func main() {
 		Sync:          syncsvc.NewService(bdb),
 		ApiTokens:     apitokens.NewService(bdb),
 		Webhooks:      webhooks.NewService(bdb),
+		Templates:     templates.NewService(bdb, issues.NewService(bdb, pub), pub),
 	}
 	svcs.Issues.SetEngine(svcs.Automations) // хук автоматизаций после issue-мутаций
 

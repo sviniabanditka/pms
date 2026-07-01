@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pms/backend/internal/domain/templates"
 	"github.com/pms/backend/internal/embed"
 	"github.com/pms/backend/internal/mailer"
 	"github.com/pms/backend/internal/realtime"
@@ -31,7 +32,9 @@ type Deps struct {
 	EmbedEvery       river.PeriodicSchedule
 	TrainEvery       river.PeriodicSchedule
 	ClusterEvery     river.PeriodicSchedule
+	RecurringEvery   river.PeriodicSchedule
 	Embed            *embed.Client
+	Recurring        *templates.Service
 	LiveKitAPIURL    string
 	LiveKitAPIKey    string
 	LiveKitSecret    string
@@ -60,6 +63,7 @@ func Start(ctx context.Context, d Deps) (*river.Client[pgx.Tx], error) {
 	river.AddWorker(workers, &EmbedSweepWorker{db: d.JobsDB, embed: d.Embed})
 	river.AddWorker(workers, &TrainWorker{db: d.JobsDB, embed: d.Embed})
 	river.AddWorker(workers, &ClusterWorker{db: d.JobsDB, embed: d.Embed})
+	river.AddWorker(workers, &RecurringIssueWorker{svc: d.Recurring})
 
 	client, err := river.NewClient(driver, &river.Config{
 		Queues:  map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 10}},
@@ -74,6 +78,7 @@ func Start(ctx context.Context, d Deps) (*river.Client[pgx.Tx], error) {
 			river.NewPeriodicJob(d.EmbedEvery, func() (river.JobArgs, *river.InsertOpts) { return EmbedSweepArgs{}, nil }, &river.PeriodicJobOpts{RunOnStart: true}),
 			river.NewPeriodicJob(d.TrainEvery, func() (river.JobArgs, *river.InsertOpts) { return TrainArgs{}, nil }, &river.PeriodicJobOpts{RunOnStart: true}),
 			river.NewPeriodicJob(d.ClusterEvery, func() (river.JobArgs, *river.InsertOpts) { return ClusterArgs{}, nil }, &river.PeriodicJobOpts{RunOnStart: true}),
+			river.NewPeriodicJob(d.RecurringEvery, func() (river.JobArgs, *river.InsertOpts) { return RecurringArgs{}, nil }, &river.PeriodicJobOpts{RunOnStart: true}),
 		},
 	})
 	if err != nil {

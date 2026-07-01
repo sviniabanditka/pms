@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package pms.v1;
+
+option go_package = "github.com/pms/backend/gen/pms/v1;pmsv1";
+
+// Issue-шаблоны + recurring (recurrence != none → воркер плодит issue).
+service TemplateService {
+  rpc CreateTemplate(CreateTemplateRequest) returns (CreateTemplateResponse);
+  rpc UpdateTemplate(UpdateTemplateRequest) returns (UpdateTemplateResponse);
+  rpc DeleteTemplate(DeleteTemplateRequest) returns (DeleteTemplateResponse);
+  rpc SpawnTemplate(SpawnTemplateRequest) returns (SpawnTemplateResponse); // создать issue сейчас
+}
+
+message TemplateInput {
+  string team_id = 1;
+  string name = 2;
+  string title = 3;
+  string description_md = 4;
+  int32 priority = 5;
+  string assignee_id = 6;    // "" = none
+  double estimate = 7;       // <=0 = none
+  repeated string label_ids = 8;
+  string recurrence = 9;     // none|daily|weekly|monthly
+}
+
+message CreateTemplateRequest {
+  string workspace_id = 1;
+  TemplateInput input = 2;
+}
+message CreateTemplateResponse {
+  string id = 1;
+}
+
+message UpdateTemplateRequest {
+  string workspace_id = 1;
+  string id = 2;
+  TemplateInput input = 3;
+}
+message UpdateTemplateResponse {}
+
+message DeleteTemplateRequest {
+  string workspace_id = 1;
+  string id = 2;
+}
+message DeleteTemplateResponse {}
+
+message SpawnTemplateRequest {
+  string workspace_id = 1;
+  string id = 2;
+}
+message SpawnTemplateResponse {
+  string issue_id = 1;
+}
