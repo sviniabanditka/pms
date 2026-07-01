@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 
-import { login } from '../../lib/auth'
-import { setAuthed } from '../../lib/authState'
+import { login, myWorkspaces } from '~/lib/auth'
+import { setAuthed } from '~/lib/authState'
+import { loadActiveWs } from '~/lib/workspace'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -16,6 +17,7 @@ export default function Login() {
     setErr('')
     try {
       await login(email.trim(), password)
+      await loadActiveWs(await myWorkspaces())
       setAuthed(true) // _layout уведёт на /
     } catch (e: any) {
       setErr(e?.message ?? 'Sign-in failed')

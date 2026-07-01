@@ -711,3 +711,11 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Home: список воркспейсов (GET /me/workspaces, Bearer), строка self-check показывает `connect OK · search → N` (доказывает connect+Bearer+интерсептор).
 - [ ] Протухший/битый токен → авто-увод на /login (Unauthenticated guard).
 - [ ] Выход: [ выйти ] → POST /logout + чистка токена → экран логина.
+
+## 92. Mobile M1 — navigation + workspace switch + My Issues
+- [ ] Таб-бар: Issues · Profile. Переключение табов работает.
+- [ ] Issues: список «моих» issues активного воркспейса (identifier + title + priority-тег). Тоггл assigned/created меняет список.
+- [ ] Pull-to-refresh обновляет; пустой скоуп → `// no assigned/created issues`; ошибка → сообщение + [ retry ].
+- [ ] Profile: user id, список воркспейсов, тап по воркспейсу → становится active (Issues перегружается под него), выбор персистится между перезапусками.
+- [ ] Sign out на Profile → экран логина.
+- [ ] (метаданные) статус/ассайни показаны как есть (id/priority) — имена придут в M2; это ожидаемо.

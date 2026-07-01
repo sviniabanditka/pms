@@ -24,15 +24,29 @@ Goal: app boots on iOS+Android sim, logs in, makes one authenticated RPC.
   the dev Go server (set LAN IP), confirm the connect self-check shows `connect OK`.
   This closes the roadmap "verify connect-web on device early" gate.
 
-## Phase M1 — Navigation shell + My Issues
+## Phase M1 — Navigation shell + My Issues ✅ code done
 
 Goal: the core daily list.
 
-- [ ] Tab/stack nav (expo-router): Issues · Inbox · (Create) · Profile.
-- [ ] Workspace switch (`WorkspaceService`, `QueryService.Bootstrap`); persist active ws.
-- [ ] My Issues list (assigned / created toggle) via `IssueService`/`QueryService`,
-      `FlashList`, pull-to-refresh, empty/loading/error states.
-- **Exit:** see and scroll my real issues, switch workspace.
+- [x] Tabs nav (expo-router `(tabs)`): Issues · Profile. (Inbox=M3, Create=M2 —
+      added later.)
+- [x] Workspace switch + persist (`lib/workspace.ts`, useSyncExternalStore +
+      storage `pms_ws`). `GET /me/workspaces` (REST) for the list.
+- [x] My Issues (assigned / created toggle) via **`QueryService.RunView`** (unary,
+      not bootstrap-stream): ad-hoc `ViewDefinition` filter `assignee|creator EQ me`
+      → `grouped_result` JSON array of issues. `lib/api.ts`. FlatList (FlashList
+      later), pull-to-refresh, loading/error/empty + retry.
+- [x] `lib/storage.ts` platform shim (SecureStore/localStorage); `getCurrentUserId`
+      from `/auth/me`; tsconfig `~/*` → root alias.
+- [x] **Verified:** tsc clean; RunView shape validated e2e (assigned 168 / created
+      170 issues on seed); `expo export -p ios` bundles.
+- **Deferred to a later phase (need a metadata cache):** status/assignee/team
+  *names* — RunView returns only ids, so rows show identifier + title + priority.
+  A small unary "workspace metadata" fetch (states/teams/users/labels) comes with
+  M2 (issue detail needs it too). Also: TextDecoder assumed present on Hermes
+  (SDK 57) — add a polyfill if a device errors.
+- **Exit (device — user):** see/scroll my issues, toggle assigned/created,
+  switch workspace, pull-to-refresh.
 
 ## Phase M2 — Issue detail + quick actions + create
 

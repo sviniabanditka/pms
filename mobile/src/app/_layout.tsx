@@ -2,9 +2,10 @@ import { Stack, useRouter, useSegments } from 'expo-router'
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
 
-import { loadToken, me } from '../../lib/auth'
-import { setAuthed, useAuthed } from '../../lib/authState'
-import { setOnUnauthorized } from '../../lib/connect'
+import { loadToken, me, myWorkspaces } from '~/lib/auth'
+import { setAuthed, useAuthed } from '~/lib/authState'
+import { setOnUnauthorized } from '~/lib/connect'
+import { loadActiveWs } from '~/lib/workspace'
 
 export default function RootLayout() {
   const [booting, setBooting] = useState(true)
@@ -12,12 +13,13 @@ export default function RootLayout() {
   const router = useRouter()
   const segments = useSegments()
 
-  // boot: поднять токен из secure-store, проверить /me
+  // boot: токен из storage → /me → воркспейсы + активный
   useEffect(() => {
     setOnUnauthorized(() => setAuthed(false))
     ;(async () => {
       await loadToken()
       const u = await me()
+      if (u) await loadActiveWs(await myWorkspaces())
       setAuthed(!!u)
       setBooting(false)
     })()
@@ -41,7 +43,7 @@ export default function RootLayout() {
 
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0b0c12' } }}>
-      <Stack.Screen name="index" />
+      <Stack.Screen name="(tabs)" />
       <Stack.Screen name="login" />
     </Stack>
   )
