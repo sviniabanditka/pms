@@ -1,5 +1,6 @@
 // Слайд-ин сайдбар со всеми секциями десктопа (структура паритета) в liquid-glass.
 import { BlurView } from 'expo-blur'
+import { useRouter } from 'expo-router'
 import { useEffect, useRef } from 'react'
 import { Animated, Dimensions, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 
@@ -26,6 +27,7 @@ const SECTIONS: { key: Section; label: string; glyph: string; color: string }[] 
 ]
 
 export function Sidebar({ visible, onClose, active, onSelect }: { visible: boolean; onClose: () => void; active: Section; onSelect: (s: Section) => void }) {
+  const router = useRouter()
   const x = useRef(new Animated.Value(-W)).current
   const fade = useRef(new Animated.Value(0)).current
   const wsName = getWorkspaces().find((w) => w.id === useActiveWs())?.name ?? 'workspace'
@@ -96,7 +98,14 @@ export function Sidebar({ visible, onClose, active, onSelect }: { visible: boole
             # teams
           </T>
           {teams.map((t) => (
-            <Pressable key={t.id} style={styles.team} onPress={onClose}>
+            <Pressable
+              key={t.id}
+              style={styles.team}
+              onPress={() => {
+                onClose()
+                router.push(`/team/${t.id}`)
+              }}
+            >
               <GlowDot color={C.tertiary} size={6} />
               <T v="dim" s={14}>
                 {t.key}
