@@ -44,7 +44,7 @@ export async function login(email: string, password: string): Promise<User> {
     body: JSON.stringify({ email, password }),
   })
   if (!res.ok) {
-    throw new Error(res.status === 401 ? 'Неверный email или пароль' : `Ошибка входа (${res.status})`)
+    throw new Error(res.status === 401 ? 'Invalid email or password' : `Sign-in failed (${res.status})`)
   }
   const body = (await res.json()) as User & { token: string }
   await setToken(body.token)

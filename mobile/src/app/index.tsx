@@ -9,7 +9,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [ws, setWs] = useState<Workspace[]>([])
   // M0-проба: подтвердить что connect-RPC (Bearer + интерсептор) реально ходит на сервер
-  const [rpcCheck, setRpcCheck] = useState('проверяю connect…')
+  const [rpcCheck, setRpcCheck] = useState('checking connect…')
 
   useEffect(() => {
     ;(async () => {
@@ -19,12 +19,12 @@ export default function Home() {
       if (list[0]) {
         try {
           const res = await clients.query.search({ workspaceId: list[0].id, query: 'a' })
-          setRpcCheck(`connect OK · search → ${res.results?.length ?? 0} рез.`)
+          setRpcCheck(`connect OK · search → ${res.results?.length ?? 0} results`)
         } catch (e: any) {
           setRpcCheck(`connect FAIL · ${e?.message ?? e}`)
         }
       } else {
-        setRpcCheck('нет воркспейсов — connect не проверен')
+        setRpcCheck('no workspaces — connect not checked')
       }
     })()
   }, [])
@@ -41,11 +41,11 @@ export default function Home() {
       </Text>
       <Text style={styles.check}>{rpcCheck}</Text>
 
-      <Text style={styles.label}># воркспейсы</Text>
+      <Text style={styles.label}># workspaces</Text>
       {loading ? (
         <ActivityIndicator color="#7aa2f7" style={{ marginTop: 12 }} />
       ) : ws.length === 0 ? (
-        <Text style={styles.muted}>// нет воркспейсов</Text>
+        <Text style={styles.muted}>// no workspaces</Text>
       ) : (
         <ScrollView style={{ marginTop: 4 }}>
           {ws.map((w) => (
@@ -61,7 +61,7 @@ export default function Home() {
       )}
 
       <Pressable style={styles.btn} onPress={onLogout}>
-        <Text style={styles.btnText}>[ выйти ]</Text>
+        <Text style={styles.btnText}>[ sign out ]</Text>
       </Pressable>
     </View>
   )

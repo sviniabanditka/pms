@@ -18,7 +18,7 @@ export default function Login() {
       await login(email.trim(), password)
       setAuthed(true) // _layout уведёт на /
     } catch (e: any) {
-      setErr(e?.message ?? 'Ошибка входа')
+      setErr(e?.message ?? 'Sign-in failed')
     } finally {
       setBusy(false)
     }
@@ -29,7 +29,7 @@ export default function Login() {
       <Text style={styles.brand}>
         <Text style={{ color: '#9ece6a' }}>~/</Text>stdtask
       </Text>
-      <Text style={styles.sub}>// войти в воркспейс</Text>
+      <Text style={styles.sub}>// sign in to your workspace</Text>
 
       <TextInput
         style={styles.input}
@@ -43,7 +43,7 @@ export default function Login() {
       />
       <TextInput
         style={styles.input}
-        placeholder="пароль"
+        placeholder="password"
         placeholderTextColor="#565f89"
         secureTextEntry
         value={password}
@@ -54,7 +54,7 @@ export default function Login() {
       {err ? <Text style={styles.err}>{err}</Text> : null}
 
       <Pressable style={[styles.btn, busy && { opacity: 0.5 }]} disabled={busy} onPress={onSubmit}>
-        {busy ? <ActivityIndicator color="#0b0c12" /> : <Text style={styles.btnText}>[ войти ]</Text>}
+        {busy ? <ActivityIndicator color="#0b0c12" /> : <Text style={styles.btnText}>[ sign in ]</Text>}
       </Pressable>
     </View>
   )
