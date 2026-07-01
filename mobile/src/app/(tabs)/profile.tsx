@@ -91,7 +91,7 @@ export default function Profile() {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', gap: 13, marginHorizontal: 12, paddingHorizontal: 15, paddingVertical: 11, borderRadius: 18 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 18, marginHorizontal: 12, paddingHorizontal: 15, paddingVertical: 11, borderRadius: 18 },
   menu: { gap: 3.5, paddingVertical: 2 },
   barIcon: { width: 17, height: 2, borderRadius: 2, backgroundColor: C.secondary },
   userCard: { flexDirection: 'row', alignItems: 'center', gap: 13, borderRadius: 16, padding: 15 },
