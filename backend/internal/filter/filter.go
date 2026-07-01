@@ -34,6 +34,7 @@ var columns = map[string]string{
 	"milestone": "milestone_id",
 	"parent":    "parent_id",
 	"creator":   "created_by",
+	"id":        "id", // одиночная выборка issue по id (нативный клиент: tap уведомления/пуша)
 }
 
 var textFields = map[string]bool{"title": true}

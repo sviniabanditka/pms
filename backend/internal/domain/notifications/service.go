@@ -60,3 +60,17 @@ func (s *Service) MarkAllRead(ctx context.Context, actor, wsID uuid.UUID) (int64
 	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "notification", EntityID: actor.String(), Op: "update"})
 	return 0, nil
 }
+
+// List — последние уведомления пользователя в воркспейсе (нативный inbox; unary
+// вместо bootstrap-стрима). RLS скоупит воркспейс, доп. фильтр по recipient.
+func (s *Service) List(ctx context.Context, wsID, userID uuid.UUID, limit int) ([]models.Notification, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	var out []models.Notification
+	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		return tx.NewSelect().Model(&out).Where("user_id = ?", userID).
+			OrderExpr("at DESC").Limit(limit).Scan(ctx)
+	})
+	return out, err
+}

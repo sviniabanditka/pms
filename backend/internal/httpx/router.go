@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 	"github.com/pms/backend/internal/auth"
+	"github.com/pms/backend/internal/models"
 	"github.com/pms/backend/internal/realtime"
 	"github.com/pms/backend/internal/rpc"
 	"github.com/pms/backend/internal/storage"
@@ -90,6 +91,30 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			return
 		}
 		_ = json.NewEncoder(w).Encode(meta)
+	})
+
+	// Inbox: последние уведомления пользователя в воркспейсе (unary для нативного клиента).
+	r.With(auth.RequireAuth).Get("/me/workspaces/{id}/notifications", func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := auth.UserID(req.Context())
+		wsID, err := uuid.Parse(chi.URLParam(req, "id"))
+		if err != nil {
+			http.Error(w, "invalid workspace id", http.StatusBadRequest)
+			return
+		}
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		list, err := svcs.Notifications.List(req.Context(), wsID, uid, 50)
+		w.Header().Set("Content-Type", "application/json")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if list == nil {
+			list = []models.Notification{}
+		}
+		_ = json.NewEncoder(w).Encode(list)
 	})
 
 	// Загрузка файла в S3 (multipart). Возвращает {key, filename, contentType, size}.

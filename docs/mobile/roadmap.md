@@ -75,13 +75,26 @@ Goal: act on an issue from the phone.
 - **Exit (device — user):** open an issue, change status/assignee, comment, create
   a new issue.
 
-## Phase M3 — Inbox / notifications
+## Phase M3 — Inbox / notifications ✅ code done
 
 Goal: see what needs attention.
 
-- [ ] Inbox screen (`NotificationService`): list, unread badge, mark read / mark all.
-- [ ] Tap notification → deep-link to the issue (expo-router).
-- **Exit:** inbox mirrors web, tap-through navigates.
+- [x] Backend (net-new, unary — NotificationService has no List, only stream):
+      `GET /me/workspaces/{id}/notifications` (member-only) → `notifications.List`
+      (recent 50, recipient-scoped). Integration test `TestNotifications_List`.
+- [x] Filter engine: added `"id"` builtin column → RunView can fetch a single issue
+      by id (needed when a notification/push targets an issue not in the list cache).
+- [x] Inbox tab (`app/(tabs)/inbox.tsx`): list, unread dot + count, optimistic mark
+      read on open (`NotificationService.MarkRead`), mark all read, pull-to-refresh.
+- [x] Tap notification → `issueById` (RunView id filter) caches the issue →
+      deep-link `/issue/{entityId}`.
+- [x] **Verified:** tsc clean; e2e (list 50 / 27 unread → MarkRead 27→26 →
+      MarkAllRead →0; single-issue by id → INFRA-3); `expo export` 1245 modules;
+      TestNotifications_List green.
+- **Deferred:** notification rows show type + entityType (+ actor name), not the
+  issue identifier/title (would need a per-entity lookup); no push yet (M4).
+- **Exit (device — user):** open Inbox, see notifications, tap → issue opens, mark
+  read / mark all read.
 
 ## Phase M4 — Push (the native payoff)
 

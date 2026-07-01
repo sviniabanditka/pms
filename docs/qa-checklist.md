@@ -728,3 +728,11 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Комментарий: ввод + send → появляется в списке (автор по имени).
 - [ ] `[ + new ]` на Issues → модалка create: team + title + priority + assignee → `[ create ]` → возврат к списку (pull-refresh покажет новый issue).
 - [ ] Backend: `GET /me/workspaces/{id}/meta` — только участник (не член → 403); отдаёт teams/states/users/labels.
+
+## 94. Mobile M3 — inbox / notifications
+- [ ] Таб Inbox: список уведомлений активного воркспейса; непрочитанные с точкой + счётчик в заголовке.
+- [ ] Тап по уведомлению об issue → открывается деталь issue (issue подгружается по id, если не в кэше).
+- [ ] Открытие уведомления помечает его прочитанным (точка исчезает, счётчик −1).
+- [ ] `[ mark all read ]` → все прочитаны, счётчик 0.
+- [ ] Pull-to-refresh обновляет; пустой → `// inbox zero`; ошибка → [ retry ].
+- [ ] Backend: `GET /me/workspaces/{id}/notifications` — только участник (403 иначе); чужие уведомления не видны.

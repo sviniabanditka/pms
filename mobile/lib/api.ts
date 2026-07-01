@@ -2,7 +2,11 @@
 // для мутаций. Issue-кэш по id — деталь читает уже загруженную строку (RunView даёт
 // полный Issue включая description; отдельного GetIssue RPC нет).
 import { clients } from './connect'
+import { API_BASE } from './config'
+import { getCachedToken } from './auth'
 import { Operator } from '~/gen/pms/v1/filter_pb'
+
+const authHeader = () => ({ Authorization: `Bearer ${getCachedToken() ?? ''}` })
 
 export type Issue = {
   id: string
@@ -99,4 +103,47 @@ export async function getComments(wsId: string, issueId: string): Promise<Commen
 
 export async function addComment(wsId: string, issueId: string, body: string) {
   await clients.comments.addComment({ workspaceId: wsId, id: uuid(), issueId, body })
+}
+
+// одиночный issue по id (RunView с фильтром id EQ) — для tap уведомления/пуша, когда
+// issue нет в кэше от списка. Кладём в кэш.
+export async function issueById(wsId: string, id: string): Promise<Issue | undefined> {
+  const cached = issueCache.get(id)
+  if (cached) return cached
+  const res = await clients.query.runView({
+    workspaceId: wsId,
+    def: {
+      dataSource: 'issue',
+      filter: { node: { case: 'predicate', value: { field: { ref: { case: 'builtin', value: 'id' } }, op: Operator.EQ, value: { v: { case: 's', value: id } } } } },
+    },
+  })
+  const rows = JSON.parse(new TextDecoder().decode(res.groupedResult)) as Issue[]
+  cache(rows)
+  return rows[0]
+}
+
+// --- уведомления (inbox) ---
+
+export type Notification = {
+  id: string
+  type: string
+  entityType: string
+  entityId: string
+  actorId?: string
+  readAt?: string
+  at: string
+}
+
+export async function listNotifications(wsId: string): Promise<Notification[]> {
+  const res = await fetch(`${API_BASE}/me/workspaces/${wsId}/notifications`, { headers: authHeader() })
+  if (!res.ok) throw new Error(`notifications ${res.status}`)
+  return ((await res.json()) as Notification[]) ?? []
+}
+
+export async function markRead(wsId: string, id: string) {
+  await clients.notifications.markRead({ workspaceId: wsId, id })
+}
+
+export async function markAllRead(wsId: string) {
+  await clients.notifications.markAllRead({ workspaceId: wsId })
 }

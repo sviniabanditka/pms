@@ -759,3 +759,23 @@ func TestWorkspaces_Meta(t *testing.T) {
 		t.Error("owner must appear in Meta.Users")
 	}
 }
+
+func TestNotifications_List(t *testing.T) {
+	ws, owner := newWS(t)
+	mustExec(t, `INSERT INTO notifications (id, workspace_id, user_id, type, entity_type, entity_id, at) VALUES (?, ?, ?, 'assigned', 'issue', ?, now())`,
+		uuid.New(), ws, owner, uuid.New())
+	svc := notifications.NewService(appDB, pub)
+	list, err := svc.List(context.Background(), ws, owner, 50)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(list) != 1 || list[0].Type != "assigned" {
+		t.Errorf("list = %+v, want one 'assigned'", list)
+	}
+	// другой юзер не видит чужие уведомления
+	other := newUser(t)
+	l2, _ := svc.List(context.Background(), ws, other, 50)
+	if len(l2) != 0 {
+		t.Errorf("other user saw %d notifications, want 0", len(l2))
+	}
+}
