@@ -1,4 +1,5 @@
 // Мини UI-кит в терминальном стиле десктопа. Всё моно (JetBrains Mono).
+import { LinearGradient } from 'expo-linear-gradient'
 import { ActivityIndicator, Pressable, StyleSheet, Text, type TextProps, View } from 'react-native'
 import { C, F } from './theme'
 
@@ -29,11 +30,13 @@ export function Bracket({ label, onPress, color = C.accent, disabled }: { label:
   )
 }
 
-// Primary — заполненная акцентная CTA (login/create/send)
+// Primary — градиентная акцентная CTA (login/create)
 export function Primary({ label, onPress, busy, disabled, style }: { label: string; onPress: () => void; busy?: boolean; disabled?: boolean; style?: any }) {
   return (
-    <Pressable onPress={onPress} disabled={disabled || busy} style={[ui.primary, (disabled || busy) && { opacity: 0.5 }, style]}>
-      {busy ? <ActivityIndicator color={C.base} /> : <Text style={ui.primaryText}>{label}</Text>}
+    <Pressable onPress={onPress} disabled={disabled || busy} style={({ pressed }) => [{ opacity: disabled || busy ? 0.55 : 1, transform: [{ scale: pressed ? 0.985 : 1 }] }, style]}>
+      <LinearGradient colors={['#8fb0ff', '#7aa2f7']} style={ui.primary}>
+        {busy ? <ActivityIndicator color={C.base} /> : <Text style={ui.primaryText}>{label}</Text>}
+      </LinearGradient>
     </Pressable>
   )
 }

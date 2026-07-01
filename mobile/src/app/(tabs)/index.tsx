@@ -77,6 +77,7 @@ export default function Issues() {
 
   function onSection(s: Section) {
     if (s === 'inbox') router.push('/inbox')
+    else if (s === 'settings') router.push('/profile')
   }
 
   return (

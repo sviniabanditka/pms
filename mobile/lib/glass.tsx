@@ -2,7 +2,7 @@
 // базы + терминальные акценты. Web-фолбэк BlurView даёт backdrop-filter.
 import { BlurView } from 'expo-blur'
 import { LinearGradient } from 'expo-linear-gradient'
-import { StyleSheet, View, type ViewStyle } from 'react-native'
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 
 import { C, F } from './theme'
 import { T } from './ui'
@@ -19,7 +19,7 @@ export function Backdrop({ children }: { children: React.ReactNode }) {
 }
 
 // Glass — матовая панель со стеклянным sheen сверху
-export function Glass({ children, style, intensity = 24 }: { children?: React.ReactNode; style?: ViewStyle | ViewStyle[]; intensity?: number }) {
+export function Glass({ children, style, intensity = 24 }: { children?: React.ReactNode; style?: StyleProp<ViewStyle>; intensity?: number }) {
   return (
     <BlurView intensity={intensity} tint="dark" style={[g.glass, style]}>
       <LinearGradient colors={['rgba(255,255,255,0.06)', 'transparent']} style={g.sheen} pointerEvents="none" />
