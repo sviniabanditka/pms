@@ -60,8 +60,12 @@ func VecLiteral(v []float32) string {
 // --- Фаза 3: обучаемые per-workspace классификаторы ---
 
 // Train обучает модель (kind + task classification|regression) на векторах+метках.
-func (c *Client) Train(ctx context.Context, wsID, kind, task string, vectors [][]float32, labels []float64) error {
-	body, _ := json.Marshal(map[string]any{"workspace_id": wsID, "kind": kind, "task": task, "vectors": vectors, "labels": labels})
+func (c *Client) Train(ctx context.Context, wsID, kind, task string, vectors [][]float32, labels []float64, weights []float64) error {
+	payload := map[string]any{"workspace_id": wsID, "kind": kind, "task": task, "vectors": vectors, "labels": labels}
+	if weights != nil {
+		payload["weights"] = weights
+	}
+	body, _ := json.Marshal(payload)
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.url+"/train", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.http.Do(req)

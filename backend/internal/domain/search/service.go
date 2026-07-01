@@ -404,3 +404,14 @@ func (s *Service) Search(ctx context.Context, actor, wsID uuid.UUID, query strin
 	raw, _ := json.Marshal(out)
 	return raw, nil
 }
+
+// LogFeedback — записать реакцию пользователя на AI-подсказку (петля обратной связи).
+func (s *Service) LogFeedback(ctx context.Context, actor, wsID uuid.UUID, kind, action string, entityID *uuid.UUID, suggested string) error {
+	return db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		_, err := tx.NewRaw(
+			`INSERT INTO ai_feedback (workspace_id, actor_id, kind, entity_id, suggested, action) VALUES (?, ?, ?, ?, ?, ?)`,
+			wsID, actor, kind, entityID, suggested, action,
+		).Exec(ctx)
+		return err
+	})
+}

@@ -3076,19 +3076,19 @@ useHead({ title: () => pageTitle.value })
           <!-- подсказки в один клик -->
           <div v-if="suggestLabels.length || suggestAssignee || suggestPriority !== null || suggestEstimate !== null" class="mb-2 flex flex-wrap gap-1.5">
             <button v-if="suggestPriority !== null" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs text-secondary hover:border-warn hover:text-warn"
-              @click="store.setIssuePriority(selectedIssue.id, suggestPriority)">
+              @click="store.setIssuePriority(selectedIssue.id, suggestPriority); store.aiFeedback('priority','applied',selectedIssue.id,String(suggestPriority))">
               ⚑ priority {{ PRI_LABELS[suggestPriority] }}
             </button>
             <button v-if="suggestEstimate !== null" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs text-secondary hover:border-accent hover:text-accent"
-              @click="store.setIssueEstimate(selectedIssue.id, suggestEstimate)">
+              @click="store.setIssueEstimate(selectedIssue.id, suggestEstimate); store.aiFeedback('estimate','applied',selectedIssue.id,String(suggestEstimate))">
               ≈ est {{ suggestEstimate }} pts
             </button>
             <button v-if="suggestAssignee" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs text-secondary hover:border-accent hover:text-accent"
-              @click="store.setIssueAssignee(selectedIssue.id, suggestAssignee)">
+              @click="store.setIssueAssignee(selectedIssue.id, suggestAssignee); store.aiFeedback('assignee','applied',selectedIssue.id,suggestAssignee)">
               ＋ assign {{ store.userName(suggestAssignee) }}
             </button>
             <button v-for="lid in suggestLabels" :key="lid" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs hover:border-accent"
-              :style="{ color: store.labels[lid]?.colorToken ? undefined : undefined }" @click="store.addLabel(selectedIssue.id, lid)">
+              :style="{ color: store.labels[lid]?.colorToken ? undefined : undefined }" @click="store.addLabel(selectedIssue.id, lid); store.aiFeedback('label','applied',selectedIssue.id,lid)">
               ＋ {{ store.labels[lid]?.name }}
             </button>
           </div>

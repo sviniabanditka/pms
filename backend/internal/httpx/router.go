@@ -154,6 +154,39 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 		_ = json.NewEncoder(w).Encode(list)
 	})
 
+	// AI петля фидбэка: лог реакции пользователя на подсказку (applied|dismissed).
+	r.With(auth.RequireAuth).Post("/me/workspaces/{id}/ai/feedback", func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := auth.UserID(req.Context())
+		wsID, err := uuid.Parse(chi.URLParam(req, "id"))
+		if err != nil {
+			http.Error(w, "invalid workspace id", http.StatusBadRequest)
+			return
+		}
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		var body struct {
+			Kind      string `json:"kind"`
+			Action    string `json:"action"`
+			EntityID  string `json:"entityId"`
+			Suggested string `json:"suggested"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil || body.Kind == "" || body.Action == "" {
+			http.Error(w, "kind and action required", http.StatusBadRequest)
+			return
+		}
+		var eid *uuid.UUID
+		if id, err := uuid.Parse(body.EntityID); err == nil {
+			eid = &id
+		}
+		if err := svcs.Search.LogFeedback(req.Context(), uid, wsID, body.Kind, body.Action, eid, body.Suggested); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	// Push: регистрация/снятие Expo push-токена устройства (нативный клиент).
 	r.With(auth.RequireAuth).Post("/me/devices", func(w http.ResponseWriter, req *http.Request) {
 		uid, _ := auth.UserID(req.Context())

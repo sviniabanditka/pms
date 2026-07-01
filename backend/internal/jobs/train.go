@@ -56,12 +56,21 @@ func (w *TrainWorker) Work(ctx context.Context, _ *river.Job[TrainArgs]) error {
 }
 
 func (w *TrainWorker) trainTarget(ctx context.Context, ws uuid.UUID, t trainTarget) {
+	// петля фидбэка: issue с applied-подсказкой этого типа весят больше
+	var appliedIDs []uuid.UUID
+	_ = w.db.NewRaw(`SELECT DISTINCT entity_id FROM ai_feedback WHERE workspace_id = ? AND kind = ? AND action = 'applied' AND entity_id IS NOT NULL`, ws, t.kind).Scan(ctx, &appliedIDs)
+	applied := make(map[uuid.UUID]bool, len(appliedIDs))
+	for _, id := range appliedIDs {
+		applied[id] = true
+	}
+
 	var rows []struct {
-		Vec   string  `bun:"vec"`
-		Label float64 `bun:"label"`
+		ID    uuid.UUID `bun:"id"`
+		Vec   string    `bun:"vec"`
+		Label float64   `bun:"label"`
 	}
 	q := fmt.Sprintf(
-		`SELECT e.embedding::text AS vec, (%s) AS label
+		`SELECT i.id, e.embedding::text AS vec, (%s) AS label
 		 FROM issues i JOIN embeddings e ON e.entity_type='issue' AND e.entity_id = i.id
 		 WHERE i.workspace_id = ? AND i.deleted_at IS NULL %s`, t.labelExpr, t.where)
 	if err := w.db.NewRaw(q, ws).Scan(ctx, &rows); err != nil || len(rows) < 40 {
@@ -69,6 +78,7 @@ func (w *TrainWorker) trainTarget(ctx context.Context, ws uuid.UUID, t trainTarg
 	}
 	vecs := make([][]float32, 0, len(rows))
 	labels := make([]float64, 0, len(rows))
+	weights := make([]float64, 0, len(rows))
 	for _, r := range rows {
 		v := embed.ParseVecLiteral(r.Vec)
 		if v == nil {
@@ -76,9 +86,14 @@ func (w *TrainWorker) trainTarget(ctx context.Context, ws uuid.UUID, t trainTarg
 		}
 		vecs = append(vecs, v)
 		labels = append(labels, r.Label)
+		if applied[r.ID] {
+			weights = append(weights, 3.0) // подтверждённый пользователем сигнал
+		} else {
+			weights = append(weights, 1.0)
+		}
 	}
 	if len(vecs) >= 40 {
-		_ = w.embed.Train(ctx, ws.String(), t.kind, t.task, vecs, labels)
+		_ = w.embed.Train(ctx, ws.String(), t.kind, t.task, vecs, labels, weights)
 	}
 }
 

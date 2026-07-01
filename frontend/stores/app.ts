@@ -938,6 +938,18 @@ export const useAppStore = defineStore('app', {
       }
     },
 
+    // AI петля фидбэка: лог реакции на подсказку (applied|dismissed) — сигнал для ретрейна.
+    aiFeedback(kind: string, action: string, entityId: string, suggested: string) {
+      if (!this.activeWorkspaceId) return
+      const base = useRuntimeConfig().public.apiBase as string
+      fetch(`${base}/me/workspaces/${this.activeWorkspaceId}/ai/feedback`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind, action, entityId, suggested }),
+      }).catch(() => {})
+    },
+
     // AI-подсказки для issue (Фаза 2): kNN-агрегация → {assigneeId, labelIds, similar}.
     async suggestForIssue(issue: any): Promise<any> {
       if (!this.activeWorkspaceId || !issue) return null

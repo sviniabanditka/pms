@@ -54,6 +54,7 @@ class TrainRequest(BaseModel):
     task: Literal["classification", "regression"] = "classification"
     vectors: List[List[float]]
     labels: List[float]
+    weights: Optional[List[float]] = None   # sample_weight (петля фидбэка)
 
 
 @app.post("/train")
@@ -64,12 +65,14 @@ def train(req: TrainRequest):
         if len(ys) < 40:
             return {"ok": False, "reason": "insufficient", "n": len(ys)}
         model = Ridge(alpha=1.0)
-        model.fit(X, np.array(ys, dtype=np.float32))
+        sw = np.array(req.weights, dtype=np.float32) if req.weights else None
+        model.fit(X, np.array(ys, dtype=np.float32), sample_weight=sw)
     else:
         if len(ys) < 40 or len(set(ys)) < 2:
             return {"ok": False, "reason": "insufficient", "n": len(ys), "classes": len(set(ys))}
         model = LogisticRegression(max_iter=1000, class_weight="balanced")
-        model.fit(X, np.array(ys).astype(int))
+        sw = np.array(req.weights, dtype=np.float32) if req.weights else None
+        model.fit(X, np.array(ys).astype(int), sample_weight=sw)
     path = _model_path(req.workspace_id, req.kind)
     joblib.dump({"model": model, "task": req.task}, path)
     _clf_cache.pop(path, None)
