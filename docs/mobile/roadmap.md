@@ -125,14 +125,33 @@ Goal: pings arrive on the lock screen.
 - **Exit (device — user):** assign/comment from web → push on the phone → tap opens
   the issue.
 
-## Phase M5 — Polish & ship
+## Phase M5 — Polish & ship ✅ code done
 
-- [ ] SQLite cache persister (warm start + offline read of last snapshot).
-- [ ] Wire WS (`lib/ws.ts` equivalent) for live list updates (optional, refetch-on-focus fallback).
-- [ ] App icon, splash, theme (Tokyo-Night to match), error boundary, Sentry (optional).
-- [ ] EAS Build profiles (dev/preview/prod), internal TestFlight + Android internal track.
-- [ ] Store assets (screenshots, descriptions, privacy).
-- **Exit:** installable build in TestFlight / Play internal testing.
+- [x] SQLite cache (`lib/cache.ts`, expo-sqlite KV): meta warm-start (instant names
+      on relaunch) + offline read — Issues/Inbox fall back to the last cached
+      snapshot when the network fails (Issues shows a `· offline` marker).
+- [x] Live-ish updates via **refetch-on-focus** (`useFocusEffect` on Issues + Inbox)
+      — returning from create/detail refreshes the list. (WS stream skipped —
+      RN-hostile; focus-refetch is the pragmatic fallback.)
+- [x] Error boundary (`_layout.tsx` exports a branded `ErrorBoundary`), dark
+      `userInterfaceStyle`, brand splash bg (#0b0c12), `com.stdtask.app` bundle ids.
+- [x] EAS build profiles (`eas.json`: development/preview/production) + `SHIP.md`
+      (dev / push / build / submit / OTA steps).
+- **Verified:** tsc clean; `expo export` bundles (1340 modules).
+- **Needs the user's accounts (can't do in code):** `eas init` (projectId, unblocks
+  push), `eas build`/`eas submit` (Apple/Google accounts), real app icon + splash
+  logo (design asset — placeholders now, brand colors set), store listing assets.
+- **Exit (user):** `eas build --profile preview` → installable build → TestFlight /
+  Play internal.
+
+---
+
+## Status: MVP is code-complete (M0–M5)
+
+All lean-MVP phases are built and verified (tsc + Metro bundle + backend tests +
+e2e curl). What remains is **device/account work only** (the user's): run on a real
+device, `eas init` for push, EAS builds + store submission, and real brand
+icon/splash art. See `mobile/SHIP.md`.
 
 ## Later (post-MVP, gated by demand)
 

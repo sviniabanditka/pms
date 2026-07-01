@@ -1,8 +1,8 @@
-import { useRouter } from 'expo-router'
-import { useCallback, useEffect, useState } from 'react'
+import { useFocusEffect, useRouter } from 'expo-router'
+import { useCallback, useState } from 'react'
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
 
-import { issueById, listNotifications, markAllRead, markRead, type Notification } from '~/lib/api'
+import { cachedNotifications, issueById, listNotifications, markAllRead, markRead, type Notification } from '~/lib/api'
 import { userById } from '~/lib/meta'
 import { useActiveWs } from '~/lib/workspace'
 
@@ -31,7 +31,9 @@ export default function Inbox() {
       try {
         setItems(await listNotifications(wsId))
       } catch (e: any) {
-        setErr(e?.message ?? 'Failed to load')
+        const cached = await cachedNotifications(wsId)
+        if (cached.length) setItems(cached)
+        else setErr(e?.message ?? 'Failed to load')
       } finally {
         setLoading(false)
         setRefreshing(false)
@@ -40,9 +42,11 @@ export default function Inbox() {
     [wsId],
   )
 
-  useEffect(() => {
-    load()
-  }, [load])
+  useFocusEffect(
+    useCallback(() => {
+      load()
+    }, [load]),
+  )
 
   async function open(n: Notification) {
     if (!wsId) return

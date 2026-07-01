@@ -744,3 +744,11 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Sign out → токен снимается (`DELETE /me/devices/{token}`), пуши больше не приходят.
 - [ ] Web/симулятор: `registerForPush` тихо no-op (пуш не поддерживается) — приложение работает без ошибок.
 - [ ] Backend: PushDispatchWorker помечает `pushed_at`; мёртвые токены (DeviceNotRegistered) удаляются.
+
+## 96. Mobile M5 — polish & offline
+- [ ] Перезапуск приложения: имена статусов/ассайни появляются мгновенно (meta warm-start из SQLite), затем обновляются с сети.
+- [ ] Offline (выключить сеть): Issues и Inbox показывают последний закэшированный снапшот; в шапке Issues — `· offline`.
+- [ ] Возврат на Issues после create/детали → список автоматически обновляется (refetch-on-focus); новый issue виден без ручного pull.
+- [ ] Ошибка рендера → брендовый экран `// something broke` + [ retry ] (не красный краш).
+- [ ] Тема тёмная (splash #0b0c12), bundle id `com.stdtask.app`.
+- [ ] Сборка: `eas build --profile preview -p ios|android` даёт устанавливаемый билд (нужен EAS-аккаунт; шаги в mobile/SHIP.md).

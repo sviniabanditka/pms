@@ -1,9 +1,9 @@
-import { useRouter } from 'expo-router'
-import { useCallback, useEffect, useState } from 'react'
+import { useFocusEffect, useRouter } from 'expo-router'
+import { useCallback, useState } from 'react'
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
 
 import { getCurrentUserId } from '~/lib/auth'
-import { myIssues, type Issue, type IssueScope } from '~/lib/api'
+import { cachedIssues, myIssues, type Issue, type IssueScope } from '~/lib/api'
 import { loadMeta, stateById, stateColor, useMeta, userById } from '~/lib/meta'
 import { getWorkspaces, useActiveWs } from '~/lib/workspace'
 
@@ -23,6 +23,7 @@ export default function Issues() {
   const [items, setItems] = useState<Issue[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [offline, setOffline] = useState(false)
   const [err, setErr] = useState('')
 
   const load = useCallback(
@@ -34,8 +35,16 @@ export default function Issues() {
       try {
         await loadMeta(wsId)
         setItems(await myIssues(wsId, uid, scope))
+        setOffline(false)
       } catch (e: any) {
-        setErr(e?.message ?? 'Failed to load')
+        // сеть недоступна → показываем последний закэшированный снапшот
+        const cached = await cachedIssues(wsId, scope)
+        if (cached.length) {
+          setItems(cached)
+          setOffline(true)
+        } else {
+          setErr(e?.message ?? 'Failed to load')
+        }
       } finally {
         setLoading(false)
         setRefreshing(false)
@@ -44,9 +53,12 @@ export default function Issues() {
     [wsId, scope],
   )
 
-  useEffect(() => {
-    load()
-  }, [load])
+  // грузим на маунт и при каждом возврате на экран (свежий список после create/detail)
+  useFocusEffect(
+    useCallback(() => {
+      load()
+    }, [load]),
+  )
 
   return (
     <View style={styles.wrap}>
@@ -55,6 +67,7 @@ export default function Issues() {
           <Text style={styles.ws} numberOfLines={1}>
             <Text style={{ color: '#9ece6a' }}>~/</Text>
             {wsName}
+            {offline ? <Text style={styles.offline}> · offline</Text> : null}
           </Text>
           <Pressable onPress={() => router.push('/create')} style={styles.newBtn}>
             <Text style={styles.newText}>[ + new ]</Text>
@@ -121,6 +134,7 @@ const styles = StyleSheet.create({
   header: { marginBottom: 12, gap: 10 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   ws: { color: '#c0caf5', fontSize: 20, fontWeight: '700', flex: 1 },
+  offline: { color: '#e0af68', fontSize: 12, fontWeight: '400' },
   newBtn: { paddingVertical: 4, paddingHorizontal: 8 },
   newText: { color: '#7aa2f7', fontSize: 13 },
   toggle: { flexDirection: 'row', gap: 6 },

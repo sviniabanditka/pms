@@ -4,6 +4,7 @@
 import { clients } from './connect'
 import { API_BASE } from './config'
 import { getCachedToken } from './auth'
+import { cacheGet, cacheSet } from './cache'
 import { Operator } from '~/gen/pms/v1/filter_pb'
 
 const authHeader = () => ({ Authorization: `Bearer ${getCachedToken() ?? ''}` })
@@ -62,6 +63,14 @@ export async function myIssues(wsId: string, uid: string, scope: IssueScope): Pr
     },
   })
   const rows = (JSON.parse(new TextDecoder().decode(res.groupedResult)) as Issue[]).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
+  cache(rows)
+  cacheSet(`issues:${wsId}:${scope}`, rows)
+  return rows
+}
+
+// offline-fallback: последний сохранённый список (+ seed issue-кэша для детали)
+export async function cachedIssues(wsId: string, scope: IssueScope): Promise<Issue[]> {
+  const rows = (await cacheGet<Issue[]>(`issues:${wsId}:${scope}`)) ?? []
   cache(rows)
   return rows
 }
@@ -137,7 +146,13 @@ export type Notification = {
 export async function listNotifications(wsId: string): Promise<Notification[]> {
   const res = await fetch(`${API_BASE}/me/workspaces/${wsId}/notifications`, { headers: authHeader() })
   if (!res.ok) throw new Error(`notifications ${res.status}`)
-  return ((await res.json()) as Notification[]) ?? []
+  const list = ((await res.json()) as Notification[]) ?? []
+  cacheSet(`notifications:${wsId}`, list)
+  return list
+}
+
+export async function cachedNotifications(wsId: string): Promise<Notification[]> {
+  return (await cacheGet<Notification[]>(`notifications:${wsId}`)) ?? []
 }
 
 export async function markRead(wsId: string, id: string) {

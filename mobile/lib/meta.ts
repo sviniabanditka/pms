@@ -4,6 +4,7 @@
 import { useSyncExternalStore } from 'react'
 import { API_BASE } from './config'
 import { getCachedToken } from './auth'
+import { cacheGet, cacheSet } from './cache'
 
 export type MetaTeam = { id: string; key: string; name: string }
 export type MetaState = { id: string; teamId: string; category: string; name: string; colorToken: string; position: string }
@@ -26,18 +27,35 @@ const STATUS_HEX: Record<string, string> = {
   'status-canceled': '#f7768e',
 }
 
+const fetched = new Set<string>()
+
 export async function loadMeta(wsId: string, force = false): Promise<void> {
   currentWs = wsId
-  if (cache.has(wsId) && !force) {
+  // warm-start: мгновенно поднять из SQLite, если в памяти пусто
+  if (!cache.has(wsId)) {
+    const c = await cacheGet<Meta>(`meta:${wsId}`)
+    if (c) {
+      cache.set(wsId, c)
+      emit()
+    }
+  }
+  if (fetched.has(wsId) && !force) {
     emit()
     return
   }
   const tok = getCachedToken()
   if (!tok) return
-  const res = await fetch(`${API_BASE}/me/workspaces/${wsId}/meta`, { headers: { Authorization: `Bearer ${tok}` } })
-  if (!res.ok) return
-  cache.set(wsId, (await res.json()) as Meta)
-  emit()
+  try {
+    const res = await fetch(`${API_BASE}/me/workspaces/${wsId}/meta`, { headers: { Authorization: `Bearer ${tok}` } })
+    if (!res.ok) return
+    const data = (await res.json()) as Meta
+    cache.set(wsId, data)
+    fetched.add(wsId)
+    emit()
+    cacheSet(`meta:${wsId}`, data)
+  } catch {
+    /* offline: остаёмся на SQLite-снапшоте */
+  }
 }
 
 function meta(): Meta {
