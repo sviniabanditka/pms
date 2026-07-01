@@ -936,6 +936,19 @@ export const useAppStore = defineStore('app', {
         return []
       }
     },
+
+    // AI-подсказки для issue (Фаза 2): kNN-агрегация → {assigneeId, labelIds, similar}.
+    async suggestForIssue(issue: any): Promise<any> {
+      if (!this.activeWorkspaceId || !issue) return null
+      const { query } = useClients()
+      try {
+        const text = `${issue.title || ''} ${issue.description?.md || ''}`.trim()
+        const res = await query.suggest({ workspaceId: this.activeWorkspaceId, text, teamId: issue.teamId || '', limit: 6 })
+        return this._decode(res.result) as any
+      } catch {
+        return null
+      }
+    },
     async loadComments(issueId: string) {
       const { comments } = useClients()
       const res = await comments.getComments({ workspaceId: this.activeWorkspaceId, issueId })

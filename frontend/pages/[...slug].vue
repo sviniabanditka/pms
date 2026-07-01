@@ -102,12 +102,23 @@ function descWrap(pre: string, post = pre) {
   descDraft.value = v.slice(0, s) + pre + v.slice(s, e) + post + v.slice(e)
   nextTick(() => { el.focus(); el.selectionStart = s + pre.length; el.selectionEnd = e + pre.length })
 }
-const simIssues = ref<any[]>([])
+const aiSuggest = ref<any>(null)
+const simIssues = computed(() => (aiSuggest.value?.similar || []).filter((s: any) => s.id !== selectedIssueId.value))
 function openIssue(id: string) {
   selectedIssueId.value = id; descEditing.value = false; store.loadComments(id); store.loadActivity(id)
-  simIssues.value = []
-  store.similarIssues(id).then((r) => { if (selectedIssueId.value === id) simIssues.value = r })
+  aiSuggest.value = null
+  store.suggestForIssue(store.issues[id]).then((r) => { if (selectedIssueId.value === id) aiSuggest.value = r })
 }
+// подсказки, которых у issue ещё нет
+const suggestLabels = computed(() => {
+  const iss = selectedIssue.value; if (!iss || !aiSuggest.value) return []
+  const have = store.labelsByIssue.get(iss.id) || new Set()
+  return (aiSuggest.value.labelIds || []).filter((lid: string) => !have.has(lid) && store.labels[lid]).slice(0, 3)
+})
+const suggestAssignee = computed(() => {
+  const iss = selectedIssue.value; if (!iss || !aiSuggest.value?.assigneeId) return null
+  return (!iss.assigneeId && aiSuggest.value.assigneeId !== iss.assigneeId) ? aiSuggest.value.assigneeId : null
+})
 // bulk selection (List)
 const selectedIds = ref<Set<string>>(new Set())
 const selCount = computed(() => selectedIds.value.size)
@@ -3039,11 +3050,23 @@ useHead({ title: () => pageTitle.value })
           <Attachments entity-type="issue" :entity-id="selectedIssue.id" />
         </div>
 
-        <!-- Similar issues (AI Фаза 1) -->
-        <div v-if="simIssues.length" class="mb-4">
+        <!-- AI: suggestions + similar (Фаза 1–2) -->
+        <div v-if="simIssues.length || suggestLabels.length || suggestAssignee" class="mb-4">
           <div class="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-tertiary">
-            <span class="text-accent2">≈ </span>Similar
+            <span class="text-accent2">≈ </span>AI
           </div>
+          <!-- подсказки в один клик -->
+          <div v-if="suggestLabels.length || suggestAssignee" class="mb-2 flex flex-wrap gap-1.5">
+            <button v-if="suggestAssignee" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs text-secondary hover:border-accent hover:text-accent"
+              @click="store.setIssueAssignee(selectedIssue.id, suggestAssignee)">
+              ＋ assign {{ store.userName(suggestAssignee) }}
+            </button>
+            <button v-for="lid in suggestLabels" :key="lid" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs hover:border-accent"
+              :style="{ color: store.labels[lid]?.colorToken ? undefined : undefined }" @click="store.addLabel(selectedIssue.id, lid)">
+              ＋ {{ store.labels[lid]?.name }}
+            </button>
+          </div>
+          <!-- похожие / дубли -->
           <button v-for="s in simIssues" :key="s.id" class="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-sm hover:bg-hover" @click="openIssue(s.id)">
             <span class="shrink-0 text-xs text-accent2">{{ s.identifier }}</span>
             <span class="min-w-0 flex-1 truncate text-secondary">{{ s.title }}</span>
