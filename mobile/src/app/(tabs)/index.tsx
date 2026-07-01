@@ -81,7 +81,7 @@ export default function Issues() {
 
   return (
     <Backdrop>
-      <Glass style={[styles.header, { marginTop: insets.top + 6 }]} intensity={34}>
+      <Glass style={[styles.header, { marginTop: insets.top + 15 }]} intensity={34}>
         <Pressable onPress={() => setDrawer(true)} hitSlop={10} style={styles.menu}>
           <View style={styles.barIcon} />
           <View style={[styles.barIcon, { width: 11 }]} />
