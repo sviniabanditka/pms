@@ -5,7 +5,8 @@ import { ActivityIndicator, View } from 'react-native'
 import { loadToken, me, myWorkspaces } from '~/lib/auth'
 import { setAuthed, useAuthed } from '~/lib/authState'
 import { setOnUnauthorized } from '~/lib/connect'
-import { loadActiveWs } from '~/lib/workspace'
+import { getActiveWs, loadActiveWs } from '~/lib/workspace'
+import { loadMeta } from '~/lib/meta'
 
 export default function RootLayout() {
   const [booting, setBooting] = useState(true)
@@ -19,7 +20,11 @@ export default function RootLayout() {
     ;(async () => {
       await loadToken()
       const u = await me()
-      if (u) await loadActiveWs(await myWorkspaces())
+      if (u) {
+        await loadActiveWs(await myWorkspaces())
+        const ws = getActiveWs()
+        if (ws) await loadMeta(ws)
+      }
       setAuthed(!!u)
       setBooting(false)
     })()
@@ -45,6 +50,8 @@ export default function RootLayout() {
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0b0c12' } }}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="login" />
+      <Stack.Screen name="issue/[id]" />
+      <Stack.Screen name="create" options={{ presentation: 'modal' }} />
     </Stack>
   )
 }

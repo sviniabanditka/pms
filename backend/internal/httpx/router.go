@@ -70,6 +70,28 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 		_ = json.NewEncoder(w).Encode(list)
 	})
 
+	// Метаданные воркспейса (teams/states/users/labels) для нативного клиента — unary
+	// вместо bootstrap-стрима. Только участник воркспейса.
+	r.With(auth.RequireAuth).Get("/me/workspaces/{id}/meta", func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := auth.UserID(req.Context())
+		wsID, err := uuid.Parse(chi.URLParam(req, "id"))
+		if err != nil {
+			http.Error(w, "invalid workspace id", http.StatusBadRequest)
+			return
+		}
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		meta, err := svcs.Workspaces.Meta(req.Context(), wsID)
+		w.Header().Set("Content-Type", "application/json")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(meta)
+	})
+
 	// Загрузка файла в S3 (multipart). Возвращает {key, filename, contentType, size}.
 	// Аплоад идёт через бэкенд → нет CORS-префлайта на Garage; download — presigned GET (RPC GetAttachmentURL).
 	r.With(auth.RequireAuth).Post("/files/upload", func(w http.ResponseWriter, req *http.Request) {

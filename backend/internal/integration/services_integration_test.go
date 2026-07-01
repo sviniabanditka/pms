@@ -738,3 +738,24 @@ func TestAttachments_URLIDOR(t *testing.T) {
 		t.Errorf("bad key: got %v, want ErrForbidden", err)
 	}
 }
+
+func TestWorkspaces_Meta(t *testing.T) {
+	ws, owner := newWS(t)
+	makeTeam(t, ws, owner, "ENG")
+	m, err := workspaces.NewService(appDB, pub, jobsDB).Meta(context.Background(), ws)
+	if err != nil {
+		t.Fatalf("meta: %v", err)
+	}
+	if len(m.Teams) != 1 || m.Teams[0].Key != "ENG" {
+		t.Errorf("teams = %+v, want one ENG", m.Teams)
+	}
+	found := false
+	for _, u := range m.Users {
+		if u.ID == owner {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("owner must appear in Meta.Users")
+	}
+}

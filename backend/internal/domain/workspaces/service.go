@@ -443,3 +443,62 @@ func (s *Service) CreateWorkspace(ctx context.Context, actor, id uuid.UUID, slug
 	_ = s.pub.PublishDelta(ctx, id, realtime.Delta{EntityType: "workspace", EntityID: id.String(), Version: 0, Op: "create"})
 	return 0, nil
 }
+
+// --- Meta: компактный снапшот метаданных воркспейса для нативного клиента ---
+// (states/teams/users/labels; имена для issue-строк, пикеры для create/quick-actions).
+// bootstrap-стрим RN-враждебен → отдаём unary через REST.
+
+type Meta struct {
+	Teams  []MetaTeam  `json:"teams"`
+	States []MetaState `json:"states"`
+	Users  []MetaUser  `json:"users"`
+	Labels []MetaLabel `json:"labels"`
+}
+type MetaTeam struct {
+	ID   uuid.UUID `json:"id" bun:"id"`
+	Key  string    `json:"key" bun:"key"`
+	Name string    `json:"name" bun:"name"`
+}
+type MetaState struct {
+	ID         uuid.UUID `json:"id" bun:"id"`
+	TeamID     uuid.UUID `json:"teamId" bun:"team_id"`
+	Category   string    `json:"category" bun:"category"`
+	Name       string    `json:"name" bun:"name"`
+	ColorToken string    `json:"colorToken" bun:"color_token"`
+	Position   string    `json:"position" bun:"position"`
+}
+type MetaUser struct {
+	ID    uuid.UUID `json:"id" bun:"id"`
+	Name  string    `json:"name" bun:"name"`
+	Email string    `json:"email" bun:"email"`
+}
+type MetaLabel struct {
+	ID         uuid.UUID  `json:"id" bun:"id"`
+	TeamID     *uuid.UUID `json:"teamId,omitempty" bun:"team_id"`
+	Name       string     `json:"name" bun:"name"`
+	ColorToken string     `json:"colorToken" bun:"color_token"`
+}
+
+func (s *Service) Meta(ctx context.Context, wsID uuid.UUID) (Meta, error) {
+	var m Meta
+	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := tx.NewSelect().Model((*models.Team)(nil)).Column("id", "key", "name").
+			Where("deleted_at IS NULL AND archived_at IS NULL").Order("key").Scan(ctx, &m.Teams); err != nil {
+			return err
+		}
+		if err := tx.NewSelect().Model((*models.WorkflowState)(nil)).
+			Column("id", "team_id", "category", "name", "color_token", "position").
+			OrderExpr("position ASC").Scan(ctx, &m.States); err != nil {
+			return err
+		}
+		if err := tx.NewSelect().Model((*models.Label)(nil)).
+			Column("id", "team_id", "name", "color_token").Scan(ctx, &m.Labels); err != nil {
+			return err
+		}
+		return tx.NewSelect().TableExpr("users AS u").Column("u.id", "u.name", "u.email").
+			Join("JOIN workspace_members wm ON wm.user_id = u.id").
+			Where("wm.workspace_id = ?", wsID).Where("wm.status = 'active'").
+			OrderExpr("u.name ASC").Scan(ctx, &m.Users)
+	})
+	return m, err
+}

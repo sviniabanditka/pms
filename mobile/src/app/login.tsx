@@ -3,7 +3,8 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 
 import { login, myWorkspaces } from '~/lib/auth'
 import { setAuthed } from '~/lib/authState'
-import { loadActiveWs } from '~/lib/workspace'
+import { getActiveWs, loadActiveWs } from '~/lib/workspace'
+import { loadMeta } from '~/lib/meta'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -18,6 +19,8 @@ export default function Login() {
     try {
       await login(email.trim(), password)
       await loadActiveWs(await myWorkspaces())
+      const ws = getActiveWs()
+      if (ws) await loadMeta(ws)
       setAuthed(true) // _layout уведёт на /
     } catch (e: any) {
       setErr(e?.message ?? 'Sign-in failed')

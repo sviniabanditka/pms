@@ -48,15 +48,32 @@ Goal: the core daily list.
 - **Exit (device — user):** see/scroll my issues, toggle assigned/created,
   switch workspace, pull-to-refresh.
 
-## Phase M2 — Issue detail + quick actions + create
+## Phase M2 — Issue detail + quick actions + create ✅ code done
 
 Goal: act on an issue from the phone.
 
-- [ ] Issue detail: title, description (markdown render), status, assignee, labels, comments.
-- [ ] Quick actions: change status, reassign, add comment (`IssueService.UpdateIssue`, `CommentService.Create`).
-- [ ] Quick-create issue (team picker + title + optional assignee) → `IssueService.CreateIssue`.
-- [ ] Optimistic UI via React Query mutations; rollback on error.
-- **Exit:** full "look → act → close" loop works.
+- [x] **Metadata cache** (`lib/meta.ts`) — the M1 gap. New backend unary
+      `GET /me/workspaces/{id}/meta` (member-only) → teams/states/users/labels
+      (`workspaces.Meta`). Gives names + colors for rows and pickers. Issues list
+      now shows state name/color + assignee name.
+- [x] Issue detail (`app/issue/[id].tsx`): reads the cached issue (RunView returns
+      the full row incl. description — no GetIssue RPC needed), shows identifier/
+      title/description + comments (`CommentService.GetComments`).
+- [x] Quick actions: status (`UpdateIssueState`), assignee (`AssignIssue`), add
+      comment (`AddComment`) — modal pickers, cache updated on success.
+- [x] Quick-create (`app/create.tsx`, modal): team + title + priority + optional
+      assignee → `CreateIssue` (client-gen uuid).
+- [x] **Verified:** tsc clean; full mutation chain e2e (create DATA-430 → state →
+      assign → comment → GetComments); `expo export` bundles (1244 modules);
+      backend `TestWorkspaces_Meta` green.
+- **Notes / deferred:** base_version isn't enforced and CommandResult returns no
+  new_version → we don't track version (pass current, ignore). Description rendered
+  as plain text (markdown render later). Optimistic UI is "call → update cache";
+  no rollback framework (errors surface, refetch on next open). Create returns to
+  the list which reloads on pull-refresh (no auto-refresh yet). Labels fetched but
+  not shown on detail yet.
+- **Exit (device — user):** open an issue, change status/assignee, comment, create
+  a new issue.
 
 ## Phase M3 — Inbox / notifications
 
