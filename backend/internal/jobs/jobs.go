@@ -29,6 +29,7 @@ type Deps struct {
 	WebhookEvery     river.PeriodicSchedule
 	PushEvery        river.PeriodicSchedule
 	EmbedEvery       river.PeriodicSchedule
+	TrainEvery       river.PeriodicSchedule
 	Embed            *embed.Client
 	LiveKitAPIURL    string
 	LiveKitAPIKey    string
@@ -56,6 +57,7 @@ func Start(ctx context.Context, d Deps) (*river.Client[pgx.Tx], error) {
 	river.AddWorker(workers, &WebhookDeliverWorker{db: d.JobsDB, http: &http.Client{Timeout: 10 * time.Second}})
 	river.AddWorker(workers, &PushDispatchWorker{db: d.JobsDB, http: &http.Client{Timeout: 10 * time.Second}})
 	river.AddWorker(workers, &EmbedSweepWorker{db: d.JobsDB, embed: d.Embed})
+	river.AddWorker(workers, &TrainWorker{db: d.JobsDB, embed: d.Embed})
 
 	client, err := river.NewClient(driver, &river.Config{
 		Queues:  map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 10}},
@@ -68,6 +70,7 @@ func Start(ctx context.Context, d Deps) (*river.Client[pgx.Tx], error) {
 			river.NewPeriodicJob(d.WebhookEvery, func() (river.JobArgs, *river.InsertOpts) { return WebhookDispatchArgs{}, nil }, &river.PeriodicJobOpts{RunOnStart: true}),
 			river.NewPeriodicJob(d.PushEvery, func() (river.JobArgs, *river.InsertOpts) { return PushDispatchArgs{}, nil }, &river.PeriodicJobOpts{RunOnStart: true}),
 			river.NewPeriodicJob(d.EmbedEvery, func() (river.JobArgs, *river.InsertOpts) { return EmbedSweepArgs{}, nil }, &river.PeriodicJobOpts{RunOnStart: true}),
+			river.NewPeriodicJob(d.TrainEvery, func() (river.JobArgs, *river.InsertOpts) { return TrainArgs{}, nil }, &river.PeriodicJobOpts{RunOnStart: true}),
 		},
 	})
 	if err != nil {

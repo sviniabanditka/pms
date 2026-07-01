@@ -63,6 +63,9 @@ services:
     build: ./docker/embed
     environment:
       EMBED_MODEL: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+      MODELS_DIR: /models
+    volumes:
+      - embed_models:/models
     ports:
       - "127.0.0.1:8100:8100"
     healthcheck:
@@ -84,3 +87,4 @@ volumes:
   pgdata:
   garage_meta:
   garage_data:
+  embed_models:

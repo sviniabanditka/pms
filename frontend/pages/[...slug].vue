@@ -119,6 +119,12 @@ const suggestAssignee = computed(() => {
   const iss = selectedIssue.value; if (!iss || !aiSuggest.value?.assigneeId) return null
   return (!iss.assigneeId && aiSuggest.value.assigneeId !== iss.assigneeId) ? aiSuggest.value.assigneeId : null
 })
+const PRI_LABELS = ['none', 'urgent', 'high', 'medium', 'low']
+const suggestPriority = computed(() => {
+  const iss = selectedIssue.value; const p = aiSuggest.value?.priority
+  if (!iss || p == null || p === iss.priority) return null
+  return p
+})
 // bulk selection (List)
 const selectedIds = ref<Set<string>>(new Set())
 const selCount = computed(() => selectedIds.value.size)
@@ -3051,12 +3057,16 @@ useHead({ title: () => pageTitle.value })
         </div>
 
         <!-- AI: suggestions + similar (Фаза 1–2) -->
-        <div v-if="simIssues.length || suggestLabels.length || suggestAssignee" class="mb-4">
+        <div v-if="simIssues.length || suggestLabels.length || suggestAssignee || suggestPriority !== null" class="mb-4">
           <div class="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-tertiary">
             <span class="text-accent2">≈ </span>AI
           </div>
           <!-- подсказки в один клик -->
-          <div v-if="suggestLabels.length || suggestAssignee" class="mb-2 flex flex-wrap gap-1.5">
+          <div v-if="suggestLabels.length || suggestAssignee || suggestPriority !== null" class="mb-2 flex flex-wrap gap-1.5">
+            <button v-if="suggestPriority !== null" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs text-secondary hover:border-warn hover:text-warn"
+              @click="store.setIssuePriority(selectedIssue.id, suggestPriority)">
+              ⚑ priority {{ PRI_LABELS[suggestPriority] }}
+            </button>
             <button v-if="suggestAssignee" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs text-secondary hover:border-accent hover:text-accent"
               @click="store.setIssueAssignee(selectedIssue.id, suggestAssignee)">
               ＋ assign {{ store.userName(suggestAssignee) }}

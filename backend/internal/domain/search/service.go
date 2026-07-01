@@ -145,13 +145,13 @@ func (s *Service) SimilarIssues(ctx context.Context, actor, wsID, issueID uuid.U
 	}
 	var iss []models.Issue
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
-		return tx.NewRaw(
-			`SELECT i.* FROM issues i
-			 JOIN embeddings e ON e.entity_type = 'issue' AND e.entity_id = i.id
-			 WHERE i.id <> ? AND i.deleted_at IS NULL AND i.archived_at IS NULL
-			   AND EXISTS (SELECT 1 FROM embeddings WHERE entity_type='issue' AND entity_id = ?)
-			 ORDER BY e.embedding <=> (SELECT embedding FROM embeddings WHERE entity_type='issue' AND entity_id = ?)
-			 LIMIT ?`, issueID, issueID, issueID, limit).Scan(ctx, &iss)
+		return tx.NewSelect().Model(&iss).
+			Join("JOIN embeddings e ON e.entity_type = 'issue' AND e.entity_id = ?TableAlias.id").
+			Where("?TableAlias.id <> ?", issueID).
+			Where("?TableAlias.deleted_at IS NULL AND ?TableAlias.archived_at IS NULL").
+			Where("EXISTS (SELECT 1 FROM embeddings WHERE entity_type='issue' AND entity_id = ?)", issueID).
+			OrderExpr("e.embedding <=> (SELECT embedding FROM embeddings WHERE entity_type='issue' AND entity_id = ?)", issueID).
+			Limit(limit).Scan(ctx)
 	})
 	if err != nil {
 		return nil, err
@@ -194,16 +194,13 @@ func (s *Service) Suggest(ctx context.Context, actor, wsID uuid.UUID, text, team
 		LabelID uuid.UUID `bun:"label_id"`
 	}
 	err = db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
-		sql := `SELECT i.* FROM issues i JOIN embeddings e ON e.entity_type='issue' AND e.entity_id=i.id
-		        WHERE i.deleted_at IS NULL AND i.archived_at IS NULL`
-		args := []any{}
+		q := tx.NewSelect().Model(&neigh).
+			Join("JOIN embeddings e ON e.entity_type = 'issue' AND e.entity_id = ?TableAlias.id").
+			Where("?TableAlias.deleted_at IS NULL AND ?TableAlias.archived_at IS NULL")
 		if teamID != "" {
-			sql += ` AND i.team_id = ?`
-			args = append(args, teamID)
+			q = q.Where("?TableAlias.team_id = ?", teamID)
 		}
-		sql += ` ORDER BY e.embedding <=> ?::vector LIMIT ?`
-		args = append(args, lit, k)
-		if err := tx.NewRaw(sql, args...).Scan(ctx, &neigh); err != nil {
+		if err := q.OrderExpr("e.embedding <=> ?::vector", lit).Limit(k).Scan(ctx); err != nil {
 			return err
 		}
 		if len(neigh) == 0 {
@@ -246,6 +243,13 @@ func (s *Service) Suggest(ctx context.Context, actor, wsID uuid.UUID, text, team
 		"assigneeId": argmaxID(asgW),
 		"labelIds":   topNIDs(labW, 3),
 		"similar":    similar,
+	}
+	// Фаза 3: предсказание priority обученной моделью (если есть). Порог уверенности.
+	if preds, conf, perr := s.embed.Predict(ctx, wsID.String(), "priority", [][]float32{vecs[0]}); perr == nil && len(preds) > 0 {
+		if len(conf) > 0 && conf[0] >= 0.35 {
+			out["priority"] = preds[0]
+			out["priorityConfidence"] = conf[0]
+		}
 	}
 	raw, _ := json.Marshal(out)
 	return raw, nil
