@@ -1158,6 +1158,11 @@ function exportReportCsv() {
 }
 const dayShort = (ds: string) => parseD(ds).toLocaleDateString('en', { month: 'short', day: 'numeric' })
 watch([() => activeSection.value, repFrom, repTo, repGroup, repUser], () => { if (activeSection.value === 'reports') loadReport() }, { immediate: false })
+// AI-темы (Фаза 4): топик-кластеры воркспейса
+const aiThemes = ref<any[]>([]); const aiThemesLoaded = ref(false)
+watch(() => activeSection.value, (s) => {
+  if (s === 'reports' && !aiThemesLoaded.value) { aiThemesLoaded.value = true; store.themes().then((t) => { aiThemes.value = t }) }
+})
 // iCal-подписка
 const showIcal = ref(false)
 const icalUrl = ref('')
@@ -2172,6 +2177,18 @@ useHead({ title: () => pageTitle.value })
               </div>
             </div>
           </template>
+
+          <!-- AI themes (Фаза 4): топик-кластеры воркспейса -->
+          <div v-if="aiThemes.length" class="mt-8 border-t border-subtle pt-6">
+            <div class="mb-3 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-accent2">≈ </span>AI themes</div>
+            <div class="space-y-1.5">
+              <div v-for="t in aiThemes" :key="t.label" class="flex items-center gap-3 rounded-lg border border-subtle bg-elevated px-3 py-2">
+                <span class="w-10 shrink-0 text-right text-sm tabular-nums text-white">{{ t.size }}</span>
+                <span class="min-w-0 flex-1 truncate text-sm text-secondary" :title="t.label">{{ t.label }}</span>
+                <span class="shrink-0 text-xs text-tertiary">{{ (t.sample || []).join(' · ') }}</span>
+              </div>
+            </div>
+          </div>
         </div>
         </ClientOnly>
       </template>

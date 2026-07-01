@@ -14,6 +14,7 @@ service QueryService {
   rpc SemanticSearch(SemanticSearchRequest) returns (SemanticSearchResponse);
   rpc SimilarIssues(SimilarIssuesRequest) returns (SimilarIssuesResponse);
   rpc Suggest(SuggestRequest) returns (SuggestResponse);
+  rpc Themes(ThemesRequest) returns (ThemesResponse);
 }
 
 message SearchRequest {
@@ -76,4 +77,11 @@ message SuggestRequest {
 }
 message SuggestResponse {
   bytes result = 1; // json: { teamId, assigneeId, labelIds[], similar[] }
+}
+
+message ThemesRequest {
+  string workspace_id = 1;
+}
+message ThemesResponse {
+  bytes result = 1; // json Theme[]
 }

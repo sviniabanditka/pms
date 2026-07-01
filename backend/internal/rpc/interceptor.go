@@ -31,7 +31,7 @@ var adminProcedures = map[string]bool{
 // readVerbPrefixes mark a procedure as a read. Guests (read-only) may call only
 // these; anything else is treated as a mutation and denied. New read RPCs must
 // follow the convention (Get*/List*/Search*/…) to be guest-accessible.
-var readVerbPrefixes = []string{"Get", "List", "Search", "Semantic", "Similar", "Suggest", "Run", "Report", "Feed", "Bootstrap", "Changes", "Export", "Stream", "Watch"}
+var readVerbPrefixes = []string{"Get", "List", "Search", "Semantic", "Similar", "Suggest", "Themes", "Run", "Report", "Feed", "Bootstrap", "Changes", "Export", "Stream", "Watch"}
 
 func isReadProcedure(procedure string) bool {
 	method := procedure[strings.LastIndex(procedure, "/")+1:]

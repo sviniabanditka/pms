@@ -184,6 +184,22 @@ func (h *queryHandler) Suggest(ctx context.Context, req *connect.Request[pmsv1.S
 	return connect.NewResponse(&pmsv1.SuggestResponse{Result: raw}), nil
 }
 
+func (h *queryHandler) Themes(ctx context.Context, req *connect.Request[pmsv1.ThemesRequest]) (*connect.Response[pmsv1.ThemesResponse], error) {
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wsID, err := uuid.Parse(req.Msg.WorkspaceId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid workspace_id"))
+	}
+	raw, err := h.svc.Themes(ctx, actor, wsID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.ThemesResponse{Result: raw}), nil
+}
+
 // protoToFilterNode конвертирует protobuf Filter-AST в JSON-форму компилятора (filter.Node).
 func protoToFilterNode(n *pmsv1.FilterNode) *filter.Node {
 	if n == nil {

@@ -95,6 +95,7 @@ func main() {
 		PushEvery:        river.PeriodicInterval(cfg.PushEvery),
 		EmbedEvery:       river.PeriodicInterval(cfg.EmbedEvery),
 		TrainEvery:       river.PeriodicInterval(cfg.TrainEvery),
+		ClusterEvery:     river.PeriodicInterval(cfg.ClusterEvery),
 		Embed:            embedClient,
 		LiveKitAPIURL:    cfg.LiveKitAPIURL,
 		LiveKitAPIKey:    cfg.LiveKitAPIKey,

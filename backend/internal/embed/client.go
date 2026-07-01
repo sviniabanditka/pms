@@ -121,3 +121,25 @@ func ParseVecLiteral(s string) []float32 {
 	}
 	return out
 }
+
+// Cluster кластеризует векторы (HDBSCAN). Возвращает id кластера на каждый (-1=шум).
+func (c *Client) Cluster(ctx context.Context, vectors [][]float32, minClusterSize int) ([]int, error) {
+	body, _ := json.Marshal(map[string]any{"vectors": vectors, "min_cluster_size": minClusterSize})
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.url+"/cluster", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("cluster %d", resp.StatusCode)
+	}
+	var out struct {
+		Labels []int `json:"labels"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out.Labels, nil
+}

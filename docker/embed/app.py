@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from fastembed import TextEmbedding
 from sklearn.linear_model import LogisticRegression, Ridge
+from sklearn.cluster import HDBSCAN
 
 MODEL = os.environ.get("EMBED_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 MODELS_DIR = os.environ.get("MODELS_DIR", "/models")
@@ -109,3 +110,28 @@ def predict(req: PredictRequest):
     probs = model.predict_proba(X)
     conf = probs.max(axis=1)
     return PredictResponse(predictions=[float(p) for p in preds], confidence=[float(c) for c in conf])
+
+
+class ClusterRequest(BaseModel):
+    vectors: List[List[float]]
+    min_cluster_size: int = 8
+
+
+class ClusterResponse(BaseModel):
+    labels: List[int]   # cluster id на каждый вектор (-1 = шум)
+
+
+@app.post("/cluster", response_model=ClusterResponse)
+def cluster(req: ClusterRequest):
+    n = len(req.vectors)
+    mcs = max(3, req.min_cluster_size)
+    if n < mcs * 2:
+        return ClusterResponse(labels=[-1] * n)
+    X = np.array(req.vectors, dtype=np.float32)
+    # нормируем → euclidean ≈ cosine
+    norms = np.linalg.norm(X, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    Xn = X / norms
+    clu = HDBSCAN(min_cluster_size=mcs, metric="euclidean")
+    labels = clu.fit_predict(Xn)
+    return ClusterResponse(labels=[int(l) for l in labels])

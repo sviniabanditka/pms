@@ -54,6 +54,7 @@ type Config struct {
 	PushEvery       time.Duration
 	EmbedEvery      time.Duration
 	TrainEvery      time.Duration
+	ClusterEvery    time.Duration
 	EmbedURL        string
 	EmailSweepEvery time.Duration
 	SnapshotEvery   time.Duration
@@ -90,6 +91,7 @@ func Load() Config {
 		PushEvery:          envDuration("PUSH_DISPATCH_EVERY", 15*time.Second),
 		EmbedEvery:         envDuration("EMBED_SWEEP_EVERY", 10*time.Second),
 		TrainEvery:         envDuration("MODEL_TRAIN_EVERY", 30*time.Minute),
+		ClusterEvery:       envDuration("CLUSTER_EVERY", 30*time.Minute),
 		EmbedURL:           env("EMBED_URL", "http://127.0.0.1:8100"),
 		EmailSweepEvery:    envDuration("EMAIL_SWEEP_EVERY", 2*time.Minute),
 		SnapshotEvery:      envDuration("SNAPSHOT_EVERY", 24*time.Hour),

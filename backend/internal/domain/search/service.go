@@ -415,3 +415,92 @@ func (s *Service) LogFeedback(ctx context.Context, actor, wsID uuid.UUID, kind, 
 		return err
 	})
 }
+
+// stopwords для лейблов тем (en + ru общие) — не тащим отдельную либу.
+var themeStop = map[string]bool{
+	"the": true, "and": true, "for": true, "with": true, "add": true, "fix": true, "issue": true,
+	"you": true, "are": true, "not": true, "can": true, "should": true, "under": true, "then": true, "since": true,
+	"это": true, "для": true, "как": true, "или": true, "что": true, "into": true, "from": true,
+	"remove": true, "update": true, "support": true, "implement": true, "handle": true, "improve": true, "document": true,
+}
+
+func themeLabel(titles []string) string {
+	freq := map[string]int{}
+	for _, t := range titles {
+		for _, w := range reWS.Split(strings.ToLower(t), -1) {
+			w = strings.Trim(w, ".,:;!?()[]{}\"'`")
+			if len([]rune(w)) < 3 || themeStop[w] {
+				continue
+			}
+			freq[w]++
+		}
+	}
+	type kv struct {
+		w string
+		n int
+	}
+	arr := make([]kv, 0, len(freq))
+	for w, n := range freq {
+		arr = append(arr, kv{w, n})
+	}
+	sort.Slice(arr, func(i, j int) bool { return arr[i].n > arr[j].n })
+	top := []string{}
+	for i := 0; i < len(arr) && i < 3; i++ {
+		top = append(top, arr[i].w)
+	}
+	if len(top) == 0 {
+		return "misc"
+	}
+	return strings.Join(top, " · ")
+}
+
+type Theme struct {
+	Label  string   `json:"label"`
+	Size   int      `json:"size"`
+	Sample []string `json:"sample"`
+}
+
+// Themes — топик-темы воркспейса (AI Фаза 4): кластеры issue_clusters, лейбл из
+// частых слов заголовков, sample-идентификаторы. RLS-scoped.
+func (s *Service) Themes(ctx context.Context, actor, wsID uuid.UUID) ([]byte, error) {
+	var rows []struct {
+		Cluster    int    `bun:"cluster"`
+		Identifier string `bun:"identifier"`
+		Title      string `bun:"title"`
+	}
+	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		return tx.NewRaw(
+			`SELECT ic.cluster, i.identifier, i.title
+			 FROM issue_clusters ic JOIN issues i ON i.id = ic.issue_id
+			 WHERE ic.cluster >= 0 AND i.deleted_at IS NULL AND i.archived_at IS NULL`).Scan(ctx, &rows)
+	})
+	if err != nil {
+		return nil, err
+	}
+	type agg struct {
+		titles []string
+		ident  []string
+	}
+	byCluster := map[int]*agg{}
+	for _, r := range rows {
+		a := byCluster[r.Cluster]
+		if a == nil {
+			a = &agg{}
+			byCluster[r.Cluster] = a
+		}
+		a.titles = append(a.titles, r.Title)
+		if len(a.ident) < 4 {
+			a.ident = append(a.ident, r.Identifier)
+		}
+	}
+	themes := make([]Theme, 0, len(byCluster))
+	for _, a := range byCluster {
+		themes = append(themes, Theme{Label: themeLabel(a.titles), Size: len(a.titles), Sample: a.ident})
+	}
+	sort.Slice(themes, func(i, j int) bool { return themes[i].Size > themes[j].Size })
+	if len(themes) > 12 {
+		themes = themes[:12]
+	}
+	raw, _ := json.Marshal(themes)
+	return raw, nil
+}

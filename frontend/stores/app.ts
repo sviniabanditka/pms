@@ -962,6 +962,16 @@ export const useAppStore = defineStore('app', {
         return null
       }
     },
+    async themes(): Promise<any[]> {
+      if (!this.activeWorkspaceId) return []
+      const { query } = useClients()
+      try {
+        const res = await query.themes({ workspaceId: this.activeWorkspaceId })
+        return (this._decode(res.result) as any[]) || []
+      } catch {
+        return []
+      }
+    },
     async loadComments(issueId: string) {
       const { comments } = useClients()
       const res = await comments.getComments({ workspaceId: this.activeWorkspaceId, issueId })
