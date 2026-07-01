@@ -11,6 +11,7 @@ import { IssueService } from '~/gen/pms/v1/issue_service_pb'
 import { QueryService } from '~/gen/pms/v1/query_service_pb'
 import { NotificationService } from '~/gen/pms/v1/notification_service_pb'
 import { CommentService } from '~/gen/pms/v1/comment_service_pb'
+import { SyncService } from '~/gen/pms/v1/sync_service_pb'
 
 // Колбэк на протухший токен — ставит auth-гейт (_layout), чтобы увести на /login.
 let onUnauthorized: (() => void) | null = null
@@ -42,4 +43,5 @@ export const clients = {
   query: createClient(QueryService, transport),
   notifications: createClient(NotificationService, transport),
   comments: createClient(CommentService, transport),
+  sync: createClient(SyncService, transport),
 }

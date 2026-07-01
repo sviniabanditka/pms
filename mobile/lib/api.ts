@@ -3,9 +3,9 @@
 // полный Issue включая description; отдельного GetIssue RPC нет).
 import { clients } from './connect'
 import { API_BASE } from './config'
-import { getCachedToken } from './auth'
+import { getCachedToken, getCurrentUserId } from './auth'
 import { cacheGet, cacheSet } from './cache'
-import { Operator } from '~/gen/pms/v1/filter_pb'
+import { isLoaded, loadSnapshot, patchIssue, S, syncChanges } from './store'
 
 const authHeader = () => ({ Authorization: `Bearer ${getCachedToken() ?? ''}` })
 
@@ -42,50 +42,29 @@ export function uuid(): string {
   })
 }
 
-const issueCache = new Map<string, Issue>()
-export const getIssue = (id: string) => issueCache.get(id)
-function cache(list: Issue[]) {
-  for (const i of list) issueCache.set(i.id, i)
+// issues из local-first стора (все загружены снапшотом) — фильтр локальный
+export const getIssue = (id: string): Issue | undefined => S.issue(id)
+
+export async function myIssues(_wsId: string, uid: string, scope: IssueScope): Promise<Issue[]> {
+  const rows = (scope === 'assigned' ? S.issuesAssigned(uid) : S.issuesCreated(uid)) as Issue[]
+  return rows.slice().sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
 }
 
-export async function myIssues(wsId: string, uid: string, scope: IssueScope): Promise<Issue[]> {
-  const field = scope === 'assigned' ? 'assignee' : 'creator'
-  const res = await clients.query.runView({
-    workspaceId: wsId,
-    def: {
-      dataSource: 'issue',
-      filter: {
-        node: {
-          case: 'predicate',
-          value: { field: { ref: { case: 'builtin', value: field } }, op: Operator.EQ, value: { v: { case: 's', value: uid } } },
-        },
-      },
-    },
-  })
-  const rows = (JSON.parse(new TextDecoder().decode(res.groupedResult)) as Issue[]).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
-  cache(rows)
-  cacheSet(`issues:${wsId}:${scope}`, rows)
-  return rows
-}
-
-// offline-fallback: последний сохранённый список (+ seed issue-кэша для детали)
+// offline тоже покрыт стором (hydrate из кэша) → тот же источник (uid из auth)
 export async function cachedIssues(wsId: string, scope: IssueScope): Promise<Issue[]> {
-  const rows = (await cacheGet<Issue[]>(`issues:${wsId}:${scope}`)) ?? []
-  cache(rows)
-  return rows
+  return myIssues(wsId, getCurrentUserId() ?? '', scope)
 }
 
-// --- мутации (quick actions). После успеха освежаем version в кэше. ---
+// --- мутации (quick actions): RPC + optimistic-патч стора ---
 
 export async function updateIssueState(wsId: string, issue: Issue, stateId: string) {
-  // base_version бэком не enforce-ится, new_version не возвращается → version не трогаем
   await clients.issues.updateIssueState({ workspaceId: wsId, id: issue.id, baseVersion: BigInt(issue.version), stateId })
-  issueCache.set(issue.id, { ...issue, stateId })
+  patchIssue(issue.id, { stateId })
 }
 
 export async function assignIssue(wsId: string, issue: Issue, assigneeId: string) {
   await clients.issues.assignIssue({ workspaceId: wsId, id: issue.id, baseVersion: BigInt(issue.version), assigneeId })
-  issueCache.set(issue.id, { ...issue, assigneeId: assigneeId || undefined })
+  patchIssue(issue.id, { assigneeId: assigneeId || undefined })
 }
 
 export async function createIssue(wsId: string, p: { teamId: string; title: string; stateId?: string; priority?: number; assigneeId?: string }): Promise<string> {
@@ -99,6 +78,7 @@ export async function createIssue(wsId: string, p: { teamId: string; title: stri
     priority: p.priority ?? 0,
     assigneeId: p.assigneeId ?? '',
   })
+  syncChanges(wsId) // подтянуть новый issue в стор
   return id
 }
 
@@ -114,21 +94,15 @@ export async function addComment(wsId: string, issueId: string, body: string) {
   await clients.comments.addComment({ workspaceId: wsId, id: uuid(), issueId, body })
 }
 
-// одиночный issue по id (RunView с фильтром id EQ) — для tap уведомления/пуша, когда
-// issue нет в кэше от списка. Кладём в кэш.
+// одиночный issue по id (для tap уведомления/пуша) — из стора; если стор не загружен,
+// подтягиваем снапшот.
 export async function issueById(wsId: string, id: string): Promise<Issue | undefined> {
-  const cached = issueCache.get(id)
-  if (cached) return cached
-  const res = await clients.query.runView({
-    workspaceId: wsId,
-    def: {
-      dataSource: 'issue',
-      filter: { node: { case: 'predicate', value: { field: { ref: { case: 'builtin', value: 'id' } }, op: Operator.EQ, value: { v: { case: 's', value: id } } } } },
-    },
-  })
-  const rows = JSON.parse(new TextDecoder().decode(res.groupedResult)) as Issue[]
-  cache(rows)
-  return rows[0]
+  let iss = S.issue(id) as Issue | undefined
+  if (!iss && !isLoaded(wsId)) {
+    await loadSnapshot(wsId).catch(() => {})
+    iss = S.issue(id)
+  }
+  return iss
 }
 
 // --- уведомления (inbox) ---

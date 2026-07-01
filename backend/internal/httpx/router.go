@@ -106,7 +106,11 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
-		chunks, cursor, err := svcs.Sync.Bootstrap(req.Context(), uid, wsID, nil)
+		var only []string
+		if q := req.URL.Query().Get("only"); q != "" {
+			only = strings.Split(q, ",")
+		}
+		chunks, cursor, err := svcs.Sync.Bootstrap(req.Context(), uid, wsID, only)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
