@@ -244,11 +244,19 @@ func (s *Service) Suggest(ctx context.Context, actor, wsID uuid.UUID, text, team
 		"labelIds":   topNIDs(labW, 3),
 		"similar":    similar,
 	}
-	// Фаза 3: предсказание priority обученной моделью (если есть). Порог уверенности.
-	if preds, conf, perr := s.embed.Predict(ctx, wsID.String(), "priority", [][]float32{vecs[0]}); perr == nil && len(preds) > 0 {
-		if len(conf) > 0 && conf[0] >= 0.35 {
-			out["priority"] = preds[0]
-			out["priorityConfidence"] = conf[0]
+	// Фаза 3: предсказания обученных моделей (priority/estimate/slip), если есть.
+	pv := [][]float32{vecs[0]}
+	if p, c, e := s.embed.Predict(ctx, wsID.String(), "priority", pv); e == nil && len(p) > 0 && len(c) > 0 && c[0] >= 0.35 {
+		out["priority"] = int(p[0] + 0.5)
+		out["priorityConfidence"] = c[0]
+	}
+	if p, _, e := s.embed.Predict(ctx, wsID.String(), "estimate", pv); e == nil && len(p) > 0 {
+		out["estimate"] = p[0]
+	}
+	if p, c, e := s.embed.Predict(ctx, wsID.String(), "slip", pv); e == nil && len(p) > 0 && len(c) > 0 {
+		if int(p[0]+0.5) == 1 && c[0] >= 0.55 {
+			out["slipRisk"] = true
+			out["slipConfidence"] = c[0]
 		}
 	}
 	raw, _ := json.Marshal(out)

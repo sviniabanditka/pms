@@ -59,9 +59,9 @@ func VecLiteral(v []float32) string {
 
 // --- Фаза 3: обучаемые per-workspace классификаторы ---
 
-// Train обучает классификатор (kind, напр. "priority") на векторах+метках воркспейса.
-func (c *Client) Train(ctx context.Context, wsID, kind string, vectors [][]float32, labels []int) error {
-	body, _ := json.Marshal(map[string]any{"workspace_id": wsID, "kind": kind, "vectors": vectors, "labels": labels})
+// Train обучает модель (kind + task classification|regression) на векторах+метках.
+func (c *Client) Train(ctx context.Context, wsID, kind, task string, vectors [][]float32, labels []float64) error {
+	body, _ := json.Marshal(map[string]any{"workspace_id": wsID, "kind": kind, "task": task, "vectors": vectors, "labels": labels})
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.url+"/train", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.http.Do(req)
@@ -75,8 +75,8 @@ func (c *Client) Train(ctx context.Context, wsID, kind string, vectors [][]float
 	return nil
 }
 
-// Predict возвращает предсказанные метки + уверенность (пусто, если модели нет).
-func (c *Client) Predict(ctx context.Context, wsID, kind string, vectors [][]float32) ([]int, []float32, error) {
+// Predict возвращает предсказания (float; классы округляем у вызывающего) + уверенность.
+func (c *Client) Predict(ctx context.Context, wsID, kind string, vectors [][]float32) ([]float64, []float32, error) {
 	body, _ := json.Marshal(map[string]any{"workspace_id": wsID, "kind": kind, "vectors": vectors})
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.url+"/predict", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -89,7 +89,7 @@ func (c *Client) Predict(ctx context.Context, wsID, kind string, vectors [][]flo
 		return nil, nil, fmt.Errorf("predict %d", resp.StatusCode)
 	}
 	var out struct {
-		Predictions []int     `json:"predictions"`
+		Predictions []float64 `json:"predictions"`
 		Confidence  []float32 `json:"confidence"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {

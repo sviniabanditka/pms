@@ -125,6 +125,15 @@ const suggestPriority = computed(() => {
   if (!iss || p == null || p === iss.priority) return null
   return p
 })
+const suggestEstimate = computed(() => {
+  const iss = selectedIssue.value; const e = aiSuggest.value?.estimate
+  if (!iss || e == null || iss.estimate != null) return null
+  return Math.max(1, Math.round(e))
+})
+const slipWarn = computed(() => {
+  const iss = selectedIssue.value
+  return !!(aiSuggest.value?.slipRisk && iss?.dueDate && !iss.completedAt)
+})
 // bulk selection (List)
 const selectedIds = ref<Set<string>>(new Set())
 const selCount = computed(() => selectedIds.value.size)
@@ -3057,15 +3066,22 @@ useHead({ title: () => pageTitle.value })
         </div>
 
         <!-- AI: suggestions + similar (Фаза 1–2) -->
-        <div v-if="simIssues.length || suggestLabels.length || suggestAssignee || suggestPriority !== null" class="mb-4">
+        <div v-if="simIssues.length || suggestLabels.length || suggestAssignee || suggestPriority !== null || suggestEstimate !== null || slipWarn" class="mb-4">
           <div class="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-tertiary">
             <span class="text-accent2">≈ </span>AI
           </div>
+          <div v-if="slipWarn" class="mb-2 flex items-center gap-1 text-xs text-danger">
+            ⚠ likely to miss its due date
+          </div>
           <!-- подсказки в один клик -->
-          <div v-if="suggestLabels.length || suggestAssignee || suggestPriority !== null" class="mb-2 flex flex-wrap gap-1.5">
+          <div v-if="suggestLabels.length || suggestAssignee || suggestPriority !== null || suggestEstimate !== null" class="mb-2 flex flex-wrap gap-1.5">
             <button v-if="suggestPriority !== null" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs text-secondary hover:border-warn hover:text-warn"
               @click="store.setIssuePriority(selectedIssue.id, suggestPriority)">
               ⚑ priority {{ PRI_LABELS[suggestPriority] }}
+            </button>
+            <button v-if="suggestEstimate !== null" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs text-secondary hover:border-accent hover:text-accent"
+              @click="store.setIssueEstimate(selectedIssue.id, suggestEstimate)">
+              ≈ est {{ suggestEstimate }} pts
             </button>
             <button v-if="suggestAssignee" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs text-secondary hover:border-accent hover:text-accent"
               @click="store.setIssueAssignee(selectedIssue.id, suggestAssignee)">

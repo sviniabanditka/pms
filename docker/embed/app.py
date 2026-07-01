@@ -8,7 +8,7 @@ import numpy as np
 from fastapi import FastAPI
 from pydantic import BaseModel
 from fastembed import TextEmbedding
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression, Ridge
 
 MODEL = os.environ.get("EMBED_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 MODELS_DIR = os.environ.get("MODELS_DIR", "/models")
@@ -50,22 +50,30 @@ def embed(req: EmbedRequest):
 
 class TrainRequest(BaseModel):
     workspace_id: str
-    kind: str = "priority"        # какой таргет учим
+    kind: str = "priority"                 # priority | estimate | slip
+    task: Literal["classification", "regression"] = "classification"
     vectors: List[List[float]]
-    labels: List[int]
+    labels: List[float]
 
 
 @app.post("/train")
 def train(req: TrainRequest):
     ys = req.labels
-    if len(ys) < 40 or len(set(ys)) < 2:
-        return {"ok": False, "reason": "insufficient data", "n": len(ys), "classes": len(set(ys))}
-    clf = LogisticRegression(max_iter=1000, class_weight="balanced")
-    clf.fit(np.array(req.vectors, dtype=np.float32), np.array(ys))
+    X = np.array(req.vectors, dtype=np.float32)
+    if req.task == "regression":
+        if len(ys) < 40:
+            return {"ok": False, "reason": "insufficient", "n": len(ys)}
+        model = Ridge(alpha=1.0)
+        model.fit(X, np.array(ys, dtype=np.float32))
+    else:
+        if len(ys) < 40 or len(set(ys)) < 2:
+            return {"ok": False, "reason": "insufficient", "n": len(ys), "classes": len(set(ys))}
+        model = LogisticRegression(max_iter=1000, class_weight="balanced")
+        model.fit(X, np.array(ys).astype(int))
     path = _model_path(req.workspace_id, req.kind)
-    joblib.dump(clf, path)
+    joblib.dump({"model": model, "task": req.task}, path)
     _clf_cache.pop(path, None)
-    return {"ok": True, "n": len(ys), "classes": sorted(set(int(y) for y in ys))}
+    return {"ok": True, "n": len(ys), "task": req.task}
 
 
 class PredictRequest(BaseModel):
@@ -75,7 +83,7 @@ class PredictRequest(BaseModel):
 
 
 class PredictResponse(BaseModel):
-    predictions: List[int]
+    predictions: List[float]
     confidence: List[float]
 
 
@@ -89,9 +97,12 @@ def predict(req: PredictRequest):
     if not cached or cached[0] != mtime:
         cached = (mtime, joblib.load(path))
         _clf_cache[path] = cached
-    clf = cached[1]
+    bundle = cached[1]
+    model, task = bundle["model"], bundle["task"]
     X = np.array(req.vectors, dtype=np.float32)
-    preds = clf.predict(X)
-    probs = clf.predict_proba(X)
+    preds = model.predict(X)
+    if task == "regression":
+        return PredictResponse(predictions=[float(p) for p in preds], confidence=[1.0] * len(preds))
+    probs = model.predict_proba(X)
     conf = probs.max(axis=1)
-    return PredictResponse(predictions=[int(p) for p in preds], confidence=[float(c) for c in conf])
+    return PredictResponse(predictions=[float(p) for p in preds], confidence=[float(c) for c in conf])

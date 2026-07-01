@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/riverqueue/river"
@@ -10,9 +11,9 @@ import (
 	"github.com/pms/backend/internal/embed"
 )
 
-// Model-train (AI Фаза 3): per-workspace классификатор priority на эмбеддингах issue.
-// Периодический; кросс-тенантно (pms_jobs BYPASSRLS). Сайдкар решает, хватает ли
-// данных (иначе no-op). Модель живёт на томе сайдкара, ключ = workspace_id.
+// Model-train (AI Фаза 3): per-workspace модели на эмбеддингах issue —
+// priority (classification), estimate (regression), slip-risk (classification).
+// Периодический; кросс-тенантно (pms_jobs BYPASSRLS). Сайдкар решает достаточность.
 
 type TrainArgs struct{}
 
@@ -24,6 +25,20 @@ type TrainWorker struct {
 	embed *embed.Client
 }
 
+// таргет: kind + task + SQL-выражение метки + доп. фильтр (какие issue берём в обучение).
+type trainTarget struct {
+	kind      string
+	task      string
+	labelExpr string
+	where     string
+}
+
+var trainTargets = []trainTarget{
+	{"priority", "classification", "i.priority::float8", ""},
+	{"estimate", "regression", "i.estimate", "AND i.estimate IS NOT NULL"},
+	{"slip", "classification", "(CASE WHEN i.completed_at::date > i.due_date THEN 1 ELSE 0 END)::float8", "AND i.completed_at IS NOT NULL AND i.due_date IS NOT NULL"},
+}
+
 func (w *TrainWorker) Work(ctx context.Context, _ *river.Job[TrainArgs]) error {
 	if w.embed == nil {
 		return nil
@@ -33,32 +48,38 @@ func (w *TrainWorker) Work(ctx context.Context, _ *river.Job[TrainArgs]) error {
 		return err
 	}
 	for _, ws := range wss {
-		var rows []struct {
-			Vec      string `bun:"vec"`
-			Priority int    `bun:"priority"`
-		}
-		err := w.db.NewRaw(
-			`SELECT e.embedding::text AS vec, i.priority
-			 FROM issues i JOIN embeddings e ON e.entity_type='issue' AND e.entity_id = i.id
-			 WHERE i.workspace_id = ? AND i.deleted_at IS NULL`, ws).Scan(ctx, &rows)
-		if err != nil || len(rows) < 40 {
-			continue
-		}
-		vecs := make([][]float32, 0, len(rows))
-		labels := make([]int, 0, len(rows))
-		for _, r := range rows {
-			v := embed.ParseVecLiteral(r.Vec)
-			if v == nil {
-				continue
-			}
-			vecs = append(vecs, v)
-			labels = append(labels, r.Priority)
-		}
-		if len(vecs) >= 40 {
-			_ = w.embed.Train(ctx, ws.String(), "priority", vecs, labels) // сайдкар решает достаточность
+		for _, t := range trainTargets {
+			w.trainTarget(ctx, ws, t)
 		}
 	}
 	return nil
+}
+
+func (w *TrainWorker) trainTarget(ctx context.Context, ws uuid.UUID, t trainTarget) {
+	var rows []struct {
+		Vec   string  `bun:"vec"`
+		Label float64 `bun:"label"`
+	}
+	q := fmt.Sprintf(
+		`SELECT e.embedding::text AS vec, (%s) AS label
+		 FROM issues i JOIN embeddings e ON e.entity_type='issue' AND e.entity_id = i.id
+		 WHERE i.workspace_id = ? AND i.deleted_at IS NULL %s`, t.labelExpr, t.where)
+	if err := w.db.NewRaw(q, ws).Scan(ctx, &rows); err != nil || len(rows) < 40 {
+		return
+	}
+	vecs := make([][]float32, 0, len(rows))
+	labels := make([]float64, 0, len(rows))
+	for _, r := range rows {
+		v := embed.ParseVecLiteral(r.Vec)
+		if v == nil {
+			continue
+		}
+		vecs = append(vecs, v)
+		labels = append(labels, r.Label)
+	}
+	if len(vecs) >= 40 {
+		_ = w.embed.Train(ctx, ws.String(), t.kind, t.task, vecs, labels)
+	}
 }
 
 func NewTrainWorker(db *bun.DB, e *embed.Client) *TrainWorker {
