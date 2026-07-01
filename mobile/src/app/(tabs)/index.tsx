@@ -3,6 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useState } from 'react'
 import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native'
 import Animated, { FadeInDown } from 'react-native-reanimated'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Sidebar, type Section } from '~/components/Sidebar'
 import { getCurrentUserId } from '~/lib/auth'
@@ -32,6 +33,7 @@ function ago(iso: string) {
 
 export default function Issues() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const wsId = useActiveWs()
   useMeta()
   const wsName = getWorkspaces().find((w) => w.id === wsId)?.name ?? 'workspace'
@@ -79,7 +81,7 @@ export default function Issues() {
 
   return (
     <Backdrop>
-      <Glass style={styles.header} intensity={34}>
+      <Glass style={[styles.header, { marginTop: insets.top + 6 }]} intensity={34}>
         <Pressable onPress={() => setDrawer(true)} hitSlop={10} style={styles.menu}>
           <View style={styles.barIcon} />
           <View style={[styles.barIcon, { width: 11 }]} />
@@ -182,7 +184,7 @@ export default function Issues() {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', gap: 13, marginTop: 54, marginHorizontal: 12, paddingHorizontal: 15, paddingVertical: 11, borderRadius: 18 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 13, marginHorizontal: 12, paddingHorizontal: 15, paddingVertical: 11, borderRadius: 18 },
   menu: { gap: 3.5, paddingVertical: 2 },
   barIcon: { width: 17, height: 2, borderRadius: 2, backgroundColor: C.secondary },
   searchBtn: { paddingHorizontal: 4 },
