@@ -7,12 +7,9 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: { backgroundColor: C.base, borderTopColor: C.subtle, borderTopWidth: 1 },
-        tabBarActiveTintColor: C.accent,
-        tabBarInactiveTintColor: C.tertiary,
-        tabBarLabelStyle: { fontFamily: F.m, fontSize: 11 },
-        tabBarIconStyle: { display: 'none' },
-        tabBarItemStyle: { paddingTop: 8 },
+        // навигация через слайд-ин Sidebar (как десктоп-рейл) → таб-бар скрыт
+        tabBarStyle: { display: 'none' },
+        sceneStyle: { backgroundColor: C.base },
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'issues' }} />
