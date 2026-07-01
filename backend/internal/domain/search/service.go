@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -106,6 +107,112 @@ type Result struct {
 	Title    string `json:"title"`
 	Subtitle string `json:"subtitle,omitempty"`
 	TeamID   string `json:"teamId,omitempty"`
+}
+
+// Suggest — kNN-подсказки для черновика issue (AI Фаза 2): по тексту находим
+// ближайшие issue, агрегируем их team/assignee/labels (вес = 1/(rank+1)) →
+// топ-предложения + similar (возможные дубли). RLS-scoped.
+func (s *Service) Suggest(ctx context.Context, actor, wsID uuid.UUID, text, teamID string, limit int) ([]byte, error) {
+	if s.embed == nil {
+		return nil, ErrNoEmbed
+	}
+	if limit <= 0 || limit > 10 {
+		limit = 6
+	}
+	const k = 15
+	vecs, err := s.embed.Embed(ctx, []string{text}, "query")
+	if err != nil || len(vecs) == 0 {
+		return nil, ErrNoEmbed
+	}
+	lit := embed.VecLiteral(vecs[0])
+
+	var neigh []models.Issue
+	var labelRows []struct {
+		IssueID uuid.UUID `bun:"issue_id"`
+		LabelID uuid.UUID `bun:"label_id"`
+	}
+	err = db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		q := tx.NewSelect().Model(&neigh).Where("embedding IS NOT NULL AND deleted_at IS NULL AND archived_at IS NULL")
+		if teamID != "" {
+			q = q.Where("team_id = ?", teamID)
+		}
+		if err := q.OrderExpr("embedding <=> ?::vector", lit).Limit(k).Scan(ctx); err != nil {
+			return err
+		}
+		if len(neigh) == 0 {
+			return nil
+		}
+		ids := make([]uuid.UUID, len(neigh))
+		for i, n := range neigh {
+			ids[i] = n.ID
+		}
+		return tx.NewSelect().Table("issue_labels").Column("issue_id", "label_id").
+			Where("issue_id IN (?)", bun.In(ids)).Scan(ctx, &labelRows)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	labelsByIssue := map[uuid.UUID][]uuid.UUID{}
+	for _, lr := range labelRows {
+		labelsByIssue[lr.IssueID] = append(labelsByIssue[lr.IssueID], lr.LabelID)
+	}
+	teamW := map[uuid.UUID]float64{}
+	asgW := map[uuid.UUID]float64{}
+	labW := map[uuid.UUID]float64{}
+	for i, n := range neigh {
+		w := 1.0 / float64(i+1) // rank-вес: ближайший весит больше
+		teamW[n.TeamID] += w
+		if n.AssigneeID != nil {
+			asgW[*n.AssigneeID] += w
+		}
+		for _, l := range labelsByIssue[n.ID] {
+			labW[l] += w
+		}
+	}
+	similar := neigh
+	if len(similar) > limit {
+		similar = similar[:limit]
+	}
+	out := map[string]any{
+		"teamId":     argmaxID(teamW),
+		"assigneeId": argmaxID(asgW),
+		"labelIds":   topNIDs(labW, 3),
+		"similar":    similar,
+	}
+	raw, _ := json.Marshal(out)
+	return raw, nil
+}
+
+func argmaxID(m map[uuid.UUID]float64) string {
+	var best uuid.UUID
+	var bw float64
+	for id, w := range m {
+		if w > bw {
+			bw, best = w, id
+		}
+	}
+	if best == uuid.Nil {
+		return ""
+	}
+	return best.String()
+}
+
+func topNIDs(m map[uuid.UUID]float64, n int) []string {
+	type kv struct {
+		id uuid.UUID
+		w  float64
+	}
+	arr := make([]kv, 0, len(m))
+	for id, w := range m {
+		arr = append(arr, kv{id, w})
+	}
+	sort.Slice(arr, func(i, j int) bool { return arr[i].w > arr[j].w })
+	out := []string{}
+	for i := 0; i < len(arr) && i < n; i++ {
+		out = append(out, arr[i].id.String())
+	}
+	return out
 }
 
 // RunView выполняет View server-side: компилирует Filter-AST → SQL и возвращает issues (JSON).

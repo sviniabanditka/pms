@@ -168,6 +168,22 @@ func (h *queryHandler) SimilarIssues(ctx context.Context, req *connect.Request[p
 	return connect.NewResponse(&pmsv1.SimilarIssuesResponse{Results: raw}), nil
 }
 
+func (h *queryHandler) Suggest(ctx context.Context, req *connect.Request[pmsv1.SuggestRequest]) (*connect.Response[pmsv1.SuggestResponse], error) {
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wsID, err := uuid.Parse(req.Msg.WorkspaceId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid workspace_id"))
+	}
+	raw, err := h.svc.Suggest(ctx, actor, wsID, req.Msg.Text, req.Msg.TeamId, int(req.Msg.Limit))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.SuggestResponse{Result: raw}), nil
+}
+
 // protoToFilterNode конвертирует protobuf Filter-AST в JSON-форму компилятора (filter.Node).
 func protoToFilterNode(n *pmsv1.FilterNode) *filter.Node {
 	if n == nil {

@@ -13,6 +13,7 @@ service QueryService {
   rpc Search(SearchRequest) returns (SearchResponse);
   rpc SemanticSearch(SemanticSearchRequest) returns (SemanticSearchResponse);
   rpc SimilarIssues(SimilarIssuesRequest) returns (SimilarIssuesResponse);
+  rpc Suggest(SuggestRequest) returns (SuggestResponse);
 }
 
 message SearchRequest {
@@ -65,4 +66,14 @@ message SimilarIssuesRequest {
 }
 message SimilarIssuesResponse {
   bytes results = 1; // json issue array
+}
+
+message SuggestRequest {
+  string workspace_id = 1;
+  string text = 2;      // черновик issue (title [+ desc])
+  string team_id = 3;   // опц.: ограничить соседей командой
+  int32 limit = 4;
+}
+message SuggestResponse {
+  bytes result = 1; // json: { teamId, assigneeId, labelIds[], similar[] }
 }
