@@ -7,22 +7,30 @@ import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 import { C, F } from './theme'
 import { T } from './ui'
 
-// Backdrop — фон экрана: глубокая база + мягкие цветовые washes (глубина, не плоскота)
+// Backdrop — фон экрана: глубокая база + насыщенные цветовые washes, чтобы стекло
+// подхватывало цвет (liquid-эффект).
 export function Backdrop({ children }: { children: React.ReactNode }) {
   return (
     <View style={{ flex: 1, backgroundColor: C.base }}>
-      <LinearGradient colors={['rgba(122,162,247,0.12)', 'rgba(122,162,247,0.03)', 'transparent']} style={g.washTop} pointerEvents="none" />
-      <LinearGradient colors={['transparent', 'rgba(187,154,247,0.06)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={g.washBottom} pointerEvents="none" />
+      <LinearGradient colors={['rgba(122,162,247,0.20)', 'rgba(122,162,247,0.05)', 'transparent']} style={g.washTop} pointerEvents="none" />
+      <LinearGradient colors={['rgba(125,207,255,0.10)', 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 0.5 }} style={g.washTR} pointerEvents="none" />
+      <LinearGradient colors={['transparent', 'rgba(187,154,247,0.12)']} start={{ x: 0, y: 0.3 }} end={{ x: 0.9, y: 1 }} style={g.washBottom} pointerEvents="none" />
       {children}
     </View>
   )
 }
 
-// Glass — матовая панель со стеклянным sheen сверху
-export function Glass({ children, style, intensity = 24 }: { children?: React.ReactNode; style?: StyleProp<ViewStyle>; intensity?: number }) {
+// Glass — матовая стеклянная панель: блик сверху + светящаяся верхняя кромка + тинт.
+export function Glass({ children, style, intensity = 44 }: { children?: React.ReactNode; style?: StyleProp<ViewStyle>; intensity?: number }) {
   return (
     <BlurView intensity={intensity} tint="dark" style={[g.glass, style]}>
-      <LinearGradient colors={['rgba(255,255,255,0.06)', 'transparent']} style={g.sheen} pointerEvents="none" />
+      <LinearGradient
+        colors={['rgba(255,255,255,0.16)', 'rgba(255,255,255,0.04)', 'transparent']}
+        locations={[0, 0.18, 0.55]}
+        style={g.sheen}
+        pointerEvents="none"
+      />
+      <View style={g.edge} pointerEvents="none" />
       {children}
     </BlurView>
   )
@@ -69,14 +77,16 @@ export function Avatar({ name, id, size = 26 }: { name?: string; id?: string; si
 }
 
 const g = StyleSheet.create({
-  washTop: { position: 'absolute', top: 0, left: 0, right: 0, height: 420 },
-  washBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 320 },
-  sheen: { position: 'absolute', top: 0, left: 0, right: 0, height: 44 },
+  washTop: { position: 'absolute', top: 0, left: 0, right: 0, height: 460 },
+  washTR: { position: 'absolute', top: 0, right: 0, width: 360, height: 360 },
+  washBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 360 },
+  sheen: { position: 'absolute', top: 0, left: 0, right: 0, height: 60 },
+  edge: { position: 'absolute', top: 0, left: 14, right: 14, height: 1, backgroundColor: 'rgba(255,255,255,0.22)' },
   glass: {
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(120,140,200,0.045)',
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(146,168,232,0.07)',
     overflow: 'hidden',
   },
   pill: {
