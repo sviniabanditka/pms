@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: postgres:16
+    # pgvector/pgvector:pg16 = стоковый Postgres 16 + расширение vector (drop-in, том сохраняется)
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -54,6 +55,21 @@ services:
       - "7882:7882/udp"  # RTC over UDP
     volumes:
       - ./docker/livekit.yaml:/etc/livekit.yaml:ro
+
+  # Embed-сайдкар: fastembed (ONNX, без torch) → paraphrase-multilingual-MiniLM-L12-v2
+  # (384-dim, RU+EN; e5-small в fastembed не поддержан). ML-граница: POST /embed → vectors.
+  # Одна модель на весь SaaS (stateless); изоляция воркспейсов — через RLS на issues.
+  embed:
+    build: ./docker/embed
+    environment:
+      EMBED_MODEL: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+    ports:
+      - "8100:8100"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8100/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   # Локальный SMTP-перехватчик: письма не уходят наружу, видны в web-UI :8025 (dev, до реального SMTP).
   mailpit:

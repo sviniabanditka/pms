@@ -12,6 +12,7 @@ import (
 
 	"github.com/pms/backend/internal/auth"
 	"github.com/pms/backend/internal/config"
+	"github.com/pms/backend/internal/embed"
 	"github.com/pms/backend/internal/db"
 	"github.com/pms/backend/internal/domain/apitokens"
 	"github.com/pms/backend/internal/domain/attachments"
@@ -83,6 +84,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer pool.Close()
+	embedClient := embed.New(cfg.EmbedURL)
 	riverClient, err := jobs.Start(context.Background(), jobs.Deps{
 		Pool: pool, JobsDB: jobsDB, Pub: pub, Mailer: mailer.New(cfg),
 		DueSoonInterval:  river.PeriodicInterval(cfg.DueSoonInterval),
@@ -91,6 +93,8 @@ func main() {
 		MeetingReapEvery: river.PeriodicInterval(cfg.MeetingReapEvery),
 		WebhookEvery:     river.PeriodicInterval(cfg.WebhookEvery),
 		PushEvery:        river.PeriodicInterval(cfg.PushEvery),
+		EmbedEvery:       river.PeriodicInterval(cfg.EmbedEvery),
+		Embed:            embedClient,
 		LiveKitAPIURL:    cfg.LiveKitAPIURL,
 		LiveKitAPIKey:    cfg.LiveKitAPIKey,
 		LiveKitSecret:    cfg.LiveKitSecret,
@@ -118,7 +122,7 @@ func main() {
 		Time:          timetracking.NewService(bdb, pub),
 		Automations:   automations.NewService(bdb, pub),
 		Attachments:   attachments.NewService(bdb, pub, store),
-		Search:        search.NewService(bdb),
+		Search:        search.NewService(bdb, embedClient),
 		Sync:          syncsvc.NewService(bdb),
 		ApiTokens:     apitokens.NewService(bdb),
 		Webhooks:      webhooks.NewService(bdb),

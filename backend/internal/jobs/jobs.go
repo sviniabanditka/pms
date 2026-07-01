@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pms/backend/internal/embed"
 	"github.com/pms/backend/internal/mailer"
 	"github.com/pms/backend/internal/realtime"
 	"github.com/riverqueue/river"
@@ -27,6 +28,8 @@ type Deps struct {
 	MeetingReapEvery river.PeriodicSchedule
 	WebhookEvery     river.PeriodicSchedule
 	PushEvery        river.PeriodicSchedule
+	EmbedEvery       river.PeriodicSchedule
+	Embed            *embed.Client
 	LiveKitAPIURL    string
 	LiveKitAPIKey    string
 	LiveKitSecret    string
@@ -52,6 +55,7 @@ func Start(ctx context.Context, d Deps) (*river.Client[pgx.Tx], error) {
 	river.AddWorker(workers, &WebhookDispatchWorker{db: d.JobsDB})
 	river.AddWorker(workers, &WebhookDeliverWorker{db: d.JobsDB, http: &http.Client{Timeout: 10 * time.Second}})
 	river.AddWorker(workers, &PushDispatchWorker{db: d.JobsDB, http: &http.Client{Timeout: 10 * time.Second}})
+	river.AddWorker(workers, &EmbedSweepWorker{db: d.JobsDB, embed: d.Embed})
 
 	client, err := river.NewClient(driver, &river.Config{
 		Queues:  map[string]river.QueueConfig{river.QueueDefault: {MaxWorkers: 10}},
@@ -63,6 +67,7 @@ func Start(ctx context.Context, d Deps) (*river.Client[pgx.Tx], error) {
 			river.NewPeriodicJob(d.MeetingReapEvery, func() (river.JobArgs, *river.InsertOpts) { return MeetingReapArgs{}, nil }, &river.PeriodicJobOpts{RunOnStart: true}),
 			river.NewPeriodicJob(d.WebhookEvery, func() (river.JobArgs, *river.InsertOpts) { return WebhookDispatchArgs{}, nil }, &river.PeriodicJobOpts{RunOnStart: true}),
 			river.NewPeriodicJob(d.PushEvery, func() (river.JobArgs, *river.InsertOpts) { return PushDispatchArgs{}, nil }, &river.PeriodicJobOpts{RunOnStart: true}),
+			river.NewPeriodicJob(d.EmbedEvery, func() (river.JobArgs, *river.InsertOpts) { return EmbedSweepArgs{}, nil }, &river.PeriodicJobOpts{RunOnStart: true}),
 		},
 	})
 	if err != nil {

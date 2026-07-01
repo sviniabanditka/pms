@@ -11,6 +11,8 @@ service QueryService {
   rpc RunView(RunViewRequest) returns (RunViewResponse);
   rpc Metric(MetricRequest) returns (MetricResponse);
   rpc Search(SearchRequest) returns (SearchResponse);
+  rpc SemanticSearch(SemanticSearchRequest) returns (SemanticSearchResponse);
+  rpc SimilarIssues(SimilarIssuesRequest) returns (SimilarIssuesResponse);
 }
 
 message SearchRequest {
@@ -46,4 +48,21 @@ message MetricSpec {
   string agg = 1;
   FieldRef field = 2;
   FilterNode filter = 3;
+}
+
+message SemanticSearchRequest {
+  string workspace_id = 1;
+  string query = 2;
+  int32 limit = 3;
+}
+message SemanticSearchResponse {
+  bytes results = 1; // json issue array
+}
+message SimilarIssuesRequest {
+  string workspace_id = 1;
+  string issue_id = 2;
+  int32 limit = 3;
+}
+message SimilarIssuesResponse {
+  bytes results = 1; // json issue array
 }

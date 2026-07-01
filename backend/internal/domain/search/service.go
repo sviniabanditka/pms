@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pms/backend/internal/db"
+	"github.com/pms/backend/internal/embed"
 	"github.com/pms/backend/internal/filter"
 	"github.com/pms/backend/internal/models"
 	"github.com/uptrace/bun"
@@ -36,9 +37,68 @@ func cleanSnippet(body string) string {
 	return s
 }
 
-type Service struct{ db *bun.DB }
+type Service struct {
+	db    *bun.DB
+	embed *embed.Client
+}
 
-func NewService(bdb *bun.DB) *Service { return &Service{db: bdb} }
+func NewService(bdb *bun.DB, e *embed.Client) *Service { return &Service{db: bdb, embed: e} }
+
+var ErrNoEmbed = errors.New("embeddings unavailable")
+
+// SemanticSearch — семантический поиск issue по эмбеддингу запроса (cosine, HNSW).
+// Изоляция по воркспейсу — через RLS (db.WithWorkspace). Возвращает JSON-массив issue.
+func (s *Service) SemanticSearch(ctx context.Context, actor, wsID uuid.UUID, query string, limit int) ([]byte, error) {
+	if s.embed == nil {
+		return nil, ErrNoEmbed
+	}
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	vecs, err := s.embed.Embed(ctx, []string{query}, "query")
+	if err != nil || len(vecs) == 0 {
+		return nil, ErrNoEmbed
+	}
+	lit := embed.VecLiteral(vecs[0])
+	var iss []models.Issue
+	err = db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		return tx.NewSelect().Model(&iss).
+			Where("archived_at IS NULL AND deleted_at IS NULL AND embedding IS NOT NULL").
+			OrderExpr("embedding <=> ?::vector", lit).Limit(limit).Scan(ctx)
+	})
+	if err != nil {
+		return nil, err
+	}
+	raw, _ := json.Marshal(iss)
+	if raw == nil || string(raw) == "null" {
+		return []byte("[]"), nil
+	}
+	return raw, nil
+}
+
+// SimilarIssues — похожие на заданный issue (по его вектору, исключая сам issue).
+func (s *Service) SimilarIssues(ctx context.Context, actor, wsID, issueID uuid.UUID, limit int) ([]byte, error) {
+	if limit <= 0 || limit > 20 {
+		limit = 8
+	}
+	var iss []models.Issue
+	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		return tx.NewSelect().Model(&iss).
+			Where("archived_at IS NULL AND deleted_at IS NULL AND embedding IS NOT NULL").
+			Where("id <> ?", issueID).
+			Where("(SELECT embedding FROM issues WHERE id = ?) IS NOT NULL", issueID).
+			OrderExpr("embedding <=> (SELECT embedding FROM issues WHERE id = ?)", issueID).
+			Limit(limit).Scan(ctx)
+	})
+	if err != nil {
+		return nil, err
+	}
+	raw, _ := json.Marshal(iss)
+	if raw == nil || string(raw) == "null" {
+		return []byte("[]"), nil
+	}
+	return raw, nil
+}
 
 type Result struct {
 	Type     string `json:"type"`

@@ -132,6 +132,42 @@ func (h *queryHandler) RunView(ctx context.Context, req *connect.Request[pmsv1.R
 	return connect.NewResponse(&pmsv1.RunViewResponse{GroupedResult: raw}), nil
 }
 
+func (h *queryHandler) SemanticSearch(ctx context.Context, req *connect.Request[pmsv1.SemanticSearchRequest]) (*connect.Response[pmsv1.SemanticSearchResponse], error) {
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wsID, err := uuid.Parse(req.Msg.WorkspaceId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid workspace_id"))
+	}
+	raw, err := h.svc.SemanticSearch(ctx, actor, wsID, req.Msg.Query, int(req.Msg.Limit))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.SemanticSearchResponse{Results: raw}), nil
+}
+
+func (h *queryHandler) SimilarIssues(ctx context.Context, req *connect.Request[pmsv1.SimilarIssuesRequest]) (*connect.Response[pmsv1.SimilarIssuesResponse], error) {
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	wsID, err := uuid.Parse(req.Msg.WorkspaceId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid workspace_id"))
+	}
+	issueID, err := uuid.Parse(req.Msg.IssueId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid issue_id"))
+	}
+	raw, err := h.svc.SimilarIssues(ctx, actor, wsID, issueID, int(req.Msg.Limit))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return connect.NewResponse(&pmsv1.SimilarIssuesResponse{Results: raw}), nil
+}
+
 // protoToFilterNode конвертирует protobuf Filter-AST в JSON-форму компилятора (filter.Node).
 func protoToFilterNode(n *pmsv1.FilterNode) *filter.Node {
 	if n == nil {

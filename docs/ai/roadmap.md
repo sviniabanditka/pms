@@ -6,7 +6,7 @@ features, and a **feedback loop** so the models improve on the workspace's own
 history — that's what makes it "our neural net", not a static model.
 
 Decisions locked (2026-07): **fastembed sidecar** (pure ONNX, no torch),
-**multilingual-e5-small** (~384-dim, RU+EN). ML boundary = the sidecar's HTTP
+**paraphrase-multilingual-MiniLM-L12-v2** (384-dim, RU+EN; e5-small не поддержан fastembed'ом). ML boundary = the sidecar's HTTP
 interface (`/embed`, later `/classify`, `/generate`) — swap runtime without
 touching the rest.
 

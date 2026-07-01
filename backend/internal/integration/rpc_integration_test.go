@@ -58,7 +58,7 @@ func buildServices() rpc.Services {
 		Time:          timetracking.NewService(appDB, pub),
 		Automations:   automations.NewService(appDB, pub),
 		Attachments:   attachments.NewService(appDB, pub, nil),
-		Search:        search.NewService(appDB),
+		Search:        search.NewService(appDB, nil),
 		Sync:          syncsvc.NewService(appDB),
 	}
 }
