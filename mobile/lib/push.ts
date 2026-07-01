@@ -8,16 +8,19 @@ import { Platform } from 'react-native'
 import { registerDevice, unregisterDevice } from './api'
 
 let currentToken: string | null = null
+const isNative = Platform.OS !== 'web' // пуш только на нативе (web не поддерживает)
 
-// показывать баннер даже когда приложение открыто
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
-})
+// показывать баннер даже когда приложение открыто (только натив)
+if (isNative) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    }),
+  })
+}
 
 export async function registerForPush(): Promise<void> {
   if (Platform.OS === 'web' || !Device.isDevice) return // пуш только на реальном устройстве
@@ -48,6 +51,7 @@ export async function unregisterForPush(): Promise<void> {
 
 // подписка на тап по пушу → deep-link на issue. Возвращает cleanup.
 export function onPushTap(navigate: (path: string) => void): () => void {
+  if (!isNative) return () => {} // web: пуша нет
   const sub = Notifications.addNotificationResponseReceivedListener((resp) => {
     const data = resp.notification.request.content.data as { entityType?: string; entityId?: string }
     if (data?.entityType === 'issue' && data.entityId) navigate(`/issue/${data.entityId}`)

@@ -2,7 +2,7 @@
 import { BlurView } from 'expo-blur'
 import { useRouter } from 'expo-router'
 import { useEffect, useRef } from 'react'
-import { Animated, Dimensions, Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { Animated, Dimensions, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 
 import { allTeams } from '~/lib/meta'
 import { getWorkspaces, useActiveWs } from '~/lib/workspace'
@@ -36,8 +36,8 @@ export function Sidebar({ visible, onClose, active, onSelect }: { visible: boole
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(x, { toValue: visible ? 0 : -W, duration: 220, useNativeDriver: true }),
-      Animated.timing(fade, { toValue: visible ? 1 : 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(x, { toValue: visible ? 0 : -W, duration: 220, useNativeDriver: Platform.OS !== 'web' }),
+      Animated.timing(fade, { toValue: visible ? 1 : 0, duration: 220, useNativeDriver: Platform.OS !== 'web' }),
     ]).start()
   }, [visible])
 
