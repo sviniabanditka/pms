@@ -47,7 +47,7 @@ func (w *EmbedSweepWorker) Work(ctx context.Context, _ *river.Job[EmbedSweepArgs
 	if err := w.db.NewSelect().Table("issues").Column("id", "title", "description").
 		Where("(embedding IS NULL OR embedded_at IS NULL OR embedded_at < updated_at)").
 		Where("deleted_at IS NULL").
-		OrderExpr("updated_at DESC").Limit(200).Scan(ctx, &rows); err != nil {
+		OrderExpr("updated_at DESC").Limit(32).Scan(ctx, &rows); err != nil {
 		return err
 	}
 	if len(rows) == 0 {
