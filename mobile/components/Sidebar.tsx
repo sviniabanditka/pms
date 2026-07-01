@@ -28,9 +28,10 @@ const SECTIONS: { key: Section; label: string; glyph: string; color: string }[] 
 
 export function Sidebar({ visible, onClose, active, onSelect }: { visible: boolean; onClose: () => void; active: Section; onSelect: (s: Section) => void }) {
   const router = useRouter()
+  const activeWs = useActiveWs()
   const x = useRef(new Animated.Value(-W)).current
   const fade = useRef(new Animated.Value(0)).current
-  const wsName = getWorkspaces().find((w) => w.id === useActiveWs())?.name ?? 'workspace'
+  const wsName = getWorkspaces().find((w) => w.id === activeWs)?.name ?? 'workspace'
   const teams = allTeams()
 
   useEffect(() => {
