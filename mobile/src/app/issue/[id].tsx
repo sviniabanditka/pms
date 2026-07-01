@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 
-import { addComment, assignIssue, getComments, getIssue, updateIssueState, type Comment, type Issue } from '~/lib/api'
+import { addComment, assignIssue, getComments, getIssue, issueById, updateIssueState, type Comment, type Issue } from '~/lib/api'
 import { allUsers, stateById, stateColor, statesForTeam, userById } from '~/lib/meta'
 import { getActiveWs } from '~/lib/workspace'
 
@@ -20,6 +20,11 @@ export default function IssueDetail() {
   const [sending, setSending] = useState(false)
 
   const refresh = () => setIssue(getIssue(id) ? { ...getIssue(id)! } : undefined)
+
+  // cold deep-link (push/уведомление): issue нет в кэше → подгружаем по id
+  useEffect(() => {
+    if (!issue && id) issueById(getActiveWs()!, id).then((i) => i && setIssue({ ...i }))
+  }, [id])
 
   const loadComments = useCallback(async () => {
     if (!issue) return

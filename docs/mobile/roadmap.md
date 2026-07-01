@@ -96,20 +96,34 @@ Goal: see what needs attention.
 - **Exit (device — user):** open Inbox, see notifications, tap → issue opens, mark
   read / mark all read.
 
-## Phase M4 — Push (the native payoff)
+## Phase M4 — Push (the native payoff) ✅ code done
 
 Goal: pings arrive on the lock screen.
 
 - **Backend:**
-  - [ ] migration `device_tokens` (user_id, expo_push_token, platform, last_seen).
-  - [ ] `POST /api/devices` register / `DELETE /api/devices/{token}`.
-  - [ ] `PushNotifyWorker` (River): on notification insert → send via Expo Push API
-        to the user's tokens. Best-effort, batched, prune dead tokens (DeviceNotRegistered).
+  - [x] migration 000040: `device_tokens` (user_id, token unique, platform,
+        last_seen; no RLS) + `notifications.pushed_at`.
+  - [x] `POST /me/devices` (upsert) / `DELETE /me/devices/{token}` — auth'd,
+        user-scoped (`notifications.RegisterDevice/UnregisterDevice`).
+  - [x] `PushDispatchWorker` (River periodic, `PUSH_DISPATCH_EVERY`=15s, mirrors the
+        email sweep): scans `notifications` where `pushed_at IS NULL AND read_at IS
+        NULL` (last 1d) → Expo Push API (batch ≤100), marks `pushed_at`, prunes
+        `DeviceNotRegistered` tokens. `ExpoPushURL` var overridable for tests.
+  - [x] Integration tests `TestPushDispatchWorker_SendsAndMarks` (httptest Expo →
+        message has token + data.entityId, notification marked) + `_PrunesDeadToken`.
 - **Mobile:**
-  - [ ] `expo-notifications`: permission prompt, get Expo push token, register on login,
-        unregister on logout.
-  - [ ] Foreground + background handlers; tap → deep-link to issue (reuse M3 routing).
-- **Exit:** assign/comment on web → push on the phone → tap opens the issue.
+  - [x] `expo-notifications` + `expo-device`: `lib/push.ts` — permission, Expo push
+        token, `registerForPush` (device-only, best-effort) on boot/login,
+        `unregisterForPush` on logout. Notification handler (foreground banner).
+  - [x] Tap → `onPushTap` → deep-link `/issue/{entityId}`; issue detail self-fetches
+        by id (`issueById`) for cold deep-links. app.json `expo-notifications` plugin.
+- **Verified:** backend unit + full integration green (29s); worker e2e via httptest;
+  device register/unregister curl (204); tsc clean; `expo export` bundles (1308).
+- **Pending (needs a real device + EAS projectId — user):** actual push receipt.
+  `getExpoPushTokenAsync` needs an EAS `projectId` (set via `eas init` / app config);
+  without it `registerForPush` no-ops silently. Push doesn't work on web/simulator.
+- **Exit (device — user):** assign/comment from web → push on the phone → tap opens
+  the issue.
 
 ## Phase M5 — Polish & ship
 

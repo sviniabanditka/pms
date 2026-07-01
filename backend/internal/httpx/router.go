@@ -117,6 +117,32 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 		_ = json.NewEncoder(w).Encode(list)
 	})
 
+	// Push: регистрация/снятие Expo push-токена устройства (нативный клиент).
+	r.With(auth.RequireAuth).Post("/me/devices", func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := auth.UserID(req.Context())
+		var body struct {
+			Token    string `json:"token"`
+			Platform string `json:"platform"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil || body.Token == "" {
+			http.Error(w, "token required", http.StatusBadRequest)
+			return
+		}
+		if err := svcs.Notifications.RegisterDevice(req.Context(), uid, body.Token, body.Platform); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	r.With(auth.RequireAuth).Delete("/me/devices/{token}", func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := auth.UserID(req.Context())
+		if err := svcs.Notifications.UnregisterDevice(req.Context(), uid, chi.URLParam(req, "token")); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	// Загрузка файла в S3 (multipart). Возвращает {key, filename, contentType, size}.
 	// Аплоад идёт через бэкенд → нет CORS-префлайта на Garage; download — presigned GET (RPC GetAttachmentURL).
 	r.With(auth.RequireAuth).Post("/files/upload", func(w http.ResponseWriter, req *http.Request) {

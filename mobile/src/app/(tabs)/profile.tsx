@@ -2,6 +2,7 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 
 import { getCurrentUserId, logout } from '~/lib/auth'
 import { setAuthed } from '~/lib/authState'
+import { unregisterForPush } from '~/lib/push'
 import { getWorkspaces, setActiveWs, useActiveWs } from '~/lib/workspace'
 
 export default function Profile() {
@@ -10,6 +11,7 @@ export default function Profile() {
   const uid = getCurrentUserId()
 
   async function onLogout() {
+    await unregisterForPush()
     await logout()
     setAuthed(false)
   }

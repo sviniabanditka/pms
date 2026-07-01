@@ -5,6 +5,7 @@ import { login, myWorkspaces } from '~/lib/auth'
 import { setAuthed } from '~/lib/authState'
 import { getActiveWs, loadActiveWs } from '~/lib/workspace'
 import { loadMeta } from '~/lib/meta'
+import { registerForPush } from '~/lib/push'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -21,6 +22,7 @@ export default function Login() {
       await loadActiveWs(await myWorkspaces())
       const ws = getActiveWs()
       if (ws) await loadMeta(ws)
+      registerForPush()
       setAuthed(true) // _layout уведёт на /
     } catch (e: any) {
       setErr(e?.message ?? 'Sign-in failed')

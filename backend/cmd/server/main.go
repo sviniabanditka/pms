@@ -90,6 +90,7 @@ func main() {
 		SnapshotEvery:    river.PeriodicInterval(cfg.SnapshotEvery),
 		MeetingReapEvery: river.PeriodicInterval(cfg.MeetingReapEvery),
 		WebhookEvery:     river.PeriodicInterval(cfg.WebhookEvery),
+		PushEvery:        river.PeriodicInterval(cfg.PushEvery),
 		LiveKitAPIURL:    cfg.LiveKitAPIURL,
 		LiveKitAPIKey:    cfg.LiveKitAPIKey,
 		LiveKitSecret:    cfg.LiveKitSecret,

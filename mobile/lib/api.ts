@@ -147,3 +147,17 @@ export async function markRead(wsId: string, id: string) {
 export async function markAllRead(wsId: string) {
   await clients.notifications.markAllRead({ workspaceId: wsId })
 }
+
+// --- push device registration (REST) ---
+
+export async function registerDevice(token: string, platform: string) {
+  await fetch(`${API_BASE}/me/devices`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeader() },
+    body: JSON.stringify({ token, platform }),
+  })
+}
+
+export async function unregisterDevice(token: string) {
+  await fetch(`${API_BASE}/me/devices/${encodeURIComponent(token)}`, { method: 'DELETE', headers: authHeader() })
+}

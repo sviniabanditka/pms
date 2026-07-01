@@ -74,3 +74,22 @@ func (s *Service) List(ctx context.Context, wsID, userID uuid.UUID, limit int) (
 	})
 	return out, err
 }
+
+// --- device-токены (push-регистрация нативного клиента) ---
+
+// RegisterDevice — upsert Expo push-токена на пользователя (device_tokens без RLS).
+func (s *Service) RegisterDevice(ctx context.Context, userID uuid.UUID, token, platform string) error {
+	id, _ := uuid.NewV7()
+	_, err := s.db.NewInsert().Model(&models.DeviceToken{
+		ID: id, UserID: userID, Token: token, Platform: platform, CreatedAt: time.Now().UTC(), LastSeen: time.Now().UTC(),
+	}).On("CONFLICT (token) DO UPDATE").
+		Set("user_id = EXCLUDED.user_id").Set("platform = EXCLUDED.platform").Set("last_seen = now()").
+		Exec(ctx)
+	return err
+}
+
+// UnregisterDevice — снять токен (logout).
+func (s *Service) UnregisterDevice(ctx context.Context, userID uuid.UUID, token string) error {
+	_, err := s.db.NewDelete().Model((*models.DeviceToken)(nil)).Where("token = ? AND user_id = ?", token, userID).Exec(ctx)
+	return err
+}

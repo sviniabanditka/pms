@@ -736,3 +736,11 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] `[ mark all read ]` → все прочитаны, счётчик 0.
 - [ ] Pull-to-refresh обновляет; пустой → `// inbox zero`; ошибка → [ retry ].
 - [ ] Backend: `GET /me/workspaces/{id}/notifications` — только участник (403 иначе); чужие уведомления не видны.
+
+## 95. Mobile M4 — push
+- [ ] (устройство + EAS projectId) При входе запрашивается разрешение на уведомления; токен регистрируется (`POST /me/devices` → 204).
+- [ ] Действие, создающее уведомление (assign/comment из веба на юзера) → в течение ~15с приходит push на телефон.
+- [ ] Тап по пушу → открывается деталь соответствующего issue (даже если приложение было закрыто — issue догружается по id).
+- [ ] Sign out → токен снимается (`DELETE /me/devices/{token}`), пуши больше не приходят.
+- [ ] Web/симулятор: `registerForPush` тихо no-op (пуш не поддерживается) — приложение работает без ошибок.
+- [ ] Backend: PushDispatchWorker помечает `pushed_at`; мёртвые токены (DeviceNotRegistered) удаляются.

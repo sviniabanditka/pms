@@ -7,6 +7,7 @@ import { setAuthed, useAuthed } from '~/lib/authState'
 import { setOnUnauthorized } from '~/lib/connect'
 import { getActiveWs, loadActiveWs } from '~/lib/workspace'
 import { loadMeta } from '~/lib/meta'
+import { onPushTap, registerForPush } from '~/lib/push'
 
 export default function RootLayout() {
   const [booting, setBooting] = useState(true)
@@ -24,6 +25,7 @@ export default function RootLayout() {
         await loadActiveWs(await myWorkspaces())
         const ws = getActiveWs()
         if (ws) await loadMeta(ws)
+        registerForPush() // best-effort, реальное устройство
       }
       setAuthed(!!u)
       setBooting(false)
@@ -37,6 +39,9 @@ export default function RootLayout() {
     if (!authed && !onLogin) router.replace('/login')
     else if (authed && onLogin) router.replace('/')
   }, [booting, authed, segments])
+
+  // тап по пушу → deep-link на issue
+  useEffect(() => onPushTap((path) => router.push(path as any)), [])
 
   if (booting) {
     return (
