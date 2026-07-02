@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"time"
@@ -98,6 +99,28 @@ func Load() Config {
 		EmailSweepEvery:    envDuration("EMAIL_SWEEP_EVERY", 2*time.Minute),
 		SnapshotEvery:      envDuration("SNAPSHOT_EVERY", 24*time.Hour),
 	}
+}
+
+// ValidateProd — fail-fast против «dev-дефолты уехали в прод». Прод-сигнал =
+// заданный ALLOWED_ORIGINS; в dev (пусто) ничего не проверяем.
+func (c Config) ValidateProd() error {
+	if len(c.AllowedOrigins) == 0 {
+		return nil
+	}
+	var problems []string
+	if !c.SecureCookies {
+		problems = append(problems, "SECURE_COOKIES must be true in prod")
+	}
+	if c.LiveKitSecret == "devsecretdevsecretdevsecretdevsecret32" || c.LiveKitAPIKey == "devkey" {
+		problems = append(problems, "LIVEKIT_API_KEY/LIVEKIT_SECRET are dev defaults")
+	}
+	if c.S3AccessKey == "GK00112233445566778899aabb" {
+		problems = append(problems, "S3_ACCESS_KEY/S3_SECRET are dev defaults")
+	}
+	if len(problems) > 0 {
+		return errors.New("prod config: " + strings.Join(problems, "; "))
+	}
+	return nil
 }
 
 func env(k, def string) string {

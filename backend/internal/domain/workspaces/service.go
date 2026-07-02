@@ -83,12 +83,13 @@ func requireRole(ctx context.Context, tx bun.Tx, wsID, actor uuid.UUID, roles ..
 
 // RoleOf возвращает активную роль actor в воркспейсе; ErrForbidden, если не участник.
 // Используется membership-интерсептором (один гейт на все unary-RPC с workspace_id).
+// Идёт по jobs-коннекту (BYPASSRLS) БЕЗ транзакции: раньше открывался полный
+// WithWorkspace-tx ради одного SELECT — по 2 tx на каждый RPC. RLS тут не нужна —
+// запрос сам жёстко ключуется обоими id.
 func (s *Service) RoleOf(ctx context.Context, wsID, actor uuid.UUID) (string, error) {
 	var role string
-	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
-		return tx.NewSelect().Model((*models.WorkspaceMember)(nil)).Column("role").
-			Where("workspace_id = ?", wsID).Where("user_id = ?", actor).Where("status = 'active'").Scan(ctx, &role)
-	})
+	err := s.jobs.NewSelect().Model((*models.WorkspaceMember)(nil)).Column("role").
+		Where("workspace_id = ?", wsID).Where("user_id = ?", actor).Where("status = 'active'").Scan(ctx, &role)
 	if err != nil {
 		return "", ErrForbidden
 	}

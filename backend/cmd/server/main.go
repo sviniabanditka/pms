@@ -49,6 +49,10 @@ import (
 
 func main() {
 	cfg := config.Load()
+	if err := cfg.ValidateProd(); err != nil {
+		slog.Error("config validation failed", "err", err)
+		os.Exit(1)
+	}
 
 	bdb, err := db.OpenBun(cfg.DatabaseURL)
 	if err != nil {

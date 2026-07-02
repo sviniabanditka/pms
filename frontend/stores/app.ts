@@ -176,6 +176,53 @@ export const useAppStore = defineStore('app', {
       }
       return m
     },
+    issuesByMilestone(state): Map<string, any[]> {
+      const m = new Map<string, any[]>()
+      for (const i of Object.values(state.issues) as any[]) {
+        if (i.archivedAt || !i.milestoneId) continue
+        let a = m.get(i.milestoneId); if (!a) { a = []; m.set(i.milestoneId, a) }
+        a.push(i)
+      }
+      return m
+    },
+    issuesByParent(state): Map<string, any[]> {
+      const m = new Map<string, any[]>()
+      for (const i of Object.values(state.issues) as any[]) {
+        if (i.archivedAt || !i.parentId) continue
+        let a = m.get(i.parentId); if (!a) { a = []; m.set(i.parentId, a) }
+        a.push(i)
+      }
+      return m
+    },
+    cfValuesByIssue(state): Map<string, Map<string, any>> {
+      const m = new Map<string, Map<string, any>>()
+      for (const v of Object.values(state.customFieldValues) as any[]) {
+        let f = m.get(v.issueId); if (!f) { f = new Map(); m.set(v.issueId, f) }
+        f.set(v.fieldId, v.value)
+      }
+      return m
+    },
+    relationsByIssue(state): Map<string, { id: string; label: string; otherId: string }[]> {
+      const m = new Map<string, { id: string; label: string; otherId: string }[]>()
+      const add = (k: string, e: { id: string; label: string; otherId: string }) => {
+        let a = m.get(k); if (!a) { a = []; m.set(k, a) }
+        a.push(e)
+      }
+      for (const r of Object.values(state.relations) as any[]) {
+        add(r.sourceId, { id: r.id, label: REL_FWD[r.type] || r.type, otherId: r.targetId })
+        add(r.targetId, { id: r.id, label: REL_INV[r.type] || r.type, otherId: r.sourceId })
+      }
+      return m
+    },
+    cyclesByTeam(state): Map<string, any[]> {
+      const m = new Map<string, any[]>()
+      for (const c of Object.values(state.cycles) as any[]) {
+        let a = m.get(c.teamId); if (!a) { a = []; m.set(c.teamId, a) }
+        a.push(c)
+      }
+      for (const a of m.values()) a.sort((x, y) => String(x.startsOn).localeCompare(String(y.startsOn)))
+      return m
+    },
     // активные issues в статусе, отфильтрованные Filter AST, по board_position
     issuesFor(): (teamId: string, stateId: string) => any[] {
       return (teamId: string, stateId: string) => {
@@ -278,9 +325,9 @@ export const useAppStore = defineStore('app', {
     // поля команды: workspace-scope (teamId пуст) + team-scope, не архивные
     fieldsForTeam: (s) => (teamId: string) =>
       Object.values(s.customFields).filter((f) => !f.archivedAt && (!f.teamId || f.teamId === teamId)),
-    cfValue: (s) => (issueId: string, fieldId: string) => {
-      const v = Object.values(s.customFieldValues).find((x) => x.issueId === issueId && x.fieldId === fieldId)
-      return v ? v.value : undefined
+    cfValue(): (issueId: string, fieldId: string) => any {
+      const idx = this.cfValuesByIssue
+      return (issueId, fieldId) => idx.get(issueId)?.get(fieldId)
     },
     workspaceDashboards: (s) => Object.values(s.dashboards).filter((d) => !d.deletedAt),
     widgetsOf: (s) => (dashboardId: string) =>
@@ -360,17 +407,22 @@ export const useAppStore = defineStore('app', {
     pendingInvites: (s) => Object.values(s.invitations).filter((i) => !i.acceptedAt),
     issueActivity: (s) => (issueId: string) => s.activity[issueId] || [],
     teamMilestones: (s) => (teamId: string) => Object.values(s.milestones).filter((m) => m.teamId === teamId && !m.deletedAt).sort((a, b) => String(a.targetDate || '9999').localeCompare(String(b.targetDate || '9999'))),
-    milestoneProgress: (s) => (msId: string) => {
-      const iss = Object.values(s.issues).filter((i) => i.milestoneId === msId && !i.archivedAt)
-      const done = iss.filter((i) => s.states[i.stateId]?.category === 'completed').length
-      return { done, total: iss.length }
+    milestoneProgress(state): (msId: string) => { done: number; total: number } {
+      const idx = this.issuesByMilestone
+      return (msId) => {
+        const iss = idx.get(msId) || []
+        const done = iss.filter((i) => state.states[i.stateId]?.category === 'completed').length
+        return { done, total: iss.length }
+      }
     },
-    milestoneIssues: (s) => (msId: string) =>
-      Object.values(s.issues).filter((i) => i.milestoneId === msId && !i.archivedAt)
-        .sort((a, b) => String(a.boardPosition || '').localeCompare(String(b.boardPosition || ''))),
-    labelsForIssue: (s) => (issueId: string) => {
-      const ids = Object.values(s.issueLabels).filter((il) => il.issueId === issueId).map((il) => il.labelId)
-      return ids.map((id) => s.labels[id]).filter(Boolean)
+    milestoneIssues(): (msId: string) => any[] {
+      const idx = this.issuesByMilestone
+      return (msId) => [...(idx.get(msId) || [])]
+        .sort((a, b) => String(a.boardPosition || '').localeCompare(String(b.boardPosition || '')))
+    },
+    labelsForIssue(state): (issueId: string) => any[] {
+      const idx = this.labelsByIssue
+      return (issueId) => [...(idx.get(issueId) || [])].map((id) => state.labels[id]).filter(Boolean)
     },
     // --- Meetings ---
     scheduledMeetings: (s) => Object.values(s.meetings).filter((m) => !m.deletedAt && m.status === 'scheduled')
@@ -456,34 +508,33 @@ export const useAppStore = defineStore('app', {
       walk('_root', 0)
       return out
     },
-    // циклы команды + производный статус по датам (ISO)
-    teamCycles: (s) => (teamId: string) => {
+    // циклы команды + производный статус по датам (ISO); список из индекса cyclesByTeam
+    teamCycles(): (teamId: string) => any[] {
+      const idx = this.cyclesByTeam
       const today = new Date().toISOString().slice(0, 10)
-      return Object.values(s.cycles)
-        .filter((c) => c.teamId === teamId)
-        .map((c) => ({
-          ...c,
-          status: today < String(c.startsOn).slice(0, 10) ? 'upcoming' : today > String(c.endsOn).slice(0, 10) ? 'completed' : 'active',
-        }))
-        .sort((a, b) => String(a.startsOn).localeCompare(String(b.startsOn)))
+      return (teamId) => (idx.get(teamId) || []).map((c) => ({
+        ...c,
+        status: today < String(c.startsOn).slice(0, 10) ? 'upcoming' : today > String(c.endsOn).slice(0, 10) ? 'completed' : 'active',
+      }))
     },
     // дочерние issue
-    subIssuesOf: (s) => (parentId: string) =>
-      Object.values(s.issues).filter((i) => i.parentId === parentId && !i.archivedAt),
-    // прогресс по детям: completed = есть completedAt
-    childProgress: (s) => (parentId: string) => {
-      const kids = Object.values(s.issues).filter((i) => i.parentId === parentId && !i.archivedAt)
-      const done = kids.filter((k) => s.states[k.stateId]?.category === 'completed').length
-      return { done, total: kids.length }
+    subIssuesOf(): (parentId: string) => any[] {
+      const idx = this.issuesByParent
+      return (parentId) => idx.get(parentId) || []
+    },
+    // прогресс по детям: completed по категории статуса
+    childProgress(state): (parentId: string) => { done: number; total: number } {
+      const idx = this.issuesByParent
+      return (parentId) => {
+        const kids = idx.get(parentId) || []
+        const done = kids.filter((k) => state.states[k.stateId]?.category === 'completed').length
+        return { done, total: kids.length }
+      }
     },
     // связи issue: прямые (source) + зеркальные (target), с человекочитаемой меткой
-    relationsForIssue: (s) => (issueId: string) => {
-      const out: { id: string; label: string; otherId: string }[] = []
-      for (const r of Object.values(s.relations)) {
-        if (r.sourceId === issueId) out.push({ id: r.id, label: REL_FWD[r.type] || r.type, otherId: r.targetId })
-        else if (r.targetId === issueId) out.push({ id: r.id, label: REL_INV[r.type] || r.type, otherId: r.sourceId })
-      }
-      return out
+    relationsForIssue(): (issueId: string) => { id: string; label: string; otherId: string }[] {
+      const idx = this.relationsByIssue
+      return (issueId) => idx.get(issueId) || []
     },
   },
 
@@ -1423,6 +1474,17 @@ export const useAppStore = defineStore('app', {
       this.views[res.entityId] = {
         id: res.entityId, name, teamId, layout: this.layout, filter: this.activeFilter || {},
       }
+    },
+    async renameView(id: string, name: string) {
+      const { views } = useClients()
+      const v = this.views[id]
+      if (v) v.name = name
+      await views.updateView({ workspaceId: this.activeWorkspaceId, id, name })
+    },
+    async deleteView(id: string) {
+      const { views } = useClients()
+      delete this.views[id]
+      await views.deleteView({ workspaceId: this.activeWorkspaceId, id })
     },
     applyView(viewId: string): Entity | undefined {
       const v = this.views[viewId]

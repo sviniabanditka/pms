@@ -463,6 +463,13 @@ function openView(id: string) {
   if (v) selectedTeamId.value = v.teamId
   teamSection.value = ''; selectedDocId.value = ''; selectedCycleId.value = ''; personalView.value = ''
 }
+async function renameView(v: any) {
+  const name = prompt('View name', v.name)
+  if (name && name !== v.name) await wrap(() => store.renameView(v.id, name))
+}
+async function deleteView(v: any) {
+  if (confirm(`Delete view "${v.name}"?`)) await wrap(() => store.deleteView(v.id))
+}
 
 async function addIssue(stateId: string) {
   const title = (newIssue[stateId] || '').trim()
@@ -572,7 +579,6 @@ async function logout() {
 
 // --- Маршрутизация: путь ↔ состояние (шаренные ссылки) ---
 const route = useRoute()
-const router = useRouter()
 let routeSyncing = false
 let urlSyncing = false
 
@@ -817,9 +823,11 @@ if (import.meta.client) { const v = localStorage.getItem('calView'); if (v === '
 watch(calView, (v) => { if (import.meta.client) localStorage.setItem('calView', v) })
 const HOUR_PX = 44 // высота часа в тайм-сетке (week/day)
 const HOURS = Array.from({ length: 24 }, (_, h) => h)
-// текущее время для «now»-линии (тикает раз в минуту; ponytail: без cleanup — компонент живёт всю сессию)
+// текущее время для «now»-линии (тикает раз в минуту)
 const nowTick = ref(0)
-onMounted(() => { setInterval(() => nowTick.value++, 60000) })
+let nowTimer: any = null
+onMounted(() => { nowTimer = setInterval(() => nowTick.value++, 60000) })
+onBeforeUnmount(() => clearInterval(nowTimer))
 const nowMin = computed(() => { void nowTick.value; const d = new Date(); return d.getHours() * 60 + d.getMinutes() })
 // какие календари показывать (userId). По умолчанию — только мой; чужие включаешь тогглом.
 const calUsers = ref<string[]>([])
@@ -1731,12 +1739,17 @@ function runResult(r: any) {
   else if (r.type === 'doc') { selectedTeamId.value = r.teamId; openDoc(r.id) }
   else if (r.type === 'channel' || r.type === 'message') { openChannel(r.id) }
 }
+function onGlobalKeydown(e: KeyboardEvent) {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette() }
+  else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') { e.preventDefault(); openCreate('issue') }
+  else if (e.key === 'Escape') { paletteOpen.value = false; createOpen.value = false }
+}
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onGlobalKeydown)
+  window.removeEventListener('popstate', onPop)
+})
 onMounted(() => {
-  window.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette() }
-    else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') { e.preventDefault(); openCreate('issue') }
-    else if (e.key === 'Escape') { paletteOpen.value = false; createOpen.value = false }
-  })
+  window.addEventListener('keydown', onGlobalKeydown)
   window.addEventListener('popstate', onPop)
   // appearance + notif prefs
   const d = localStorage.getItem('pms-density'); if (d) applyDensity(d)
@@ -2675,6 +2688,10 @@ useHead({ title: () => pageTitle.value })
               @click="openView(v.id)">
               <UIcon name="i-heroicons-star" class="text-tertiary" />
               <span class="flex-1 truncate">{{ v.name }}</span>
+              <button class="hidden text-xs text-tertiary hover:text-secondary group-hover:inline" title="rename"
+                @click.stop="renameView(v)">✎</button>
+              <button class="hidden text-xs text-tertiary hover:text-red-400 group-hover:inline" title="delete"
+                @click.stop="deleteView(v)">×</button>
               <UIcon name="i-heroicons-chevron-right" class="text-tertiary" />
             </div>
             <div v-if="!store.teamViews(selectedTeamId).length" class="bg-elevated px-4 py-8 text-center text-sm text-tertiary">No views — save one from a filtered Issues list</div>
