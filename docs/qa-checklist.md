@@ -801,3 +801,7 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Guest может MarkRead/MarkAllRead/MarkChannelRead/LeaveTeam (self-scoped), но не прочие мутации.
 - [ ] Невалидный uuid в опциональном поле (assignee_id и т.п.) → InvalidArgument, а не тихий сброс значения.
 - [ ] Internal-ошибки не светят pg/bun-детали ни в connect (`internal error`), ни в REST; настоящая ошибка в логах.
+- [ ] WS-реконнект (сон ноута/рестарт сервера) → resync по курсору (SyncService.Changes → catchUp изменённых типов); стейл-доска исчезает без ручного релоада. Фейл resync → полный bootstrap.
+- [ ] Дельты, прилетевшие во время bootstrap-стрима, догоняются сразу после (subscribe-first + flush pendingTypes).
+- [ ] Быстрое переключение воркспейсов: чанки устаревшего bootstrap-стрима отбрасываются (epoch), состояние не «мешается» между тенантами.
+- [ ] Ошибка любого экшена → красный toast (не только инлайн err в 3 местах); точечные рефетчи (каналы/митинги/циклы/тайм/вложения) идут через catchUp нужных типов, не полный re-bootstrap.

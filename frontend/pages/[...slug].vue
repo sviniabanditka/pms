@@ -539,9 +539,17 @@ onMounted(async () => {
   applyRoute(route.path) // deep-link при загрузке
 })
 
-async function wrap(fn: () => Promise<any>) {
+const toast = useToast()
+// wrap: единая обёртка экшенов. Ошибка — в err (для инлайн-мест) И в toast
+// (видно из любого экрана; раньше err рендерился в 3 местах из ~15 — фейлы были немыми).
+// types — какие sync-чанки перечитать при фейле, чтобы откатить optimistic-стейт до серверной правды.
+async function wrap(fn: () => Promise<any>, types?: string[]) {
   err.value = ''
-  try { await fn() } catch (e: any) { err.value = e?.message || String(e) }
+  try { await fn() } catch (e: any) {
+    err.value = e?.message || String(e)
+    toast.add({ title: 'action failed', description: err.value, color: 'red' })
+    if (types?.length && store.activeWorkspaceId) store.catchUp(store.activeWorkspaceId, types).catch(() => {})
+  }
 }
 const showCreate = ref(false)
 const wsMenu = ref(false)

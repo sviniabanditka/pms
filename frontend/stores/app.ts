@@ -60,6 +60,7 @@ const IDB_KEY = 'pms-store'
 let ws: { close: () => void } | null = null
 let refreshTimer: any = null
 const pendingTypes = new Set<string>() // entity_type'ы, изменённые WS-дельтами в debounce-окне
+let bootstrapEpoch = 0 // конкурентные bootstrap'ы: чанки устаревшего стрима отбрасываются
 
 export const useAppStore = defineStore('app', {
   state: () => ({
@@ -397,8 +398,8 @@ export const useAppStore = defineStore('app', {
     calendarEventsList: (s) => Object.values(s.calendarEvents).filter((e) => !e.deletedAt),
     // --- Automations ---
     automationsList: (s) => Object.values(s.automations).filter((a) => !a.deletedAt),
-    templatesList: (s) => Object.values(s.issueTemplates).filter((t) => !t.deletedAt).sort((a, b) => String(a.name).localeCompare(String(b.name)))
-      .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))),
+    templatesList: (s) => Object.values(s.issueTemplates).filter((t) => !t.deletedAt)
+      .sort((a, b) => String(a.name).localeCompare(String(b.name))),
     // --- Time tracking ---
     timeEntriesForIssue: (s) => (issueId: string) => Object.values(s.timeEntries)
       .filter((e) => !e.deletedAt && e.issueId === issueId)
@@ -514,6 +515,7 @@ export const useAppStore = defineStore('app', {
     },
 
     async bootstrap(wsId: string) {
+      const epoch = ++bootstrapEpoch // конкурентный bootstrap (switchWorkspace + refetch) не должен затирать более поздний
       this.syncing = true
       try {
         // смена воркспейса = перезагрузка среза: чистим бакеты прошлого тенанта.
@@ -526,18 +528,44 @@ export const useAppStore = defineStore('app', {
           this.labels = {}; this.issueLabels = {}; this.invitations = {}; this.milestones = {}; this.activity = {}; this.labelFilter = []; this.channelUnread = {}; this.cycleSnapshots = {}
           this.activeFilter = null
         }
+        // подписка ДО стрима: мутации, случившиеся во время снапшота, копятся
+        // в pendingTypes и догоняются catchUp'ом сразу после (см. flush ниже).
+        this.subscribe(wsId)
         const { sync } = useClients()
         for await (const chunk of sync.bootstrap({ workspaceId: wsId })) {
+          if (epoch !== bootstrapEpoch) return // стартовал более новый bootstrap — наши чанки устарели
           const json = new TextDecoder().decode(chunk.entities) || '[]'
           this.applyChunk(chunk.entityType, JSON.parse(json))
           this.cursor = Number(chunk.cursor)
         }
+        if (epoch !== bootstrapEpoch) return
         this.activeWorkspaceId = wsId
         this.loaded = true
-        this.subscribe(wsId)
         this.persist()
+        // дельты, прилетевшие во время стрима (classic snapshot+journal)
+        if (pendingTypes.size) {
+          const types = [...pendingTypes]
+          pendingTypes.clear()
+          await this.catchUp(wsId, types)
+        }
       } finally {
-        this.syncing = false
+        if (epoch === bootstrapEpoch) this.syncing = false
+      }
+    },
+
+    // resync — догон после WS-реконнекта: за разрыв дельты потеряны, спрашиваем
+    // change_log по курсору и рефетчим только изменившиеся типы. Фолбэк — полный bootstrap.
+    async resync(wsId: string) {
+      if (this.activeWorkspaceId !== wsId) return
+      try {
+        const { sync } = useClients()
+        const res = await sync.changes({ workspaceId: wsId, sinceCursor: BigInt(this.cursor || 0) })
+        const types = new Set<string>()
+        for (const d of res.deltas || []) if (d.entityType) types.add(d.entityType)
+        if (types.size) await this.catchUp(wsId, [...types])
+        if (Number(res.cursor)) { this.cursor = Number(res.cursor); this.persist() }
+      } catch {
+        await this.bootstrap(wsId)
       }
     },
 
@@ -685,7 +713,7 @@ export const useAppStore = defineStore('app', {
     async moveTeam(id: string, newParentId: string) {
       const { teams } = useClients()
       await teams.moveTeam({ workspaceId: this.activeWorkspaceId, id, newParentId })
-      await this.bootstrap(this.activeWorkspaceId) // path-пересчёт у потомков
+      await this.catchUp(this.activeWorkspaceId, ['team']) // path-пересчёт у потомков
     },
     async deleteTeam(id: string) {
       const { teams } = useClients()
@@ -860,7 +888,7 @@ export const useAppStore = defineStore('app', {
           filename: up.filename, contentType: up.contentType, size: BigInt(up.size), s3Key: up.key,
         })
       }
-      if (ups.length) await this.bootstrap(this.activeWorkspaceId)
+      if (ups.length) await this.catchUp(this.activeWorkspaceId, ['attachment'])
       if (parentId) await this.loadThread(parentId)
       await this.refetchActive()
     },
@@ -1026,7 +1054,7 @@ export const useAppStore = defineStore('app', {
           filename: up.filename, contentType: up.contentType, size: BigInt(up.size), s3Key: up.key,
         })
       }
-      if (ups.length) await this.bootstrap(this.activeWorkspaceId)
+      if (ups.length) await this.catchUp(this.activeWorkspaceId, ['attachment'])
       await this.loadComments(issueId)
     },
     async editComment(id: string, issueId: string, body: string) {
@@ -1052,24 +1080,24 @@ export const useAppStore = defineStore('app', {
       const { chats } = useClients()
       const res = await chats.createChannel({ workspaceId: this.activeWorkspaceId, name, private: isPrivate })
       this.channels[res.entityId] = { id: res.entityId, kind: 'channel', name, private: isPrivate }
-      await this.bootstrap(this.activeWorkspaceId) // подтянуть channel_member (себя)
+      await this.catchUp(this.activeWorkspaceId, ['channel', 'channel_member']) // подтянуть channel_member (себя)
       return res.entityId
     },
     async addChannelMember(channelId: string, userId: string) {
       const { chats } = useClients()
       await chats.addChannelMember({ workspaceId: this.activeWorkspaceId, channelId, userId })
-      await this.bootstrap(this.activeWorkspaceId)
+      await this.catchUp(this.activeWorkspaceId, ['channel', 'channel_member'])
     },
     async removeChannelMember(channelId: string, userId: string) {
       const { chats } = useClients()
       await chats.removeChannelMember({ workspaceId: this.activeWorkspaceId, channelId, userId })
-      await this.bootstrap(this.activeWorkspaceId)
+      await this.catchUp(this.activeWorkspaceId, ['channel', 'channel_member'])
     },
     async leaveChannel(channelId: string) {
       const { chats } = useClients()
       await chats.removeChannelMember({ workspaceId: this.activeWorkspaceId, channelId, userId: this.currentUserId })
       if (this.activeChannelId === channelId) this.activeChannelId = ''
-      await this.bootstrap(this.activeWorkspaceId)
+      await this.catchUp(this.activeWorkspaceId, ['channel', 'channel_member'])
     },
     async archiveChannel(channelId: string) {
       const { chats } = useClients()
@@ -1096,7 +1124,7 @@ export const useAppStore = defineStore('app', {
       const c = this.cycles[id]
       await cycles.updateCycle({ workspaceId: this.activeWorkspaceId, id, baseVersion: BigInt(c?.version ?? 0), ...patch })
       if (c) Object.assign(c, patch)
-      await this.bootstrap(this.activeWorkspaceId)
+      await this.catchUp(this.activeWorkspaceId, ['cycle'])
     },
     async setIssueCycle(id: string, cycleId: string) {
       const { issues } = useClients()
@@ -1199,13 +1227,13 @@ export const useAppStore = defineStore('app', {
     async createMeeting(title: string, scheduledAt: string, endsAt: string, participantIds: string[], channelId = '') {
       const { meetings } = useClients()
       const res = await meetings.createMeeting({ workspaceId: this.activeWorkspaceId, title, scheduledAt, endsAt, participantIds, channelId })
-      await this.bootstrap(this.activeWorkspaceId)
+      await this.catchUp(this.activeWorkspaceId, ['meeting', 'meeting_participant'])
       return res.entityId
     },
     async startHuddle(channelId: string) {
       const { meetings } = useClients()
       const res = await meetings.startHuddle({ workspaceId: this.activeWorkspaceId, channelId })
-      await this.bootstrap(this.activeWorkspaceId)
+      await this.catchUp(this.activeWorkspaceId, ['meeting', 'meeting_participant'])
       return res.entityId
     },
     async joinMeeting(meetingId: string): Promise<{ url: string; token: string }> {
@@ -1244,7 +1272,7 @@ export const useAppStore = defineStore('app', {
     async stopTimer() {
       const { time } = useClients()
       await time.stopTimer({ workspaceId: this.activeWorkspaceId })
-      await this.bootstrap(this.activeWorkspaceId) // ended_at проставлен на нескольких — перечитать
+      await this.catchUp(this.activeWorkspaceId, ['time_entry']) // ended_at проставлен на нескольких — перечитать
     },
     async addTimeEntry(issueId: string, description: string, startedAt: string, endedAt: string) {
       const { time } = useClients()
@@ -1299,7 +1327,7 @@ export const useAppStore = defineStore('app', {
     async spawnTemplate(id: string): Promise<string> {
       const { templates } = useClients()
       const res = await templates.spawnTemplate({ workspaceId: this.activeWorkspaceId, id })
-      await this.bootstrap(this.activeWorkspaceId) // подтянуть новый issue
+      await this.catchUp(this.activeWorkspaceId, ['issue', 'issue_template']) // подтянуть новый issue
       return res.issueId
     },
     // iCal-фид: вернуть полный URL подписки (создаёт токен при первом вызове).
@@ -1319,7 +1347,7 @@ export const useAppStore = defineStore('app', {
         workspaceId: this.activeWorkspaceId, entityType, entityId,
         filename: up.filename, contentType: up.contentType, size: BigInt(up.size), s3Key: up.key,
       })
-      await this.bootstrap(this.activeWorkspaceId)
+      await this.catchUp(this.activeWorkspaceId, ['attachment'])
     },
     async deleteAttachment(id: string) {
       const { attachments } = useClients()
@@ -1430,11 +1458,14 @@ export const useAppStore = defineStore('app', {
         if (type) pendingTypes.add(type)
         clearTimeout(refreshTimer)
         refreshTimer = setTimeout(() => {
+          // bootstrap этого ws ещё идёт (subscribe-first) → не сбрасываем накопленное,
+          // ждём: bootstrap сам сфлашит pendingTypes по завершении
+          if (this.activeWorkspaceId !== wsId) return
           const types = [...pendingTypes]
           pendingTypes.clear()
           this.catchUp(wsId, types)
         }, 150)
-      })
+      }, () => this.resync(wsId)) // WS-реконнект: дельты за разрыв потеряны → догон по курсору
     },
 
     // catchUp подтягивает текущее состояние только указанных entity_type (инкрементальный синк
