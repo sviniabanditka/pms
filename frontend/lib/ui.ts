@@ -16,3 +16,16 @@ export function notifTime(at: any) {
   if (isNaN(+d)) return s.slice(5, 10)
   return d.toLocaleDateString('en', { month: 'short', day: 'numeric' })
 }
+
+// --- Общие дата/время-хелперы (страница + Calendar/Reports секции) ---
+export const fmtD = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+export const parseD = (ds: string) => new Date(ds + 'T00:00:00')
+export const d10 = (s: string) => (s ? String(s).slice(0, 10) : '') // ISO → YYYY-MM-DD для input[type=date]
+// ISO (UTC) → локальные дата/время/минуты. События хранятся в UTC, показываем в таймзоне юзера.
+export const localDate = (iso: string) => fmtD(new Date(iso))
+export const localHM = (iso: string) => { const d = new Date(iso); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` }
+export const localMin = (iso: string) => { const d = new Date(iso); return d.getHours() * 60 + d.getMinutes() }
+// минуты → "1h 15m" / "45m"
+export const fmtMin = (m: number) => m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`
+export const CAL_PALETTE = ['#5e6ad2', '#3fb950', '#d29922', '#f85149', '#a371f7', '#1f9cf0', '#db61a2', '#3bb2a8']
+export function colorForUser(id: string) { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0; return CAL_PALETTE[h % CAL_PALETTE.length] }
