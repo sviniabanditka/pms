@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -178,7 +179,9 @@ func (s *Service) RunForIssue(ctx context.Context, wsID, issueID uuid.UUID, even
 		return nil
 	})
 	if err != nil {
-		return // автоматизации best-effort: не валим основную мутацию
+		// автоматизации best-effort: не валим основную мутацию, но фейл виден в логах
+		slog.Warn("automations: run failed", "ws", wsID, "issue", issueID, "event", event, "err", err)
+		return
 	}
 	for id := range touched {
 		s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "issue", EntityID: id.String(), Op: "update"})

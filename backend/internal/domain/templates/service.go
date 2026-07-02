@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -262,14 +263,27 @@ func (s *Service) SpawnDue(ctx context.Context) (int, error) {
 	spawned := 0
 	for i := range due {
 		t := &due[i]
-		if _, err := s.spawn(ctx, t.CreatedBy, t); err != nil {
-			continue // best-effort: не блокируем остальные (напр. создатель потерял доступ)
-		}
+		// claim-first: сдвигаем next_run_at ДО спавна (оптимистично по прежнему значению).
+		// Фейл спавна → occurrence пропущен, ретрай на следующей каденции (не hot-loop);
+		// фейл после спавна не задвоит issue; конкурентный воркер не возьмёт тот же claim.
 		next := advance(now, t.Recurrence)
-		if _, err := s.db.NewUpdate().Model((*models.IssueTemplate)(nil)).
-			Set("last_spawned_at = ?", now).Set("next_run_at = ?", next).Set("updated_at = ?", now).
-			Where("id = ?", t.ID).Exec(ctx); err != nil {
+		res, err := s.db.NewUpdate().Model((*models.IssueTemplate)(nil)).
+			Set("next_run_at = ?", next).Set("updated_at = ?", now).
+			Where("id = ?", t.ID).Where("next_run_at = ?", t.NextRunAt).Exec(ctx)
+		if err != nil {
+			slog.Warn("recurring: claim failed", "template", t.ID, "err", err)
 			continue
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			continue // кто-то уже забрал
+		}
+		if _, err := s.spawn(ctx, t.CreatedBy, t); err != nil {
+			slog.Warn("recurring: spawn failed", "template", t.ID, "ws", t.WorkspaceID, "err", err)
+			continue
+		}
+		if _, err := s.db.NewUpdate().Model((*models.IssueTemplate)(nil)).
+			Set("last_spawned_at = ?", now).Where("id = ?", t.ID).Exec(ctx); err != nil {
+			slog.Warn("recurring: last_spawned_at update failed", "template", t.ID, "err", err)
 		}
 		s.publish(ctx, t.WorkspaceID, t.ID, "update")
 		spawned++

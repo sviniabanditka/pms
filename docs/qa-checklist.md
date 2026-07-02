@@ -796,3 +796,8 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Suspended (`status<>'active'`) член: WS-подписка и presigned-скачивания отклоняются.
 - [ ] Дельты по своим типам: правка labels/CF/relations на issue, членов канала, участников митинга — у второго клиента обновляется без релоада (refetch чанков `issue_label`/`custom_field_value`/`issue_relation`/`channel_member`/`meeting_participant`).
 - [ ] MarkChannelRead на устройстве A → бейдж канала гаснет на устройстве B (дельта `channel_unread`).
+- [ ] Issue из шаблона (ручной спавн и recurring-воркер) триггерит automations-правила как обычное создание.
+- [ ] Recurring: фейл спавна НЕ приводит к hot-retry (next_run_at уже промотан claim-first'ом) и не задваивает issue; ошибки видны в логах (`recurring:`).
+- [ ] Guest может MarkRead/MarkAllRead/MarkChannelRead/LeaveTeam (self-scoped), но не прочие мутации.
+- [ ] Невалидный uuid в опциональном поле (assignee_id и т.п.) → InvalidArgument, а не тихий сброс значения.
+- [ ] Internal-ошибки не светят pg/bun-детали ни в connect (`internal error`), ни в REST; настоящая ошибка в логах.

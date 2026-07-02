@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -674,8 +675,14 @@ func (h *issueHandler) CreateIssue(ctx context.Context, req *connect.Request[pms
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	assignee := optUUID(req.Msg.AssigneeId)
-	parent := optUUID(req.Msg.ParentId)
+	assignee, err := optUUID(req.Msg.AssigneeId)
+	if err != nil {
+		return nil, err
+	}
+	parent, err := optUUID(req.Msg.ParentId)
+	if err != nil {
+		return nil, err
+	}
 	if _, err := h.svc.CreateIssue(ctx, actor, wsID, teamID, id, req.Msg.Title, req.Msg.StateId, int(req.Msg.Priority), assignee, parent); err != nil {
 		return nil, mapErr(err)
 	}
@@ -698,7 +705,11 @@ func (h *issueHandler) AssignIssue(ctx context.Context, req *connect.Request[pms
 	if err != nil {
 		return nil, err
 	}
-	if _, err := h.svc.AssignIssue(ctx, actor, wsID, id, optUUID(req.Msg.AssigneeId)); err != nil {
+	assignee, err := optUUID(req.Msg.AssigneeId)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := h.svc.AssignIssue(ctx, actor, wsID, id, assignee); err != nil {
 		return nil, mapErr(err)
 	}
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
@@ -732,7 +743,11 @@ func (h *issueHandler) UpdateIssue(ctx context.Context, req *connect.Request[pms
 		}
 	}
 	if req.Msg.AssigneeId != nil {
-		if _, err := h.svc.AssignIssue(ctx, actor, wsID, id, optUUID(req.Msg.GetAssigneeId())); err != nil {
+		assignee, err := optUUID(req.Msg.GetAssigneeId())
+		if err != nil {
+			return nil, err
+		}
+		if _, err := h.svc.AssignIssue(ctx, actor, wsID, id, assignee); err != nil {
 			return nil, mapErr(err)
 		}
 	}
@@ -797,7 +812,15 @@ func (h *issueHandler) ReorderIssue(ctx context.Context, req *connect.Request[pm
 	if err != nil {
 		return nil, err
 	}
-	if _, err := h.svc.ReorderIssue(ctx, actor, wsID, id, req.Msg.StateId, optUUID(req.Msg.BeforeId), optUUID(req.Msg.AfterId)); err != nil {
+	beforeID, err := optUUID(req.Msg.BeforeId)
+	if err != nil {
+		return nil, err
+	}
+	afterID, err := optUUID(req.Msg.AfterId)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := h.svc.ReorderIssue(ctx, actor, wsID, id, req.Msg.StateId, beforeID, afterID); err != nil {
 		return nil, mapErr(err)
 	}
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
@@ -808,7 +831,11 @@ func (h *issueHandler) SetCycle(ctx context.Context, req *connect.Request[pmsv1.
 	if err != nil {
 		return nil, err
 	}
-	if _, err := h.svc.SetCycle(ctx, actor, wsID, id, optUUID(req.Msg.CycleId)); err != nil {
+	cycleID, err := optUUID(req.Msg.CycleId)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := h.svc.SetCycle(ctx, actor, wsID, id, cycleID); err != nil {
 		return nil, mapErr(err)
 	}
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
@@ -858,9 +885,13 @@ func (h *viewHandler) CreateView(ctx context.Context, req *connect.Request[pmsv1
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	teamID, err := optUUID(req.Msg.TeamId)
+	if err != nil {
+		return nil, err
+	}
 	_, err = h.svc.CreateView(ctx, actor, wsID, views.CreateInput{
 		ID: id, Name: req.Msg.Name, DataSource: req.Msg.DataSource, ScopeKind: req.Msg.ScopeKind,
-		TeamID: optUUID(req.Msg.TeamId), Filter: req.Msg.Filter, Grouping: req.Msg.Grouping, Layout: req.Msg.Layout,
+		TeamID: teamID, Filter: req.Msg.Filter, Grouping: req.Msg.Grouping, Layout: req.Msg.Layout,
 	})
 	if err != nil {
 		return nil, mapErr(err)
@@ -974,7 +1005,11 @@ func (h *customFieldHandler) CreateCustomField(ctx context.Context, req *connect
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if _, err := h.svc.CreateCustomField(ctx, actor, wsID, id, optUUID(req.Msg.TeamId), req.Msg.Name, req.Msg.Type, req.Msg.Config); err != nil {
+	teamID, err := optUUID(req.Msg.TeamId)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := h.svc.CreateCustomField(ctx, actor, wsID, id, teamID, req.Msg.Name, req.Msg.Type, req.Msg.Config); err != nil {
 		return nil, mapErr(err)
 	}
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
@@ -1113,7 +1148,15 @@ func (h *docHandler) CreateDoc(ctx context.Context, req *connect.Request[pmsv1.C
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if _, err := h.svc.CreateDoc(ctx, actor, wsID, id, optUUID(req.Msg.TeamId), req.Msg.Title, optUUID(req.Msg.ParentId)); err != nil {
+	teamID, err := optUUID(req.Msg.TeamId)
+	if err != nil {
+		return nil, err
+	}
+	parentID, err := optUUID(req.Msg.ParentId)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := h.svc.CreateDoc(ctx, actor, wsID, id, teamID, req.Msg.Title, parentID); err != nil {
 		return nil, mapErr(err)
 	}
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
@@ -1236,7 +1279,11 @@ func (h *teamHandler) CreateLabel(ctx context.Context, req *connect.Request[pmsv
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if err := h.svc.CreateLabel(ctx, actor, wsID, id, optUUID(req.Msg.TeamId), req.Msg.Name, req.Msg.ColorToken); err != nil {
+	teamID, err := optUUID(req.Msg.TeamId)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.CreateLabel(ctx, actor, wsID, id, teamID, req.Msg.Name, req.Msg.ColorToken); err != nil {
 		return nil, mapErr(err)
 	}
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
@@ -1258,7 +1305,11 @@ func (h *issueHandler) SetMilestone(ctx context.Context, req *connect.Request[pm
 	if err != nil {
 		return nil, err
 	}
-	if _, err := h.svc.SetMilestone(ctx, actor, wsID, id, optUUID(req.Msg.MilestoneId)); err != nil {
+	milestoneID, err := optUUID(req.Msg.MilestoneId)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := h.svc.SetMilestone(ctx, actor, wsID, id, milestoneID); err != nil {
 		return nil, mapErr(err)
 	}
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
@@ -1420,7 +1471,11 @@ func (h *chatHandler) SendMessage(ctx context.Context, req *connect.Request[pmsv
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid channel_id"))
 	}
-	if err := h.svc.SendMessage(ctx, actor, wsID, id, channelID, req.Msg.Body, optUUID(req.Msg.ParentId)); err != nil {
+	parentID, err := optUUID(req.Msg.ParentId)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.SendMessage(ctx, actor, wsID, id, channelID, req.Msg.Body, parentID); err != nil {
 		return nil, mapErr(err)
 	}
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
@@ -1494,7 +1549,11 @@ func (h *chatHandler) GetMessages(ctx context.Context, req *connect.Request[pmsv
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid channel_id"))
 	}
-	raw, hasMore, err := h.svc.GetMessages(ctx, actor, wsID, channelID, optUUID(req.Msg.ParentId), req.Msg.Before, int(req.Msg.Limit))
+	parentID, err := optUUID(req.Msg.ParentId)
+	if err != nil {
+		return nil, err
+	}
+	raw, hasMore, err := h.svc.GetMessages(ctx, actor, wsID, channelID, parentID, req.Msg.Before, int(req.Msg.Limit))
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -1654,15 +1713,17 @@ func issueRef(ctx context.Context, wsRaw, idRaw string) (uuid.UUID, uuid.UUID, u
 }
 
 // optUUID: пустая строка → nil, иначе парсит (невалидное → nil, мягко).
-func optUUID(s string) *uuid.UUID {
+// optUUID: "" → nil (осознанное «снять значение»). Невалидный uuid — ошибка,
+// а не тихий nil: иначе кривой assignee_id молча РАЗ-назначает issue.
+func optUUID(s string) (*uuid.UUID, error) {
 	if s == "" {
-		return nil
+		return nil, nil
 	}
 	u, err := uuid.Parse(s)
 	if err != nil {
-		return nil
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid uuid: "+s))
 	}
-	return &u
+	return &u, nil
 }
 
 func requireActor(ctx context.Context) (uuid.UUID, error) {
@@ -1732,7 +1793,9 @@ func mapErr(err error) error {
 		errors.Is(err, workspaces.ErrLastOwner):
 		return connect.NewError(connect.CodeFailedPrecondition, err)
 	default:
-		return connect.NewError(connect.CodeInternal, err)
+		// не отдаём наружу сырые pg/bun-сообщения (имена таблиц, констрейнты, SQL)
+		slog.Error("rpc: internal error", "err", err)
+		return connect.NewError(connect.CodeInternal, errors.New("internal error"))
 	}
 }
 
@@ -1771,7 +1834,10 @@ func (h *meetingHandler) CreateMeeting(ctx context.Context, req *connect.Request
 			parts = append(parts, u)
 		}
 	}
-	channelID := optUUID(req.Msg.ChannelId)
+	channelID, err := optUUID(req.Msg.ChannelId)
+	if err != nil {
+		return nil, err
+	}
 	if err := h.svc.CreateMeeting(ctx, actor, wsID, id, req.Msg.Title, schedAt, endsAt, parts, channelID); err != nil {
 		return nil, mapErr(err)
 	}
@@ -1924,7 +1990,11 @@ func (h *timeHandler) StartTimer(ctx context.Context, req *connect.Request[pmsv1
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if err := h.svc.StartTimer(ctx, actor, wsID, id, optUUID(req.Msg.IssueId), req.Msg.Description); err != nil {
+	issueID, err := optUUID(req.Msg.IssueId)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.StartTimer(ctx, actor, wsID, id, issueID, req.Msg.Description); err != nil {
 		return nil, mapErr(err)
 	}
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
@@ -1962,7 +2032,11 @@ func (h *timeHandler) AddEntry(ctx context.Context, req *connect.Request[pmsv1.A
 	if st.IsZero() || en.IsZero() {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("started_at and ended_at required"))
 	}
-	if err := h.svc.AddEntry(ctx, actor, wsID, id, optUUID(req.Msg.IssueId), req.Msg.Description, st, en); err != nil {
+	issueID, err := optUUID(req.Msg.IssueId)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.AddEntry(ctx, actor, wsID, id, issueID, req.Msg.Description, st, en); err != nil {
 		return nil, mapErr(err)
 	}
 	return connect.NewResponse(&pmsv1.CommandResult{EntityId: id.String()}), nil
@@ -1981,7 +2055,15 @@ func (h *timeHandler) Report(ctx context.Context, req *connect.Request[pmsv1.Rep
 	if from.IsZero() || to.IsZero() {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("from and to required"))
 	}
-	rows, total, err := h.svc.Report(ctx, actor, wsID, from, to, req.Msg.GroupBy, optUUID(req.Msg.IssueId), optUUID(req.Msg.UserId))
+	issueID, err := optUUID(req.Msg.IssueId)
+	if err != nil {
+		return nil, err
+	}
+	userID, err := optUUID(req.Msg.UserId)
+	if err != nil {
+		return nil, err
+	}
+	rows, total, err := h.svc.Report(ctx, actor, wsID, from, to, req.Msg.GroupBy, issueID, userID)
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -2021,7 +2103,11 @@ func (h *automationHandler) CreateAutomation(ctx context.Context, req *connect.R
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if err := h.svc.Create(ctx, actor, wsID, id, optUUID(req.Msg.TeamId), req.Msg.Name, req.Msg.Enabled,
+	teamID, err := optUUID(req.Msg.TeamId)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.Create(ctx, actor, wsID, id, teamID, req.Msg.Name, req.Msg.Enabled,
 		jsonRaw(req.Msg.Trigger), jsonRaw(req.Msg.Conditions), jsonRaw(req.Msg.Actions)); err != nil {
 		return nil, mapErr(err)
 	}
@@ -2033,7 +2119,11 @@ func (h *automationHandler) UpdateAutomation(ctx context.Context, req *connect.R
 	if err != nil {
 		return nil, err
 	}
-	if err := h.svc.Update(ctx, actor, wsID, id, optUUID(req.Msg.TeamId), req.Msg.Name, req.Msg.Enabled,
+	teamID, err := optUUID(req.Msg.TeamId)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.svc.Update(ctx, actor, wsID, id, teamID, req.Msg.Name, req.Msg.Enabled,
 		jsonRaw(req.Msg.Trigger), jsonRaw(req.Msg.Conditions), jsonRaw(req.Msg.Actions)); err != nil {
 		return nil, mapErr(err)
 	}
@@ -2075,9 +2165,13 @@ func templateInput(in *pmsv1.TemplateInput) (templates.Input, error) {
 	if err != nil {
 		return templates.Input{}, errors.New("invalid team_id")
 	}
+	assigneeID, err := optUUID(in.AssigneeId)
+	if err != nil {
+		return templates.Input{}, err
+	}
 	out := templates.Input{
 		TeamID: teamID, Name: in.Name, Title: in.Title, DescriptionMD: in.DescriptionMd,
-		Priority: int(in.Priority), AssigneeID: optUUID(in.AssigneeId), Recurrence: in.Recurrence,
+		Priority: int(in.Priority), AssigneeID: assigneeID, Recurrence: in.Recurrence,
 	}
 	if in.Estimate > 0 {
 		e := in.Estimate

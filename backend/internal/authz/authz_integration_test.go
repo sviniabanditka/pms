@@ -54,7 +54,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
 func setupPG(t *testing.T) (owner, app, jobs *bun.DB) {
 	t.Helper()
 	ctx := context.Background()
-	c, err := tcpg.Run(ctx, "postgres:16",
+	c, err := tcpg.Run(ctx, "pgvector/pgvector:pg16",
 		tcpg.WithDatabase("pms"), tcpg.WithUsername("postgres"), tcpg.WithPassword("postgres"),
 		testcontainers.WithWaitStrategy(wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second)),
 	)
@@ -378,5 +378,65 @@ func TestInvitationAcceptByHashedToken(t *testing.T) {
 	}
 	if r, err := svc.RoleOf(ctx, w.wsA, w.outsiderU); err != nil || r != "member" {
 		t.Fatalf("outsider after accept: role=%q err=%v; want member", r, err)
+	}
+}
+
+// TestChanges_PrivateTeamFilter — catch-up (SyncService.Changes) фильтрует
+// change_log-строки приватных команд так же, как Bootstrap фильтрует чанки.
+func TestChanges_PrivateTeamFilter(t *testing.T) {
+	owner, app, _ := setupPG(t)
+	w := seed(t, owner)
+	sync := syncsvc.NewService(app)
+	ctx := context.Background()
+
+	// две строки change_log: по приватной issue и по публичной команде
+	exec := func(q string, args ...any) {
+		if _, err := owner.NewRaw(q, args...).Exec(ctx); err != nil {
+			t.Fatalf("exec %q: %v", q, err)
+		}
+	}
+	exec(`INSERT INTO change_log (workspace_id, entity_type, entity_id, version, op, actor_id, at) VALUES (?, 'issue', ?, 1, 'update', ?, now())`,
+		w.wsA, w.issPriv, w.ownerU)
+	exec(`INSERT INTO change_log (workspace_id, entity_type, entity_id, version, op, actor_id, at) VALUES (?, 'team', ?, 1, 'update', ?, now())`,
+		w.wsA, w.tPub, w.ownerU)
+
+	// member: не видит строку приватной issue, видит публичную
+	rows, _, err := sync.Changes(ctx, w.memberU, w.wsA, 0)
+	if err != nil {
+		t.Fatalf("changes member: %v", err)
+	}
+	for _, r := range rows {
+		if r.EntityID == w.issPriv {
+			t.Error("member must NOT receive change_log rows of a private-team issue")
+		}
+	}
+	foundPub := false
+	for _, r := range rows {
+		if r.EntityID == w.tPub {
+			foundPub = true
+		}
+	}
+	if !foundPub {
+		t.Error("member must receive public-team change_log rows")
+	}
+
+	// admin: видит обе
+	arows, _, err := sync.Changes(ctx, w.adminU, w.wsA, 0)
+	if err != nil {
+		t.Fatalf("changes admin: %v", err)
+	}
+	foundPriv := false
+	for _, r := range arows {
+		if r.EntityID == w.issPriv {
+			foundPriv = true
+		}
+	}
+	if !foundPriv {
+		t.Error("admin must receive private-team change_log rows")
+	}
+
+	// outsider: вообще forbidden
+	if _, _, err := sync.Changes(ctx, w.outsiderU, w.wsA, 0); err == nil {
+		t.Error("outsider must be denied by Changes")
 	}
 }

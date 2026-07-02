@@ -3,6 +3,9 @@ package realtime
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
+	"sync/atomic"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -28,16 +31,28 @@ type serverMsg struct {
 // WorkspaceChannel — Redis/WS-канал воркспейса.
 func WorkspaceChannel(wsID uuid.UUID) string { return "ws:" + wsID.String() }
 
-type Publisher struct{ rdb *redis.Client }
+type Publisher struct {
+	rdb     *redis.Client
+	lastLog atomic.Int64 // unix-время последнего warn (троттлинг спама при падении redis)
+}
 
 func NewPublisher(rdb *redis.Client) *Publisher { return &Publisher{rdb: rdb} }
 
 // PublishDelta публикует дельту в канал воркспейса (fan-out на все WS-инстансы).
+// Ошибку логирует сам (не чаще раза в 10с): все вызовы best-effort (`_ =`), и без
+// этого падение redis = тихий десинк всех клиентов.
 func (p *Publisher) PublishDelta(ctx context.Context, wsID uuid.UUID, d Delta) error {
 	payload, err := json.Marshal(serverMsg{Type: "delta", Delta: &d})
 	if err != nil {
 		return err
 	}
-	return p.rdb.Publish(ctx, WorkspaceChannel(wsID), payload).Err()
+	if err := p.rdb.Publish(ctx, WorkspaceChannel(wsID), payload).Err(); err != nil {
+		now := time.Now().Unix()
+		if last := p.lastLog.Load(); now-last >= 10 && p.lastLog.CompareAndSwap(last, now) {
+			slog.Warn("realtime: delta publish failed (clients will desync until reload)", "err", err, "entity", d.EntityType)
+		}
+		return err
+	}
+	return nil
 }
 

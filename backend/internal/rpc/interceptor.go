@@ -30,8 +30,20 @@ var adminProcedures = map[string]bool{
 
 // readVerbPrefixes mark a procedure as a read. Guests (read-only) may call only
 // these; anything else is treated as a mutation and denied. New read RPCs must
-// follow the convention (Get*/List*/Search*/…) to be guest-accessible.
-var readVerbPrefixes = []string{"Get", "List", "Search", "Semantic", "Similar", "Suggest", "Themes", "Anomalies", "Summarize", "Mood", "Run", "Report", "Feed", "Bootstrap", "Changes", "Export", "Stream", "Watch"}
+// follow the convention (Get*/Search*/…) to be guest-accessible. The set is kept
+// minimal — every prefix here pre-authorizes future methods, so dead prefixes
+// were dropped; TestProcedureClassification pins the classification of every
+// registered procedure.
+var readVerbPrefixes = []string{"Get", "Search", "Semantic", "Similar", "Suggest", "Themes", "Anomalies", "Summarize", "Mood", "Metric", "Run", "Report", "Bootstrap", "Changes"}
+
+// allowGuestProcedures — self-scoped мутации, разрешённые гостям (и read-only
+// токенам они не разрешены — это именно guest-UX: снять свой бейдж, выйти из команды).
+var allowGuestProcedures = map[string]bool{
+	"/pms.v1.NotificationService/MarkRead":    true,
+	"/pms.v1.NotificationService/MarkAllRead": true,
+	"/pms.v1.ChatService/MarkChannelRead":     true,
+	"/pms.v1.TeamService/LeaveTeam":           true,
+}
 
 func isReadProcedure(procedure string) bool {
 	method := procedure[strings.LastIndex(procedure, "/")+1:]
@@ -79,7 +91,7 @@ func newWorkspaceAuthInterceptor(lookup roleLookup) connect.UnaryInterceptorFunc
 			if auth.IsReadOnly(ctx) && !isReadProcedure(proc) {
 				return nil, connect.NewError(connect.CodePermissionDenied, errors.New("read-only API token"))
 			}
-			if role == authz.RoleGuest && !isReadProcedure(proc) {
+			if role == authz.RoleGuest && !isReadProcedure(proc) && !allowGuestProcedures[proc] {
 				return nil, connect.NewError(connect.CodePermissionDenied, errors.New("guests are read-only"))
 			}
 			if adminProcedures[proc] && !role.IsAdmin() {

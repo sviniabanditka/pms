@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"path"
 	"strconv"
@@ -66,7 +67,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 		list, err := svcs.Workspaces.ListForUser(req.Context(), uid)
 		w.Header().Set("Content-Type", "application/json")
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalError(w, req, err)
 			return
 		}
 		_ = json.NewEncoder(w).Encode(list)
@@ -88,7 +89,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 		meta, err := svcs.Workspaces.Meta(req.Context(), wsID)
 		w.Header().Set("Content-Type", "application/json")
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalError(w, req, err)
 			return
 		}
 		_ = json.NewEncoder(w).Encode(meta)
@@ -113,7 +114,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 		}
 		chunks, cursor, err := svcs.Sync.Bootstrap(req.Context(), uid, wsID, only)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalError(w, req, err)
 			return
 		}
 		type outChunk struct {
@@ -146,7 +147,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 		list, err := svcs.Notifications.List(req.Context(), wsID, uid, 50)
 		w.Header().Set("Content-Type", "application/json")
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalError(w, req, err)
 			return
 		}
 		if list == nil {
@@ -182,7 +183,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			eid = &id
 		}
 		if err := svcs.Search.LogFeedback(req.Context(), uid, wsID, body.Kind, body.Action, eid, body.Suggested); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalError(w, req, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -200,7 +201,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			return
 		}
 		if err := svcs.Notifications.RegisterDevice(req.Context(), uid, body.Token, body.Platform); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalError(w, req, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -208,7 +209,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 	r.With(auth.RequireAuth).Delete("/me/devices/{token}", func(w http.ResponseWriter, req *http.Request) {
 		uid, _ := auth.UserID(req.Context())
 		if err := svcs.Notifications.UnregisterDevice(req.Context(), uid, chi.URLParam(req, "token")); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalError(w, req, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -296,7 +297,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 		uid, _ := auth.UserID(req.Context())
 		tok, err := svcs.Calendar.EnsureFeedToken(req.Context(), uid)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalError(w, req, err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -306,7 +307,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 		uid, _ := auth.UserID(req.Context())
 		tok, err := svcs.Calendar.RotateFeedToken(req.Context(), uid)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalError(w, req, err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -377,7 +378,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 		}
 		list, err := svcs.ApiTokens.List(req.Context(), wsID)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalError(w, req, err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -397,7 +398,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 		}
 		n, err := svcs.ApiTokens.Revoke(req.Context(), uid, wsID, id)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalError(w, req, err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -448,7 +449,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 		}
 		list, err := svcs.Webhooks.List(req.Context(), wsID)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalError(w, req, err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -481,7 +482,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			return
 		}
 		if err := svcs.Webhooks.Update(req.Context(), uid, wsID, id, body.URL, body.Events, body.Active); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalError(w, req, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -503,7 +504,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			return
 		}
 		if err := svcs.Webhooks.Delete(req.Context(), uid, wsID, id); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalError(w, req, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -527,7 +528,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 		}
 		list, err := svcs.Webhooks.Deliveries(req.Context(), wsID, id)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalError(w, req, err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -545,6 +546,13 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 	})
 
 	return r
+}
+
+// internalError логирует настоящую ошибку и отдаёт клиенту generic 500
+// (не светим pg/bun-сообщения — имена таблиц, констрейнты, SQL).
+func internalError(w http.ResponseWriter, req *http.Request, err error) {
+	slog.Error("http: internal error", "path", req.URL.Path, "err", err)
+	http.Error(w, "internal error", http.StatusInternalServerError)
 }
 
 // safeInline — типы, которые браузер может безопасно показать инлайн (без активного скрипта).

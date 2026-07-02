@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -62,8 +63,10 @@ func (w *WebhookDispatchWorker) Work(ctx context.Context, _ *river.Job[WebhookDi
 		}
 		hooks, ok := hooksByWS[c.WorkspaceID]
 		if !ok {
-			_ = w.db.NewSelect().Model(&hooks).Where("workspace_id = ?", c.WorkspaceID).
-				Where("active").Where("deleted_at IS NULL").Scan(ctx)
+			if err := w.db.NewSelect().Model(&hooks).Where("workspace_id = ?", c.WorkspaceID).
+				Where("active").Where("deleted_at IS NULL").Scan(ctx); err != nil {
+				slog.Warn("webhooks: hooks select failed", "ws", c.WorkspaceID, "err", err)
+			}
 			hooksByWS[c.WorkspaceID] = hooks
 		}
 		ev := c.EntityType + "." + c.Op
@@ -75,6 +78,7 @@ func (w *WebhookDispatchWorker) Work(ctx context.Context, _ *river.Job[WebhookDi
 			if _, err := w.db.NewInsert().Model(&models.WebhookDelivery{
 				ID: did, WebhookID: h.ID, WorkspaceID: c.WorkspaceID, Event: ev, Status: "pending", CreatedAt: time.Now().UTC(),
 			}).Exec(ctx); err != nil {
+				slog.Warn("webhooks: delivery insert failed", "webhook", h.ID, "event", ev, "err", err)
 				continue
 			}
 			actor := ""

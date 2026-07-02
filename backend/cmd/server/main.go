@@ -86,8 +86,11 @@ func main() {
 	}
 	defer pool.Close()
 	embedClient := embed.New(cfg.EmbedURL)
-	// recurring issue-шаблоны: templates.Service поверх jobsDB (BYPASSRLS) для кросс-тенантного скана
-	recurringSvc := templates.NewService(jobsDB, issues.NewService(jobsDB, pub), pub)
+	// recurring issue-шаблоны: templates.Service поверх jobsDB (BYPASSRLS) для кросс-тенантного скана.
+	// issues-сервис воркера получает движок автоматизаций (jobsDB) — авто-спавны тоже триггерят правила.
+	jobsIssues := issues.NewService(jobsDB, pub)
+	jobsIssues.SetEngine(automations.NewService(jobsDB, pub))
+	recurringSvc := templates.NewService(jobsDB, jobsIssues, pub)
 	riverClient, err := jobs.Start(context.Background(), jobs.Deps{
 		Pool: pool, JobsDB: jobsDB, Pub: pub, Mailer: mailer.New(cfg),
 		DueSoonInterval:  river.PeriodicInterval(cfg.DueSoonInterval),
@@ -133,9 +136,11 @@ func main() {
 		Sync:          syncsvc.NewService(bdb),
 		ApiTokens:     apitokens.NewService(bdb),
 		Webhooks:      webhooks.NewService(bdb),
-		Templates:     templates.NewService(bdb, issues.NewService(bdb, pub), pub),
 	}
 	svcs.Issues.SetEngine(svcs.Automations) // хук автоматизаций после issue-мутаций
+	// Templates переиспользует ТОТ ЖЕ issues-сервис (с движком) — ручной спавн из шаблона
+	// проходит через автоматизации, как обычное создание issue.
+	svcs.Templates = templates.NewService(bdb, svcs.Issues, pub)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

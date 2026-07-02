@@ -72,7 +72,7 @@ func (noopRedisLogger) Printf(ctx context.Context, format string, v ...interface
 func TestMain(m *testing.M) {
 	redis.SetLogger(noopRedisLogger{}) // глушим спам недостижимого no-op redis (PublishDelta игнорится сервисами)
 	ctx := context.Background()
-	c, err := tcpg.Run(ctx, "postgres:16",
+	c, err := tcpg.Run(ctx, "pgvector/pgvector:pg16",
 		tcpg.WithDatabase("pms"), tcpg.WithUsername("postgres"), tcpg.WithPassword("postgres"),
 		testcontainers.WithWaitStrategy(wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second)),
 	)
