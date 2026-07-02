@@ -65,6 +65,11 @@ func newWorkspaceAuthInterceptor(lookup roleLookup) connect.UnaryInterceptorFunc
 			if !ok {
 				return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 			}
+			// PAT привязан к воркспейсу — токен воркспейса A не работает в B,
+			// даже если пользователь член обоих.
+			if !auth.WorkspaceAllowed(ctx, wsID) {
+				return nil, connect.NewError(connect.CodePermissionDenied, errors.New("token not valid for this workspace"))
+			}
 			roleStr, err := lookup(ctx, wsID, actor)
 			if err != nil {
 				return nil, connect.NewError(connect.CodePermissionDenied, errors.New("not a workspace member"))

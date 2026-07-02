@@ -47,6 +47,7 @@ func (s *Service) CreateChannel(ctx context.Context, actor, wsID, id uuid.UUID, 
 		return err
 	}
 	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "channel", EntityID: id.String(), Op: "create"})
+	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "channel_member", EntityID: id.String(), Op: "create"})
 	return nil
 }
 
@@ -89,6 +90,7 @@ func (s *Service) AddChannelMember(ctx context.Context, actor, wsID, channelID, 
 		return err
 	}
 	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "channel", EntityID: channelID.String(), Op: "update"})
+	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "channel_member", EntityID: channelID.String(), Op: "update"})
 	return nil
 }
 
@@ -131,6 +133,7 @@ func (s *Service) RemoveChannelMember(ctx context.Context, actor, wsID, channelI
 		return err
 	}
 	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "channel", EntityID: channelID.String(), Op: "update"})
+	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "channel_member", EntityID: channelID.String(), Op: "delete"})
 	return nil
 }
 
@@ -166,6 +169,7 @@ func (s *Service) CreateDM(ctx context.Context, actor, wsID, id, other uuid.UUID
 		return uuid.Nil, err
 	}
 	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "channel", EntityID: result.String(), Op: "create"})
+	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "channel_member", EntityID: result.String(), Op: "create"})
 	return result, nil
 }
 
@@ -304,7 +308,7 @@ func (s *Service) SendTyping(ctx context.Context, actor, wsID, channelID uuid.UU
 
 // MarkChannelRead — отметить канал прочитанным до текущего момента (upsert read-маркера).
 func (s *Service) MarkChannelRead(ctx context.Context, actor, wsID, channelID uuid.UUID) error {
-	return db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
 		ok, err := s.canAccess(ctx, tx, channelID, actor)
 		if err != nil {
 			return err
@@ -316,6 +320,12 @@ func (s *Service) MarkChannelRead(ctx context.Context, actor, wsID, channelID uu
 			On("CONFLICT (channel_id, user_id) DO UPDATE").Set("last_read_at = EXCLUDED.last_read_at").Exec(ctx)
 		return err
 	})
+	if err != nil {
+		return err
+	}
+	// кросс-девайс: другой клиент того же пользователя снимает бейдж без релоада
+	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "channel_unread", EntityID: channelID.String(), Op: "update", Actor: actor.String()})
+	return nil
 }
 
 type reactionDTO struct {

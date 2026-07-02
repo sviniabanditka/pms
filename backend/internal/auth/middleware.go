@@ -19,6 +19,7 @@ const (
 	ctxUserID ctxKey = iota
 	ctxToken
 	ctxReadOnly
+	ctxTokenWS
 )
 
 // Authenticator извлекает сессию (cookie | Bearer | ?token=) и кладёт user_id в контекст.
@@ -30,11 +31,14 @@ func (s *Service) Authenticator(next http.Handler) http.Handler {
 		switch {
 		case strings.HasPrefix(tok, "pms_"):
 			// API-токен публичного API → user_id (членство энфорсит интерсептор).
-			if uid, readOnly, ok := s.resolveAPIToken(r.Context(), tok); ok {
-				ctx := WithUserID(r.Context(), uid)
-				if readOnly {
+			if at, ok := s.resolveAPIToken(r.Context(), tok); ok {
+				ctx := WithUserID(r.Context(), at.UserID)
+				if at.ReadOnly {
 					ctx = WithReadOnly(ctx)
 				}
+				// PAT выпущен для конкретного воркспейса — привязываем; интерсептор
+				// и REST-роуты сверяют wsID запроса с этой привязкой.
+				ctx = context.WithValue(ctx, ctxTokenWS, at.WorkspaceID)
 				r = r.WithContext(ctx)
 			}
 		case tok != "":
@@ -68,8 +72,8 @@ func RequireAuth(next http.Handler) http.Handler {
 	})
 }
 
-// resolveAPIToken — raw `pms_…` → (user_id, read-only), если токен валиден (не отозван, не истёк).
-func (s *Service) resolveAPIToken(ctx context.Context, raw string) (uuid.UUID, bool, bool) {
+// resolveAPIToken — raw `pms_…` → токен, если валиден (не отозван, не истёк).
+func (s *Service) resolveAPIToken(ctx context.Context, raw string) (*models.APIToken, bool) {
 	var at models.APIToken
 	err := s.db.NewSelect().Model(&at).
 		Where("token_hash = ?", tokenpkg.Hash(raw)).
@@ -77,12 +81,40 @@ func (s *Service) resolveAPIToken(ctx context.Context, raw string) (uuid.UUID, b
 		Where("expires_at IS NULL OR expires_at > now()").
 		Limit(1).Scan(ctx)
 	if err != nil {
-		return uuid.Nil, false, false
+		return nil, false
 	}
 	// best-effort отметка использования (не блокируем запрос; фоновый ctx)
 	_, _ = s.db.NewUpdate().Model((*models.APIToken)(nil)).
 		Set("last_used_at = now()").Where("id = ?", at.ID).Exec(context.Background())
-	return at.UserID, at.ReadOnly, true
+	return &at, true
+}
+
+// TokenWorkspace — воркспейс, к которому привязан API-токен запроса (если это PAT).
+func TokenWorkspace(ctx context.Context) (uuid.UUID, bool) {
+	v, ok := ctx.Value(ctxTokenWS).(uuid.UUID)
+	return v, ok
+}
+
+// WorkspaceAllowed — false, если запрос аутентифицирован PAT'ом другого воркспейса.
+// Для сессий (нет привязки) всегда true; членство проверяется отдельно.
+func WorkspaceAllowed(ctx context.Context, wsID uuid.UUID) bool {
+	tws, ok := TokenWorkspace(ctx)
+	return !ok || tws == wsID
+}
+
+// ReadOnlyGate — read-only PAT не может дёргать мутирующие REST-эндпоинты
+// (POST /api/tokens, вебхуки, upload, devices…). Connect-процедуры (/pms.v1.*)
+// гейтит unary-интерсептор, поэтому их POST'ы пропускаем.
+func ReadOnlyGate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if IsReadOnly(r.Context()) &&
+			r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions &&
+			!strings.HasPrefix(r.URL.Path, "/pms.v1.") {
+			http.Error(w, "read-only API token", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // WithReadOnly помечает контекст как read-only (read-only API-токен).

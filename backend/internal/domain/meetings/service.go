@@ -46,6 +46,9 @@ func (s *Service) mintToken(room, identity, name string) (string, error) {
 
 func (s *Service) delta(ctx context.Context, wsID, id uuid.UUID, op string) {
 	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "meeting", EntityID: id.String(), Op: op})
+	// почти каждая meeting-мутация трогает и участников (create/join/leave/huddle);
+	// чанк маленький — публикуем оба типа, чтобы список участников не стейлился у пиров
+	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "meeting_participant", EntityID: id.String(), Op: op})
 }
 
 // CreateMeeting — запланированный митинг с явным кругом участников.

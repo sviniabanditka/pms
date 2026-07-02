@@ -280,6 +280,10 @@ func (s *Service) AddRelation(ctx context.Context, actor, wsID, id, source, targ
 		if err := requireIssueTeam(ctx, tx, actor, source); err != nil {
 			return err
 		}
+		// target тоже: иначе связь «выносит» issue приватной команды в changelog/relations
+		if err := requireIssueTeam(ctx, tx, actor, target); err != nil {
+			return err
+		}
 		rel := &models.IssueRelation{ID: id, WorkspaceID: wsID, SourceID: source, TargetID: target, Type: typ, CreatedAt: now}
 		if _, err := tx.NewInsert().Model(rel).Exec(ctx); err != nil {
 			if strings.Contains(err.Error(), "issue_relations_source_id_target_id_type_key") {
@@ -296,7 +300,7 @@ func (s *Service) AddRelation(ctx context.Context, actor, wsID, id, source, targ
 		return 0, err
 	}
 	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "issue", EntityID: source.String(), Op: "update"})
-	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "issue", EntityID: target.String(), Op: "update"})
+	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "issue_relation", EntityID: id.String(), Op: "create"})
 	return 0, nil
 }
 
@@ -321,7 +325,7 @@ func (s *Service) RemoveRelation(ctx context.Context, actor, wsID, relID uuid.UU
 		return 0, err
 	}
 	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "issue", EntityID: src.String(), Op: "update"})
-	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "issue", EntityID: tgt.String(), Op: "update"})
+	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "issue_relation", EntityID: relID.String(), Op: "delete"})
 	return 0, nil
 }
 
@@ -393,7 +397,11 @@ func (s *Service) SetCustomFieldValue(ctx context.Context, actor, wsID, issueID,
 		}
 		return changelog.Record(ctx, tx, wsID, "issue", issueID, 0, "update", map[string]any{"customField": fieldID}, actor)
 	})
-	return 0, s.afterMutate(ctx, wsID, issueID, err)
+	if err := s.afterMutate(ctx, wsID, issueID, err); err != nil {
+		return 0, err
+	}
+	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "custom_field_value", EntityID: issueID.String(), Op: "update"})
+	return 0, nil
 }
 
 // SetScheduledDate: "" → снять; иначе YYYY-MM-DD.
@@ -545,7 +553,12 @@ func (s *Service) AddLabel(ctx context.Context, actor, wsID, issueID, labelID uu
 			On("CONFLICT DO NOTHING").Exec(ctx)
 		return err
 	})
-	return s.afterMutate(ctx, wsID, issueID, err)
+	if err := s.afterMutate(ctx, wsID, issueID, err); err != nil {
+		return err
+	}
+	// свой entity_type: клиенты refetch'ат чанк issue_label (issue-строка не меняется)
+	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "issue_label", EntityID: issueID.String(), Op: "update"})
+	return nil
 }
 
 func (s *Service) RemoveLabel(ctx context.Context, actor, wsID, issueID, labelID uuid.UUID) error {
@@ -557,7 +570,11 @@ func (s *Service) RemoveLabel(ctx context.Context, actor, wsID, issueID, labelID
 			Where("issue_id = ?", issueID).Where("label_id = ?", labelID).Exec(ctx)
 		return err
 	})
-	return s.afterMutate(ctx, wsID, issueID, err)
+	if err := s.afterMutate(ctx, wsID, issueID, err); err != nil {
+		return err
+	}
+	_ = s.pub.PublishDelta(ctx, wsID, realtime.Delta{EntityType: "issue_label", EntityID: issueID.String(), Op: "update"})
+	return nil
 }
 
 // requireTeamAccess — доступ к команде (private-team border): член team-или-ancestor | ws-admin.

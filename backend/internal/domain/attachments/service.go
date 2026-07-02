@@ -79,7 +79,8 @@ func (s *Service) URL(ctx context.Context, actor uuid.UUID, key string) (string,
 	member := false
 	if err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
 		ex, err := tx.NewSelect().Model((*models.WorkspaceMember)(nil)).
-			Where("workspace_id = ?", wsID).Where("user_id = ?", actor).Exists(ctx)
+			Where("workspace_id = ?", wsID).Where("user_id = ?", actor).
+			Where("status = 'active'").Exists(ctx)
 		member = ex
 		return err
 	}); err != nil {

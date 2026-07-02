@@ -166,7 +166,8 @@ func (g *Gateway) authorizeChannels(ctx context.Context, uid uuid.UUID, channels
 		if err != nil {
 			continue
 		}
-		if g.isMember(ctx, uid, wsID) {
+		// PAT привязан к воркспейсу; и только активные члены получают realtime.
+		if auth.WorkspaceAllowed(ctx, wsID) && g.isMember(ctx, uid, wsID) {
 			out = append(out, ch)
 		}
 	}
@@ -177,7 +178,8 @@ func (g *Gateway) isMember(ctx context.Context, uid, wsID uuid.UUID) bool {
 	var member bool
 	_ = db.WithWorkspace(ctx, g.bdb, wsID, func(ctx context.Context, tx bun.Tx) error {
 		exists, err := tx.NewSelect().Model((*models.WorkspaceMember)(nil)).
-			Where("user_id = ?", uid).Where("workspace_id = ?", wsID).Exists(ctx)
+			Where("user_id = ?", uid).Where("workspace_id = ?", wsID).
+			Where("status = 'active'").Exists(ctx)
 		if err != nil {
 			return err
 		}

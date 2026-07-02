@@ -787,3 +787,12 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Спавн best-effort: недоступная команда/создатель → шаблон пропускается, остальные не блокируются.
 - [ ] Правка recurrence на новую каденцию → `next_run_at` пересчитывается; на none → очищается.
 - [ ] Удаление шаблона (soft) → перестаёт плодиться; из bootstrap-чанка `issue_template` уходит.
+
+## 100. Review batch: security criticals + sync delta gaps
+- [ ] Read-only PAT: любой мутирующий REST (`POST /api/tokens`, вебхуки, `/files/upload`, devices) → 403 `read-only API token`; GET-ы работают.
+- [ ] PAT привязан к воркспейсу: токен, выпущенный для ws A, в ws B получает 403 и на connect-RPC (`token not valid for this workspace`), и на REST, и не может подписаться на `ws:B` по WS.
+- [ ] Templates authz: создание/правка шаблона с team_id приватной команды без доступа → forbidden; удалить чужой шаблон может только создатель или admin; team_id чужого воркспейса → forbidden (и в RPC, и в recurring-воркере).
+- [ ] AddRelation: target из недоступной приватной команды → forbidden (раньше проверялся только source).
+- [ ] Suspended (`status<>'active'`) член: WS-подписка и presigned-скачивания отклоняются.
+- [ ] Дельты по своим типам: правка labels/CF/relations на issue, членов канала, участников митинга — у второго клиента обновляется без релоада (refetch чанков `issue_label`/`custom_field_value`/`issue_relation`/`channel_member`/`meeting_participant`).
+- [ ] MarkChannelRead на устройстве A → бейдж канала гаснет на устройстве B (дельта `channel_unread`).

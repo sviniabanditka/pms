@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 
+	"github.com/pms/backend/internal/authz"
 	"github.com/pms/backend/internal/db"
 	"github.com/pms/backend/internal/domain/issues"
 	"github.com/pms/backend/internal/models"
@@ -19,6 +20,20 @@ import (
 )
 
 var ErrNameRequired = errors.New("template name required")
+
+// requireTeamAccess — шаблон привязан к команде: создавать/править может только
+// тот, кто видит команду (private/ltree — как в issues). Заодно отсекает
+// team_id чужого воркспейса: под RLS-tx чужая команда невидима → false.
+func requireTeamAccess(ctx context.Context, tx bun.Tx, actor, teamID uuid.UUID) error {
+	ok, err := authz.CanAccessTeam(ctx, tx, actor, teamID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return authz.ErrForbidden
+	}
+	return nil
+}
 
 type Service struct {
 	db     *bun.DB
@@ -101,6 +116,9 @@ func (s *Service) Create(ctx context.Context, actor, wsID uuid.UUID, in Input) (
 		t.NextRunAt = &nr
 	}
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if e := requireTeamAccess(ctx, tx, actor, in.TeamID); e != nil {
+			return e
+		}
 		_, e := tx.NewInsert().Model(t).Exec(ctx)
 		return e
 	})
@@ -123,6 +141,15 @@ func (s *Service) Update(ctx context.Context, actor, wsID, id uuid.UUID, in Inpu
 		var prev models.IssueTemplate
 		if err := tx.NewSelect().Model(&prev).Where("id = ?", id).Where("deleted_at IS NULL").Scan(ctx); err != nil {
 			return err
+		}
+		// доступ и к старой команде шаблона, и к новой (если переносят)
+		if err := requireTeamAccess(ctx, tx, actor, prev.TeamID); err != nil {
+			return err
+		}
+		if in.TeamID != prev.TeamID {
+			if err := requireTeamAccess(ctx, tx, actor, in.TeamID); err != nil {
+				return err
+			}
 		}
 		q := tx.NewUpdate().Model((*models.IssueTemplate)(nil)).
 			Set("team_id = ?", in.TeamID).Set("name = ?", strings.TrimSpace(in.Name)).
@@ -149,6 +176,14 @@ func (s *Service) Update(ctx context.Context, actor, wsID, id uuid.UUID, in Inpu
 func (s *Service) Delete(ctx context.Context, actor, wsID, id uuid.UUID) error {
 	now := time.Now().UTC()
 	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		var t models.IssueTemplate
+		if e := tx.NewSelect().Model(&t).Column("created_by").Where("id = ?", id).Where("deleted_at IS NULL").Scan(ctx); e != nil {
+			return e
+		}
+		// delete = creator|admin (как у прочих сущностей)
+		if !authz.OwnerOrAdmin(ctx, t.CreatedBy, actor) {
+			return authz.ErrForbidden
+		}
 		_, e := tx.NewUpdate().Model((*models.IssueTemplate)(nil)).
 			Set("deleted_at = ?", now).Where("id = ?", id).Exec(ctx)
 		return e
@@ -174,6 +209,20 @@ func (s *Service) Spawn(ctx context.Context, actor, wsID, id uuid.UUID) (uuid.UU
 
 // spawn — сделать issue из шаблона через issues.Service (валидит доступ, шлёт дельту, триггерит автоматизации).
 func (s *Service) spawn(ctx context.Context, actor uuid.UUID, t *models.IssueTemplate) (uuid.UUID, error) {
+	// team_id обязан принадлежать воркспейсу шаблона: на BYPASSRLS-коннекте воркера
+	// RLS не отсечёт чужую команду, поэтому проверяем явно.
+	var teamOK bool
+	if err := db.WithWorkspace(ctx, s.db, t.WorkspaceID, func(ctx context.Context, tx bun.Tx) error {
+		ok, e := tx.NewSelect().Model((*models.Team)(nil)).
+			Where("id = ?", t.TeamID).Where("workspace_id = ?", t.WorkspaceID).Exists(ctx)
+		teamOK = ok
+		return e
+	}); err != nil {
+		return uuid.Nil, err
+	}
+	if !teamOK {
+		return uuid.Nil, authz.ErrForbidden
+	}
 	id := uuid.New()
 	title := strings.TrimSpace(t.Title)
 	if title == "" {

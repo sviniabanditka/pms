@@ -30,6 +30,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 	r.Use(middleware.Recoverer)
 	r.Use(corsCSRF(allowedOrigins)) // CORS (credentials) + origin-check CSRF; dev=любой origin, прод=allowlist
 	r.Use(authSvc.Authenticator)    // кладёт user в контекст, если есть сессия
+	r.Use(auth.ReadOnlyGate)        // read-only PAT: REST-мутации запрещены (connect гейтит интерсептор)
 
 	// Liveness — процесс жив.
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -80,7 +81,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			http.Error(w, "invalid workspace id", http.StatusBadRequest)
 			return
 		}
-		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member || !auth.WorkspaceAllowed(req.Context(), wsID) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -102,7 +103,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			http.Error(w, "invalid workspace id", http.StatusBadRequest)
 			return
 		}
-		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member || !auth.WorkspaceAllowed(req.Context(), wsID) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -138,7 +139,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			http.Error(w, "invalid workspace id", http.StatusBadRequest)
 			return
 		}
-		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member || !auth.WorkspaceAllowed(req.Context(), wsID) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -162,7 +163,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			http.Error(w, "invalid workspace id", http.StatusBadRequest)
 			return
 		}
-		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member || !auth.WorkspaceAllowed(req.Context(), wsID) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -228,7 +229,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			return
 		}
 		// загружать в воркспейс может только его участник
-		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member || !auth.WorkspaceAllowed(req.Context(), wsID) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -344,7 +345,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			http.Error(w, "invalid workspace_id", http.StatusBadRequest)
 			return
 		}
-		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member || !auth.WorkspaceAllowed(req.Context(), wsID) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -370,7 +371,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			http.Error(w, "invalid workspace_id", http.StatusBadRequest)
 			return
 		}
-		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member || !auth.WorkspaceAllowed(req.Context(), wsID) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -420,7 +421,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			http.Error(w, "invalid workspace_id", http.StatusBadRequest)
 			return
 		}
-		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member || !auth.WorkspaceAllowed(req.Context(), wsID) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -441,7 +442,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			http.Error(w, "invalid workspace_id", http.StatusBadRequest)
 			return
 		}
-		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member || !auth.WorkspaceAllowed(req.Context(), wsID) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -475,7 +476,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			http.Error(w, "invalid workspace_id", http.StatusBadRequest)
 			return
 		}
-		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member || !auth.WorkspaceAllowed(req.Context(), wsID) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -497,7 +498,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			http.Error(w, "invalid workspace_id", http.StatusBadRequest)
 			return
 		}
-		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member || !auth.WorkspaceAllowed(req.Context(), wsID) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
@@ -520,7 +521,7 @@ func NewRouter(bdb *bun.DB, rdb *redis.Client, authSvc *auth.Service, gw *realti
 			http.Error(w, "invalid workspace_id", http.StatusBadRequest)
 			return
 		}
-		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member {
+		if member, err := svcs.Workspaces.IsMember(req.Context(), wsID, uid); err != nil || !member || !auth.WorkspaceAllowed(req.Context(), wsID) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
