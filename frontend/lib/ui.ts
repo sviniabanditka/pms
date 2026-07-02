@@ -10,3 +10,9 @@ export const modalUi = { background: 'dark:bg-surface', ring: 'ring-1 ring-subtl
 export const STATE_CATS = ['backlog', 'unstarted', 'started', 'completed', 'canceled']
 export const REL_TYPES = ['blocks', 'blocked_by', 'related', 'duplicate', 'duplicate_of']
 export const ROLES = ['owner', 'admin', 'member', 'guest']
+// короткая дата уведомления/коммента: "Jun 12" (невалидная строка → как есть)
+export function notifTime(at: any) {
+  const s = String(at); const d = new Date(s)
+  if (isNaN(+d)) return s.slice(5, 10)
+  return d.toLocaleDateString('en', { month: 'short', day: 'numeric' })
+}

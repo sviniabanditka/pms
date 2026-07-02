@@ -2,7 +2,7 @@
 import { isAuthed, clearAuth } from '~/lib/token'
 import { fileViewUrl } from '~/lib/upload'
 import { useAppStore } from '~/stores/app'
-import { PRIO, cap, labelOpts, propSelUi, modalUi, STATE_CATS, REL_TYPES, ROLES } from '~/lib/ui'
+import { PRIO, cap, labelOpts, propSelUi, modalUi, STATE_CATS, REL_TYPES, ROLES, notifTime } from '~/lib/ui'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 
 const store = useAppStore()
@@ -1094,13 +1094,7 @@ function openNotif(n: any) {
   const iss = store.issues[n.entityId]
   if (iss) { activeSection.value = 'tasks'; personalView.value = ''; teamSection.value = ''; selectedTeamId.value = iss.teamId; openIssue(iss.id) }
 }
-const NOTIF_META: Record<string, { icon: string; verb: string; color: string }> = {
-  assigned: { icon: 'i-heroicons-user-plus', verb: 'Assigned to you', color: '#5e6ad2' },
-  state_changed: { icon: 'i-heroicons-arrow-path', verb: 'Status changed', color: '#d29922' },
-  commented: { icon: 'i-heroicons-chat-bubble-left-ellipsis', verb: 'New comment', color: '#3fb950' },
-  mention: { icon: 'i-heroicons-at-symbol', verb: 'Mentioned you', color: '#5e6ad2' },
-}
-function notifMeta(t: string) { return NOTIF_META[t] || { icon: 'i-heroicons-bell', verb: t, color: '#7c828c' } }
+// notifMeta/inboxList живут в SectionsInboxSection
 // Inbox-фильтры (сайдбар)
 const inboxFilter = ref<'all' | 'unread' | 'assigned' | 'state_changed'>('all')
 const INBOX_FILTERS = [
@@ -1110,78 +1104,31 @@ const INBOX_FILTERS = [
   { key: 'state_changed', label: 'Status changes', icon: 'i-heroicons-arrow-path' },
   { key: 'commented', label: 'Comments', icon: 'i-heroicons-chat-bubble-left-ellipsis' },
 ]
-const inboxList = computed(() => {
-  // скрываем типы, выключенные в настройках уведомлений
-  const all = store.myNotifications.filter((n: any) => notifPrefs.value[n.type] !== false)
-  if (inboxFilter.value === 'all') return all
-  if (inboxFilter.value === 'unread') return all.filter((n: any) => !n.readAt)
-  return all.filter((n: any) => n.type === inboxFilter.value)
-})
 function inboxCount(key: string) {
   if (key === 'all') return store.myNotifications.length
   if (key === 'unread') return store.unreadCount
   return store.myNotifications.filter((n: any) => n.type === key).length
 }
-function notifTime(at: any) {
-  const s = String(at); const d = new Date(s)
-  if (isNaN(+d)) return s.slice(5, 10)
-  return d.toLocaleDateString('en', { month: 'short', day: 'numeric' })
-}
 
 // --- Meetings ---
 const meeting = useMeeting()
-// ресайз правых панелей (таска/цикл/тред)
+// ресайз правых панелей (таска/цикл; тред — в SectionsThreadPanel)
 const detailPanel = useResizable('detail', 384)
-const threadPanel = useResizable('thread', 384)
 const cyclePanel = useResizable('cycle', 320)
-const startOrJoinHuddle = (channelId: string) => wrap(async () => {
-  const existing = store.liveHuddleForChannel(channelId)
-  if (existing && meeting.activeMeetingId.value === existing.id) return // уже в нём
-  const mid = existing ? existing.id : await store.startHuddle(channelId)
-  await meeting.join(mid)
-})
 const joinScheduled = (mid: string) => wrap(() => meeting.join(mid))
 
 // --- Chats ---
-const msgDraft = ref('')
-const composerEl = ref<HTMLTextAreaElement | null>(null)
-const showPreview = ref(false)
+// композер/шапка/скролл/хадлы живут в SectionsChatSection, тред — в SectionsThreadPanel.
+// Здесь — открытие каналов (зовётся из сайдбара/палитры/роутера/уведомлений) + unread-разделитель.
 const currentChannel = computed(() => store.channels[store.activeChannelId])
-const threadParent = computed(() => store.channelMessages(store.activeChannelId).find((m: any) => m.id === store.threadParentId))
-const membersOpen = ref(false)
-// управлять списком можно только в приватном канале (в публичном участники = весь воркспейс)
-const canManageMembers = computed(() => !!currentChannel.value && currentChannel.value.kind === 'channel' && currentChannel.value.private && store.isChannelMember(currentChannel.value.id))
-const channelActions = computed(() => {
-  const c = currentChannel.value
-  if (!c || c.kind === 'dm') return []
-  const items: any[] = []
-  if (c.private && store.isChannelMember(c.id)) items.push({ label: 'Leave channel', icon: 'i-heroicons-arrow-right-on-rectangle', click: () => wrap(() => store.leaveChannel(c.id)) })
-  if (store.isChannelMember(c.id) || c.createdBy === store.currentUserId) items.push({ label: 'Archive channel', icon: 'i-heroicons-archive-box', click: () => wrap(() => store.archiveChannel(c.id)) })
-  return items.length ? [items] : []
-})
-const channelAddable = computed(() => {
-  if (!currentChannel.value) return [] as any[]
-  const inCh = new Set(store.channelMembersOf(currentChannel.value.id))
-  return Object.values(store.users).filter((u: any) => !inCh.has(u.id)).map((u: any) => ({ label: store.userName(u.id), value: u.id }))
-})
-const addMember = (uid: string) => { if (uid && currentChannel.value) wrap(() => store.addChannelMember(currentChannel.value!.id, uid)) }
-watch(() => store.activeChannelId, () => { membersOpen.value = false })
-function channelTitle(c: any) {
-  if (!c) return ''
-  return c.kind === 'dm' ? store.userName(store.dmOtherId(c.id)) : c.name
-}
+const chatSection = ref<{ scrollBottom: () => void; scrollToUnread: () => void } | null>(null)
 // inline @/# пикеры (юзеры + сущности)
-const chatMention = useMention(msgDraft, composerEl)
 const descMention = useMention(descDraft, descEl)
 const docMention = useMention(docDraft, docEl)
 const commentMention = useMention(commentDraft, commentEl)
 function onCommentKeydown(e: KeyboardEvent) {
   if (commentMention.onKeydown(e)) return
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addComment() }
-}
-function onComposerKeydown(e: KeyboardEvent) {
-  if (chatMention.onKeydown(e)) return
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg() }
 }
 // вложения в описании/доках — chat-модель: paste/пик → attachment (тумба/плашка), не inline md
 const descFileEl = ref<HTMLInputElement | null>(null)
@@ -1238,15 +1185,6 @@ function onRefClick(e: MouseEvent) {
   else if (type === 'channel') { openChannel(id) }
   else if (type === 'meeting') { activeSection.value = 'meetings' }
 }
-const chatFileEl = ref<HTMLInputElement | null>(null)
-const onChatFilePick = (e: Event) => {
-  const files = (e.target as HTMLInputElement).files
-  if (!files?.length) return
-  for (const f of Array.from(files)) pendingFiles.value = [...pendingFiles.value, f] // всё (картинки+файлы) → превью в композере, шлём прикреплённым
-  if (chatFileEl.value) chatFileEl.value.value = ''
-}
-const msgScrollEl = ref<HTMLElement | null>(null)
-function scrollMessagesBottom() { nextTick(() => { const el = msgScrollEl.value; if (el) el.scrollTop = el.scrollHeight }) }
 // разделитель «new messages»: метка времени, до которой прочитано (зафиксирована при открытии)
 const unreadDividerTs = ref('')
 const firstUnreadMsgId = computed(() => {
@@ -1259,38 +1197,13 @@ async function openChannel(id: string) {
   unreadDividerTs.value = store.channelUnreadCount(id) > 0 ? (store.channelLastReadAt(id) || '1970-01-01') : ''
   await store.loadMessages(id)
   await nextTick()
-  if (firstUnreadMsgId.value && msgScrollEl.value) {
-    const el = msgScrollEl.value.querySelector('[data-unread-divider]') as HTMLElement | null
-    if (el) el.scrollIntoView({ block: 'center' }); else scrollMessagesBottom()
-  } else scrollMessagesBottom()
+  if (firstUnreadMsgId.value) chatSection.value?.scrollToUnread()
+  else chatSection.value?.scrollBottom()
   store.markChannelRead(id)
 }
-const openDM = (userId: string) => wrap(async () => { activeSection.value = 'chats'; store.closeThread(); await store.createDM(userId); scrollMessagesBottom() })
-const pendingFiles = ref<File[]>([])
-const sendMsg = () => wrap(async () => {
-  const b = msgDraft.value.trim()
-  if ((!b && !pendingFiles.value.length) || !store.activeChannelId) return
-  const files = pendingFiles.value.slice()
-  msgDraft.value = ''; pendingFiles.value = []; showPreview.value = false
-  await store.sendMessageAttached(store.activeChannelId, b, files)
-  scrollMessagesBottom()
-})
-const onChatPaste = (e: ClipboardEvent) => {
-  const items = e.clipboardData?.items; if (!items) return
-  for (const it of Array.from(items)) {
-    if (it.type.startsWith('image/')) { e.preventDefault(); const f = it.getAsFile(); if (f) pendingFiles.value = [...pendingFiles.value, f] }
-  }
-}
-function wrapSel(pre: string, post = pre) {
-  const el = composerEl.value
-  if (!el) { msgDraft.value += pre + post; return }
-  const s = el.selectionStart, e = el.selectionEnd, v = msgDraft.value
-  msgDraft.value = v.slice(0, s) + pre + v.slice(s, e) + post + v.slice(e)
-  nextTick(() => { el.focus(); el.selectionStart = s + pre.length; el.selectionEnd = e + pre.length })
-}
+const openDM = (userId: string) => wrap(async () => { activeSection.value = 'chats'; store.closeThread(); await store.createDM(userId); chatSection.value?.scrollBottom() })
 // reactions (комменты задачи; чат-сообщения рендерит ChatMessage)
 const EMOJIS = ['👍', '❤️', '😄', '🎉', '👀', '🚀', '✅', '🔥']
-const threadDraft = ref('')
 function reactionGroups(m: any) {
   const g: Record<string, { emoji: string; count: number; mine: boolean }> = {}
   for (const r of m.reactions || []) {
@@ -1301,35 +1214,6 @@ function reactionGroups(m: any) {
 }
 const cReactPickerId = ref('')
 const commentReact = (c: any, emoji: string) => { cReactPickerId.value = ''; if (selectedIssue.value) wrap(() => store.toggleCommentReaction(c.id, selectedIssue.value!.id, emoji)) }
-const threadPending = ref<File[]>([])
-const threadFileEl = ref<HTMLInputElement | null>(null)
-const onThreadFilePick = (e: Event) => {
-  const files = (e.target as HTMLInputElement).files; if (!files) return
-  for (const f of Array.from(files)) threadPending.value = [...threadPending.value, f]
-  ;(e.target as HTMLInputElement).value = ''
-}
-const onThreadPaste = (e: ClipboardEvent) => {
-  const items = e.clipboardData?.items; if (!items) return
-  for (const it of Array.from(items)) if (it.type.startsWith('image/')) { e.preventDefault(); const f = it.getAsFile(); if (f) threadPending.value = [...threadPending.value, f] }
-}
-const sendThread = () => wrap(async () => {
-  const b = threadDraft.value.trim()
-  if ((!b && !threadPending.value.length) || !store.threadParentId) return
-  const files = threadPending.value.slice()
-  threadDraft.value = ''; threadPending.value = []
-  await store.sendMessageAttached(store.activeChannelId, b, files, store.threadParentId)
-})
-// mentions
-function insertToken(text: string) {
-  const el = composerEl.value
-  if (!el) { msgDraft.value += text; return }
-  const s = el.selectionStart, v = msgDraft.value
-  msgDraft.value = v.slice(0, s) + text + v.slice(s)
-  nextTick(() => { el.focus(); el.selectionStart = el.selectionEnd = s + text.length })
-}
-const mentionItems = computed(() => [[...store.wsUsers, store.users[store.currentUserId]].filter(Boolean).map((u: any) => ({
-  label: u.name || u.email, avatar: undefined, click: () => insertToken(`@[${u.name || u.email}](${u.id}) `),
-}))])
 // members
 const showMembers = ref(false)
 // invite-стейт — синглтон-композабл: им пользуются MembersModal (через страницу) и SettingsModal
@@ -1358,20 +1242,6 @@ function confirmDeleteTeam(t: any) {
   wrap(async () => { await store.deleteTeam(t.id); if (selectedTeamId.value === t.id) { selectedTeamId.value = ''; teamSection.value = '' } })
 }
 
-
-// typing throttle
-let typingTs = 0
-function onComposerInput() {
-  const now = Date.now()
-  if (store.activeChannelId && now - typingTs > 2500) { typingTs = now; store.sendTyping(store.activeChannelId) }
-}
-function onMessagesScroll(e: Event) {
-  const el = e.target as HTMLElement
-  if (el.scrollTop < 40 && currentChannel.value) {
-    const prevH = el.scrollHeight
-    store.loadOlder(currentChannel.value.id).then(() => nextTick(() => { el.scrollTop = el.scrollHeight - prevH }))
-  }
-}
 
 // --- Command palette / поиск (M7) ---
 const paletteOpen = ref(false)
@@ -2009,196 +1879,14 @@ useHead({ title: () => pageTitle.value })
       </template>
 
       <!-- INBOX section -->
-      <template v-else-if="activeSection === 'inbox'">
-        <div class="sticky top-0 z-10 flex items-center gap-2 border-b border-subtle bg-surface px-4 py-3 text-sm">
-          <UIcon name="i-heroicons-inbox" class="text-tertiary" />
-          <span class="font-medium">inbox</span>
-          <span v-if="store.unreadCount" class="rounded bg-accent/20 px-1.5 text-xs text-accent">{{ store.unreadCount }}</span>
-          <UButton v-if="store.unreadCount" class="ml-auto" size="xs" color="gray" variant="ghost" @click="store.markAllNotificationsRead()">[ mark all read ]</UButton>
-        </div>
-        <div v-for="n in inboxList" :key="n.id"
-          class="group flex cursor-pointer items-start gap-3 border-b border-subtle/40 px-4 py-3 hover:bg-hover"
-          @click="openNotif(n)">
-          <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full" :class="n.readAt ? 'bg-transparent' : 'bg-accent'" />
-          <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-elevated">
-            <UIcon :name="notifMeta(n.type).icon" :style="{ color: notifMeta(n.type).color }" />
-          </span>
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2">
-              <span :class="n.readAt ? 'text-secondary' : 'font-medium'">{{ notifMeta(n.type).verb }}</span>
-              <span class="text-xs text-tertiary">{{ store.issueById(n.entityId)?.identifier }}</span>
-              <span class="ml-auto shrink-0 text-xs text-tertiary">{{ notifTime(n.at) }}</span>
-            </div>
-            <div class="truncate text-sm text-tertiary">{{ store.issueById(n.entityId)?.title || n.entityType }}</div>
-          </div>
-          <UButton v-if="!n.readAt" class="mt-0.5 opacity-0 group-hover:opacity-100" icon="i-heroicons-check" color="gray" variant="ghost" size="2xs" square title="Mark read" @click.stop="store.markNotificationRead(n.id)" />
-        </div>
-        <div v-if="!inboxList.length" class="flex flex-col items-center justify-center gap-2 py-20 text-tertiary">
-          <UIcon name="i-heroicons-inbox" class="text-3xl" />
-          <span class="text-sm">{{ inboxFilter === 'all' ? "// inbox zero — you're all caught up" : '// nothing here' }}</span>
-        </div>
-      </template>
+      <SectionsInboxSection v-else-if="activeSection === 'inbox'" :filter="inboxFilter" :notif-prefs="notifPrefs" @open="openNotif" />
 
       <!-- CHATS section -->
-      <template v-else-if="activeSection === 'chats'">
-        <div v-if="currentChannel" class="flex h-full flex-col">
-          <div class="flex shrink-0 items-center gap-2 border-b border-subtle px-4 py-3">
-            <UIcon :name="currentChannel.kind === 'dm' ? 'i-heroicons-user' : currentChannel.private ? 'i-heroicons-lock-closed' : 'i-heroicons-hashtag'" class="text-tertiary" />
-            <span class="font-medium">{{ channelTitle(currentChannel) }}</span>
-
-            <!-- channel members (count + management dropdown) -->
-            <div v-if="currentChannel.kind !== 'dm'" class="relative ml-auto">
-              <UButton color="gray" variant="ghost" size="xs" @click="membersOpen = !membersOpen">
-                {{ store.channelParticipants(currentChannel.id).length }}
-              </UButton>
-              <div v-if="membersOpen" class="absolute right-0 top-9 z-30 w-64 rounded-lg border border-subtle bg-elevated p-2 shadow-xl">
-                <div class="mb-1 px-1 text-xs font-medium uppercase tracking-wide text-tertiary"><span class="text-ok"># </span>Members{{ !currentChannel.private ? ' · entire workspace' : '' }}</div>
-                <div class="max-h-56 overflow-y-auto">
-                  <div v-for="uid in store.channelParticipants(currentChannel.id)" :key="uid" class="group flex items-center gap-2 rounded px-1.5 py-1 hover:bg-hover">
-                    <Avatar :name="store.userName(uid)" :avatar-key="store.users[uid]?.avatarKey" :size="22" />
-                    <span class="min-w-0 flex-1 truncate text-sm">{{ store.userName(uid) }}{{ uid === store.currentUserId ? ' (you)' : '' }}</span>
-                    <UButton v-if="canManageMembers && uid !== store.currentUserId" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square title="Remove" @click="store.removeChannelMember(currentChannel.id, uid)" />
-                  </div>
-                </div>
-                <template v-if="canManageMembers">
-                  <div class="my-1.5 h-px bg-subtle" />
-                  <USelectMenu :options="channelAddable" value-attribute="value" option-attribute="label" searchable placeholder="Add member…" @update:model-value="addMember" />
-                </template>
-              </div>
-            </div>
-
-            <template v-if="store.liveHuddleForChannel(currentChannel.id)">
-              <UButton class="ml-auto" :color="meeting.activeMeetingId.value === store.liveHuddleForChannel(currentChannel.id)?.id ? 'gray' : 'green'" variant="ghost" size="xs"
-                @click="startOrJoinHuddle(currentChannel.id)">
-                {{ meeting.activeMeetingId.value === store.liveHuddleForChannel(currentChannel.id)?.id ? 'In huddle' : 'Join huddle' }}
-                · {{ store.meetingJoined(store.liveHuddleForChannel(currentChannel.id)!.id).length }}
-              </UButton>
-            </template>
-            <UButton v-else class="ml-auto" color="gray" variant="ghost" size="xs" title="Start huddle" @click="startOrJoinHuddle(currentChannel.id)">[ huddle ]</UButton>
-            <UButton :icon="linkCopied ? 'i-heroicons-check' : 'i-heroicons-link'" color="gray" variant="ghost" size="xs" square :title="linkCopied ? 'Copied!' : 'Copy link'" @click="copyLink" />
-            <UDropdown v-if="channelActions.length" :items="channelActions" :popper="{ placement: 'bottom-end' }">
-              <UButton icon="i-heroicons-ellipsis-horizontal" color="gray" variant="ghost" size="xs" square title="Channel actions" />
-            </UDropdown>
-          </div>
-          <!-- messages -->
-          <div ref="msgScrollEl" class="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-3" @scroll="onMessagesScroll">
-            <div v-if="store.hasMoreMessages[currentChannel.id]" class="py-1 text-center text-xs text-tertiary">loading older…</div>
-            <template v-for="m in store.channelMessages(currentChannel.id)" :key="m.id">
-            <div v-if="m.id === firstUnreadMsgId" data-unread-divider class="my-1 flex items-center gap-2 px-2 text-xs font-medium text-danger">
-              <span class="h-px flex-1 bg-danger/40" /> New messages <span class="h-px flex-1 bg-danger/40" />
-            </div>
-            <ChatMessage :m="m" />
-            </template>
-            <div v-if="store.messages[currentChannel.id] === undefined" class="space-y-3 py-2">
-              <div v-for="n in 6" :key="n" class="flex gap-3"><div class="skeleton h-8 w-8 rounded-full" /><div class="flex-1 space-y-1"><div class="skeleton h-3 w-24" /><div class="skeleton h-3" :style="{ width: 30 + (n * 13) % 55 + '%' }" /></div></div>
-            </div>
-            <div v-else-if="!store.channelMessages(currentChannel.id).length" class="py-16 text-center text-sm text-tertiary">No messages yet — say hi 👋</div>
-          </div>
-          <!-- typing -->
-          <div class="h-5 px-4 text-xs text-tertiary">
-            <span v-if="store.typingNames(currentChannel.id).length">{{ store.typingNames(currentChannel.id).join(', ') }} typing…</span>
-          </div>
-          <!-- composer -->
-          <div v-if="!store.canWrite" class="shrink-0 px-3 pb-3 text-center text-xs text-tertiary">// read-only — guests can't post</div>
-          <div v-else class="shrink-0 px-3 pb-3">
-            <PendingAttachments v-if="pendingFiles.length" class="mb-1.5" :files="pendingFiles" @remove="(i) => pendingFiles = pendingFiles.filter((_, j) => j !== i)" />
-            <div class="rounded-lg border border-subtle bg-elevated">
-              <div class="flex items-center gap-1 border-b border-subtle px-2 py-1">
-                <UButton color="gray" variant="ghost" size="2xs" square title="Bold" class="font-bold" @click="wrapSel('**')">B</UButton>
-                <UButton color="gray" variant="ghost" size="2xs" square title="Italic" class="italic" @click="wrapSel('_')">I</UButton>
-                <UButton icon="i-heroicons-code-bracket" color="gray" variant="ghost" size="2xs" square title="Code" @click="wrapSel('`')" />
-                <UButton icon="i-heroicons-link" color="gray" variant="ghost" size="2xs" square title="Link" @click="wrapSel('[', '](url)')" />
-                <UButton icon="i-heroicons-list-bullet" color="gray" variant="ghost" size="2xs" square title="List" @click="wrapSel('\n- ', '')" />
-                <UDropdown :items="mentionItems" :popper="{ placement: 'top-start' }">
-                  <UButton icon="i-heroicons-at-symbol" color="gray" variant="ghost" size="2xs" square title="Mention" />
-                </UDropdown>
-                <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="2xs" square title="Attach file" @click="chatFileEl?.click()" />
-                <input ref="chatFileEl" type="file" multiple class="hidden" @change="onChatFilePick" />
-                <UButton class="ml-auto" :icon="showPreview ? 'i-heroicons-pencil' : 'i-heroicons-eye'" color="gray" variant="ghost" size="2xs" square @click="showPreview = !showPreview" />
-              </div>
-              <div v-if="showPreview" class="prose-chat min-h-[60px] px-3 py-2 text-sm" v-html="renderMarkdown(msgDraft) || '<span class=&quot;text-tertiary&quot;>// nothing to preview</span>'" />
-              <div v-else class="relative flex gap-2 px-3 py-2">
-                <MentionMenu :m="chatMention" />
-                <span class="select-none pt-px text-ok">&gt;</span>
-                <textarea ref="composerEl" v-model="msgDraft" rows="3" placeholder="message… (markdown, @mention, #ref, ↵ to send)"
-                  class="w-full resize-none bg-transparent text-sm outline-none placeholder:text-tertiary"
-                  @paste="onChatPaste" @input="onComposerInput(); chatMention.detect()" @keydown="onComposerKeydown" />
-              </div>
-              <div class="flex items-center justify-between px-3 py-1.5">
-                <span class="text-xs text-tertiary">**bold** _italic_ `code` — Enter send, Shift+Enter newline</span>
-                <UButton size="xs" :disabled="!msgDraft.trim() && !pendingFiles.length" @click="sendMsg">[ send ]</UButton>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div v-else class="flex h-full flex-col items-center justify-center gap-2 text-tertiary">
-          <UIcon name="i-heroicons-chat-bubble-left-right" class="text-3xl" />
-          <span class="text-sm"><span class="text-ok">$</span> open a channel or DM</span>
-        </div>
-      </template>
+      <SectionsChatSection v-else-if="activeSection === 'chats'" ref="chatSection"
+        :link-copied="linkCopied" :first-unread-msg-id="firstUnreadMsgId" @copy-link="copyLink" />
 
       <!-- MEETINGS section -->
-      <template v-else-if="activeSection === 'meetings'">
-        <div class="mx-auto max-w-3xl px-6 py-6">
-          <div class="mb-5 flex items-center gap-2">
-            <h1 class="text-lg font-semibold text-white">Meetings</h1>
-            <UButton v-if="store.canWrite" class="ml-auto" color="gray" size="sm" @click="openCreate('meeting')">[ new meeting ]</UButton>
-          </div>
-
-          <div v-if="store.liveMeetings.length" class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Live now</div>
-          <div v-for="m in store.liveMeetings" :key="m.id" class="mb-2 flex items-center gap-3 rounded-lg border border-subtle bg-elevated p-3">
-            <span class="flex h-2.5 w-2.5 shrink-0 rounded-full bg-danger" />
-            <div class="min-w-0 flex-1">
-              <div class="truncate font-medium text-white">{{ m.kind === 'huddle' ? 'Huddle' : (m.title || 'Meeting') }}</div>
-              <div class="text-xs text-tertiary">{{ store.meetingJoined(m.id).length }} in call · {{ store.meetingParts(m.id).length }} invited</div>
-            </div>
-            <div class="flex -space-x-1.5">
-              <span v-for="p in store.meetingJoined(m.id).slice(0, 4)" :key="p.userId"
-                class="flex h-6 w-6 items-center justify-center rounded-full border border-surface bg-active text-[10px] text-white" :title="store.userName(p.userId)">
-                {{ store.userName(p.userId).charAt(0).toUpperCase() }}
-              </span>
-            </div>
-            <UButton v-if="meeting.activeMeetingId.value !== m.id" color="green" size="sm" @click="joinScheduled(m.id)">[ join ]</UButton>
-            <UButton v-else color="gray" size="sm" variant="ghost" disabled>[ in call ]</UButton>
-          </div>
-
-          <div v-if="store.upcomingMeetings.length" class="mb-2 mt-6 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Upcoming</div>
-          <div v-for="m in store.upcomingMeetings" :key="m.id" class="group mb-2 flex items-center gap-3 rounded-lg border border-subtle bg-elevated p-3">
-            <UIcon name="i-heroicons-calendar" class="shrink-0 text-tertiary" />
-            <div class="min-w-0 flex-1">
-              <div class="truncate font-medium text-white">{{ m.title || 'Meeting' }}</div>
-              <div class="text-xs text-tertiary">
-                <span v-if="m.scheduledAt">{{ new Date(m.scheduledAt).toLocaleString() }}<span v-if="m.endsAt">–{{ new Date(m.endsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }}</span> · </span>{{ store.meetingParts(m.id).length }} invited
-              </div>
-            </div>
-            <div class="flex -space-x-1.5">
-              <span v-for="p in store.meetingParts(m.id).slice(0, 4)" :key="p.userId"
-                class="flex h-6 w-6 items-center justify-center rounded-full border border-surface bg-elevated text-[10px] text-tertiary" :title="store.userName(p.userId)">
-                {{ store.userName(p.userId).charAt(0).toUpperCase() }}
-              </span>
-            </div>
-            <UButton color="gray" size="sm" @click="joinScheduled(m.id)">[ start ]</UButton>
-            <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="xs" square title="Delete" @click="store.endMeeting(m.id)" />
-          </div>
-
-          <div v-if="store.pastMeetings.length" class="mb-2 mt-6 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Past</div>
-          <div v-for="m in store.pastMeetings" :key="m.id" class="group mb-2 flex items-center gap-3 rounded-lg border border-subtle/60 bg-elevated/40 p-3">
-            <UIcon name="i-heroicons-clock" class="shrink-0 text-tertiary/60" />
-            <div class="min-w-0 flex-1">
-              <div class="truncate font-medium text-secondary">{{ m.title || 'Meeting' }}</div>
-              <div class="text-xs text-tertiary">
-                <span v-if="m.scheduledAt">{{ new Date(m.scheduledAt).toLocaleString() }}<span v-if="m.endsAt">–{{ new Date(m.endsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }}</span> · </span>{{ store.meetingParts(m.id).length }} invited
-              </div>
-            </div>
-            <UButton color="gray" size="sm" title="Start again" @click="joinScheduled(m.id)">[ restart ]</UButton>
-            <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="xs" square title="Delete" @click="store.endMeeting(m.id)" />
-          </div>
-
-          <div v-if="!store.scheduledMeetings.length && !store.liveMeetings.length" class="py-16 text-center text-sm text-tertiary">
-            No meetings yet. Create one or start a huddle from any chat.
-          </div>
-        </div>
-      </template>
+      <SectionsMeetingsSection v-else-if="activeSection === 'meetings'" @create="openCreate('meeting')" @join="joinScheduled" />
 
       <!-- TASKS section -->
       <template v-else>
@@ -2972,34 +2660,7 @@ useHead({ title: () => pageTitle.value })
     </aside>
 
     <!-- Thread panel (плавающая) -->
-    <ResizeHandle v-if="store.threadParentId && activeSection === 'chats'" @down="threadPanel.onResizeStart" />
-    <aside v-if="store.threadParentId && activeSection === 'chats'" :style="{ width: threadPanel.w.value + 'px' }" class="flex shrink-0 flex-col overflow-hidden rounded-xl border border-subtle bg-surface text-sm">
-      <div class="flex shrink-0 items-center gap-2 border-b border-subtle px-4 py-3">
-        <UIcon name="i-heroicons-chat-bubble-left-right" class="text-tertiary" />
-        <span class="font-medium">thread</span>
-        <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="store.closeThread()" />
-      </div>
-      <div class="flex-1 overflow-y-auto px-2 py-3">
-        <!-- parent (full message: reactions/attachments, без reply-в-тред) -->
-        <div v-if="threadParent" class="mb-1 border-b border-subtle pb-1">
-          <ChatMessage :m="threadParent" :can-reply="false" />
-        </div>
-        <div class="mb-1 px-2 text-xs text-tertiary">{{ store.threadMessages.length }} {{ store.threadMessages.length === 1 ? 'reply' : 'replies' }}</div>
-        <ChatMessage v-for="m in store.threadMessages" :key="m.id" :m="m" :can-reply="false" />
-      </div>
-      <div v-if="store.canWrite" class="shrink-0 border-t border-subtle p-2">
-        <PendingAttachments v-if="threadPending.length" class="mb-2" :files="threadPending" @remove="(i) => threadPending = threadPending.filter((_, j) => j !== i)" />
-        <div class="flex gap-2 rounded-md border border-subtle bg-elevated px-2 py-1.5">
-          <span class="select-none pt-px text-ok">&gt;</span>
-          <textarea v-model="threadDraft" rows="2" placeholder="reply…" class="w-full resize-none bg-transparent text-sm outline-none" @paste="onThreadPaste" @keydown.enter.exact.prevent="sendThread" />
-        </div>
-        <div class="mt-1 flex items-center justify-end gap-2">
-          <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="2xs" square title="Attach" @click="threadFileEl?.click()" />
-          <input ref="threadFileEl" type="file" multiple class="hidden" @change="onThreadFilePick" />
-          <UButton size="2xs" :disabled="!threadDraft.trim() && !threadPending.length" @click="sendThread">[ reply ]</UButton>
-        </div>
-      </div>
-    </aside>
+    <SectionsThreadPanel v-if="store.threadParentId && activeSection === 'chats'" />
     </div><!-- /content panel -->
     </div><!-- /flex flex-1 -->
 
