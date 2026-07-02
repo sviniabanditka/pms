@@ -2,6 +2,7 @@
 import { isAuthed, clearAuth } from '~/lib/token'
 import { fileViewUrl } from '~/lib/upload'
 import { useAppStore } from '~/stores/app'
+import { PRIO, cap, labelOpts, propSelUi, modalUi, STATE_CATS, REL_TYPES, ROLES } from '~/lib/ui'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 
 const store = useAppStore()
@@ -70,13 +71,8 @@ const teamName = ref('')
 const teamParent = ref('')
 const selectedTeamId = ref('')
 const newIssue = reactive<Record<string, string>>({}) // stateId -> draft title
-const err = ref('')
+const { err, wrap } = useActionWrap()
 
-const PRIO = ['None', 'Low', 'Med', 'High', 'Urgent']
-const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' ') : s)
-const labelOpts = (arr: string[]) => arr.map((v) => ({ label: cap(v), value: v }))
-// borderless ghost look for issue-detail property controls
-const propSelUi = { padding: { sm: 'px-2 py-1' }, base: 'cursor-pointer' }
 const { statusColor, statusGlyph, prioColor, prioGlyph } = useColors()
 const selectedTeam = computed(() => store.teams[selectedTeamId.value])
 const draggedId = ref('')
@@ -85,9 +81,6 @@ const draggedId = ref('')
 const selectedIssueId = ref('')
 const selectedIssue = computed(() => store.issues[selectedIssueId.value])
 const newSub = ref('')
-const relType = ref('blocks')
-const relTarget = ref('')
-const REL_TYPES = ['blocks', 'blocked_by', 'related', 'duplicate', 'duplicate_of']
 const showLabelModal = ref(false)
 const showRelModal = ref(false)
 // issue description (markdown, inline edit + md toolbar)
@@ -162,20 +155,6 @@ const todayISO = new Date().toISOString().slice(0, 10)
 function msOverdue(m: any) { return m.targetDate && String(m.targetDate).slice(0, 10) < todayISO && m.status !== 'done' }
 // workflow states manager
 const showStates = ref(false)
-const STATE_CATS = ['backlog', 'unstarted', 'started', 'completed', 'canceled']
-const newStateName = ref('')
-const newStateCat = ref('unstarted')
-const addState = () => wrap(async () => { if (newStateName.value.trim()) { await store.createState(selectedTeamId.value, newStateName.value, newStateCat.value); newStateName.value = '' } })
-const delState = (id: string) => wrap(() => store.deleteState(id))
-// labels
-const newLabelName = ref('')
-const createLabelInIssue = () => wrap(async () => {
-  if (!newLabelName.value.trim() || !selectedIssue.value) return
-  const id = await store.createLabel(selectedIssue.value.teamId, newLabelName.value)
-  newLabelName.value = ''
-  await store.addLabel(selectedIssue.value.id, id)
-})
-const addLabelFromModal = (lid: any) => lid && wrap(async () => { await store.addLabel(selectedIssueId.value, lid) })
 // comments
 const commentDraft = ref('')
 const commentEl = ref<HTMLTextAreaElement | null>(null)
@@ -392,7 +371,6 @@ const cycleBreakdown = computed(() => {
   }
   return []
 })
-const addRel = () => wrap(async () => { if (relTarget.value.trim()) { await store.addRelation(selectedIssueId.value, relTarget.value, relType.value); relTarget.value = ''; showRelModal.value = false } })
 
 // --- Dashboards (M6 ч.2) ---
 const selectedDashboardId = ref('')
@@ -403,19 +381,6 @@ const createDash = () => wrap(async () => { if (newDashboard.value.trim()) { con
 // add-widget form
 const showWidget = ref(false)
 const draggedWidget = ref('')
-const wType = ref('note')
-const wTitle = ref('')
-const wNote = ref('')
-const wStatPrio = ref('')
-const wViewId = ref('')
-const addWidget = () => wrap(async () => {
-  let config: any = {}
-  if (wType.value === 'note') config = { text: wNote.value }
-  else if (wType.value === 'stat') config = { priority: wStatPrio.value }
-  else if (wType.value === 'view') config = { viewId: wViewId.value }
-  await store.addWidget(selectedDashboardId.value, wType.value, wTitle.value, config)
-  wTitle.value = ''; wNote.value = ''
-})
 function statValue(w: any) {
   const p = w.config?.priority
   const filter = p === '' || p == null ? null : { type: 'predicate' as const, field: 'priority', op: 'eq' as const, value: Number(p) }
@@ -546,18 +511,6 @@ onMounted(async () => {
   applyRoute(route.path) // deep-link при загрузке
 })
 
-const toast = useToast()
-// wrap: единая обёртка экшенов. Ошибка — в err (для инлайн-мест) И в toast
-// (видно из любого экрана; раньше err рендерился в 3 местах из ~15 — фейлы были немыми).
-// types — какие sync-чанки перечитать при фейле, чтобы откатить optimistic-стейт до серверной правды.
-async function wrap(fn: () => Promise<any>, types?: string[]) {
-  err.value = ''
-  try { await fn() } catch (e: any) {
-    err.value = e?.message || String(e)
-    toast.add({ title: 'action failed', description: err.value, color: 'red' })
-    if (types?.length && store.activeWorkspaceId) store.catchUp(store.activeWorkspaceId, types).catch(() => {})
-  }
-}
 const showCreate = ref(false)
 const wsMenu = ref(false)
 const wsInitial = computed(() => (store.activeWorkspace?.name || 'P')[0].toUpperCase())
@@ -1227,10 +1180,7 @@ const moodPct = computed(() => aiMood.value?.n ? Math.round((aiMood.value.avg + 
 // iCal-подписка
 const showIcal = ref(false)
 const icalUrl = ref('')
-const icalCopied = ref(false)
 const openIcal = () => wrap(async () => { icalUrl.value = await store.icalFeedUrl(false); showIcal.value = true })
-const rotateIcal = () => wrap(async () => { icalUrl.value = await store.icalFeedUrl(true) })
-function copyIcal() { navigator.clipboard?.writeText(icalUrl.value); icalCopied.value = true; setTimeout(() => (icalCopied.value = false), 1500) }
 
 // страницы-разделы команды (cycles / docs / views)
 const teamSection = ref<'' | 'cycles' | 'docs' | 'views'>('')
@@ -1518,7 +1468,6 @@ const mentionItems = computed(() => [[...store.wsUsers, store.users[store.curren
 const showMembers = ref(false)
 const inviteEmail = ref('')
 const inviteRole = ref('member')
-const ROLES = ['owner', 'admin', 'member', 'guest']
 const inviteLink = ref('')
 const doInvite = () => wrap(async () => {
   if (!inviteEmail.value.trim()) return
@@ -1528,10 +1477,6 @@ const doInvite = () => wrap(async () => {
   inviteLink.value = token ? `${location.origin}/invite/${token}` : ''
 })
 const copyInviteLink = () => { if (inviteLink.value) navigator.clipboard?.writeText(inviteLink.value) }
-
-// Фон модалок = основной контент (surface). ВАЖНО: нужен dark:-вариант, иначе дефолтный
-// `dark:bg-gray-900` побеждает в twMerge при .dark теме (см. mergeConfig=defuTwMerge).
-const modalUi = { background: 'dark:bg-surface', ring: 'ring-1 ring-subtle' }
 
 
 // --- Settings-модалка (workspace) ---
@@ -3447,167 +3392,25 @@ useHead({ title: () => pageTitle.value })
     </UModal>
 
     <!-- Add-widget модалка -->
-    <UModal v-model="showWidget" :ui="modalUi">
-      <div class="space-y-3 p-4">
-        <span class="text-sm font-semibold text-white"><span class="text-ok">$</span> add widget</span>
-        <USelectMenu v-model="wType" :options="labelOpts(['note', 'stat', 'view', 'chart'])" value-attribute="value" option-attribute="label" />
-        <UInput v-model="wTitle" placeholder="Title (optional)" />
-        <UTextarea v-if="wType==='note'" v-model="wNote" placeholder="Text…" :rows="3" />
-        <USelectMenu v-else-if="wType==='stat'" v-model="wStatPrio" value-attribute="value" option-attribute="label"
-          :options="[{ label: 'all issues', value: '' }, ...PRIO.map((p, idx) => ({ label: `priority: ${p}`, value: String(idx) }))]" />
-        <USelectMenu v-else-if="wType==='view'" v-model="wViewId" value-attribute="value" option-attribute="label"
-          :options="[{ label: 'pick a view…', value: '' }, ...Object.values(store.views).filter((x) => !x.deletedAt).map((v) => ({ label: v.name, value: v.id }))]" />
-        <div class="flex justify-end gap-2 pt-1">
-          <UButton color="gray" variant="ghost" @click="showWidget = false">[ cancel ]</UButton>
-          <UButton @click="addWidget(); showWidget = false">[ add ]</UButton>
-        </div>
-      </div>
-    </UModal>
+    <ModalsWidgetModal v-model="showWidget" :dashboard-id="selectedDashboardId" />
 
     <!-- Calendar event модалка -->
-    <UModal v-model="showCalEvent" :ui="modalUi">
-      <div class="space-y-3 p-4">
-        <span class="text-sm font-semibold text-white"><span class="text-ok">$</span> {{ calForm.id ? 'Edit event' : calForm.kind === 'meeting' ? 'New meeting' : 'New event' }}</span>
-        <UInput v-model="calForm.title" placeholder="Title" autofocus @keydown.enter="saveCalEvent" />
-        <div class="flex items-center gap-2">
-          <USelectMenu v-model="calForm.kind" class="w-32" :disabled="!!calForm.id" :options="calForm.id ? [{ label: 'Event', value: 'event' }, { label: 'Day off', value: 'dayoff' }] : [{ label: 'Event', value: 'event' }, { label: 'Day off', value: 'dayoff' }, { label: 'Meeting', value: 'meeting' }]" value-attribute="value" option-attribute="label" />
-          <DatePicker v-model="calForm.date" block class="flex-1" />
-        </div>
-        <div v-if="!calForm.allDay || calForm.kind === 'meeting'" class="flex items-center gap-2">
-          <TimePicker v-model="calForm.start" class="flex-1" />
-          <span class="text-tertiary">–</span>
-          <TimePicker v-model="calForm.end" :from="calForm.start" class="flex-1" />
-        </div>
-        <TermCheck v-if="calForm.kind !== 'meeting'" v-model="calForm.allDay" label="All day" />
-        <!-- повтор (не для митинга) -->
-        <div v-if="calForm.kind !== 'meeting'" class="flex items-center gap-2">
-          <USelectMenu v-model="calForm.recurrence" class="w-40"
-            :options="[{ label: 'Does not repeat', value: 'none' }, { label: 'Daily', value: 'daily' }, { label: 'Weekly', value: 'weekly' }, { label: 'Monthly', value: 'monthly' }]"
-            value-attribute="value" option-attribute="label" />
-          <template v-if="calForm.recurrence !== 'none'">
-            <span class="text-xs text-tertiary">until</span>
-            <DatePicker v-model="calForm.recUntil" class="flex-1" placeholder="forever" />
-          </template>
-        </div>
-        <!-- участники митинга (free/busy: видно занятость в сетке через тоггл календарей слева) -->
-        <USelectMenu v-if="calForm.kind === 'meeting'" v-model="calForm.participants" multiple searchable placeholder="Invite participants…"
-          :options="store.wsUsers.map((u) => ({ label: u.name || u.email, value: u.id }))" value-attribute="value" option-attribute="label" />
-        <UTextarea v-if="calForm.kind !== 'meeting'" v-model="calForm.description" placeholder="Notes (optional)" :rows="2" />
-        <div class="flex items-center gap-2 pt-1">
-          <UButton v-if="calForm.id" color="red" variant="ghost" @click="deleteCalEvent">[ delete ]</UButton>
-          <UButton class="ml-auto" color="gray" variant="ghost" @click="showCalEvent = false">[ cancel ]</UButton>
-          <UButton @click="saveCalEvent">[ {{ calForm.id ? 'save' : 'create' }} ]</UButton>
-        </div>
-      </div>
-    </UModal>
+    <ModalsCalendarEventModal v-model="showCalEvent" :form="calForm" @save="saveCalEvent" @delete="deleteCalEvent" />
 
     <!-- Ручная запись времени -->
-    <UModal v-model="showTimeEntry" :ui="modalUi">
-      <div class="space-y-3 p-4">
-        <span class="text-sm font-semibold text-white"><span class="text-ok">$</span> log time</span>
-        <div class="flex items-center gap-2">
-          <DatePicker v-model="teForm.date" block class="flex-1" />
-          <TimePicker v-model="teForm.start" class="w-28" />
-          <span class="text-tertiary">–</span>
-          <TimePicker v-model="teForm.end" :from="teForm.start" class="w-28" />
-        </div>
-        <UInput v-model="teForm.description" placeholder="What did you work on? (optional)" @keydown.enter="saveTimeEntry" />
-        <div class="flex justify-end gap-2 pt-1">
-          <UButton color="gray" variant="ghost" @click="showTimeEntry = false">[ cancel ]</UButton>
-          <UButton color="gray" @click="saveTimeEntry">[ log ]</UButton>
-        </div>
-      </div>
-    </UModal>
+    <ModalsTimeEntryModal v-model="showTimeEntry" :form="teForm" @save="saveTimeEntry" />
 
     <!-- iCal subscribe модалка -->
-    <UModal v-model="showIcal" :ui="modalUi">
-      <div class="space-y-3 p-4">
-        <span class="text-sm font-semibold text-white"><span class="text-ok">$</span> subscribe to your calendar</span>
-        <p class="text-xs text-tertiary">Add this URL in Google Calendar / Apple Calendar (subscribe by URL). Read-only: your events, assigned deadlines and meetings. Keep it private — anyone with the link can view.</p>
-        <div class="flex items-center gap-2">
-          <UInput :model-value="icalUrl" readonly class="flex-1" :ui="{ base: 'font-mono text-xs' }" @focus="(e: any) => e.target.select()" />
-          <UButton :icon="icalCopied ? 'i-heroicons-check' : 'i-heroicons-clipboard-document'" color="gray" @click="copyIcal">{{ icalCopied ? 'Copied' : 'Copy' }}</UButton>
-        </div>
-        <div class="flex items-center gap-2 pt-1">
-          <UButton color="gray" variant="ghost" @click="rotateIcal">[ regenerate ]</UButton>
-          <span class="text-xs text-tertiary">Regenerating invalidates the old link.</span>
-          <UButton class="ml-auto" color="gray" variant="ghost" @click="showIcal = false">[ close ]</UButton>
-        </div>
-      </div>
-    </UModal>
+    <ModalsIcalModal v-model="showIcal" v-model:url="icalUrl" />
 
     <!-- Add label модалка -->
-    <UModal v-model="showLabelModal" :ui="modalUi">
-      <div v-if="selectedIssue" class="space-y-4 p-4">
-        <div class="flex items-center gap-2">
-          <span class="text-base font-semibold text-white"><span class="text-ok">$</span> add label</span>
-          <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showLabelModal = false" />
-        </div>
-        <div>
-          <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Existing</div>
-          <div class="flex flex-wrap gap-1.5">
-            <button v-for="l in store.teamLabels(selectedIssue.teamId).filter((l) => !store.labelsForIssue(selectedIssue.id).some((x) => x.id === l.id))" :key="l.id"
-              class="flex items-center gap-1 rounded-full border border-subtle px-2.5 py-1 text-sm hover:border-strong hover:bg-hover"
-              @click="addLabelFromModal(l.id); showLabelModal = false">
-              <span :style="{ color: l.colorToken }">#{{ l.name }}</span>
-            </button>
-            <span v-if="!store.teamLabels(selectedIssue.teamId).filter((l) => !store.labelsForIssue(selectedIssue.id).some((x) => x.id === l.id)).length" class="text-sm text-tertiary">All labels added</span>
-          </div>
-        </div>
-        <div class="border-t border-subtle pt-3">
-          <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Create new</div>
-          <div class="flex gap-2">
-            <UInput v-model="newLabelName" size="sm" placeholder="Label name" class="flex-1" @keyup.enter="createLabelInIssue(); showLabelModal = false" />
-            <UButton @click="createLabelInIssue(); showLabelModal = false">[ create ]</UButton>
-          </div>
-        </div>
-      </div>
-    </UModal>
+    <ModalsAddLabelModal v-model="showLabelModal" :issue="selectedIssue" />
 
     <!-- Add relation модалка -->
-    <UModal v-model="showRelModal" :ui="modalUi">
-      <div v-if="selectedIssue" class="space-y-4 p-4">
-        <div class="flex items-center gap-2">
-          <span class="text-base font-semibold text-white"><span class="text-ok">$</span> add relation</span>
-          <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showRelModal = false" />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs text-tertiary">Type</label>
-          <USelectMenu v-model="relType" :options="labelOpts(REL_TYPES)" value-attribute="value" option-attribute="label" class="w-full" />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs text-tertiary">Target issue</label>
-          <USelectMenu v-model="relTarget" searchable searchable-placeholder="Search issue…" placeholder="Select issue" value-attribute="value" option-attribute="label"
-            :options="store.issuesForTeamAll(selectedIssue.teamId).filter((i) => i.id !== selectedIssue.id).map((i) => ({ label: `${i.identifier} · ${i.title}`, value: i.identifier }))" class="w-full" />
-        </div>
-        <div class="flex justify-end gap-2 pt-1">
-          <UButton color="gray" variant="ghost" @click="showRelModal = false">[ cancel ]</UButton>
-          <UButton :disabled="!relTarget" @click="addRel">[ add ]</UButton>
-        </div>
-      </div>
-    </UModal>
+    <ModalsAddRelationModal v-model="showRelModal" :issue="selectedIssue" />
 
     <!-- Statuses модалка -->
-    <UModal v-model="showStates" :ui="modalUi">
-      <div class="space-y-3 p-4">
-        <div class="flex items-center gap-2">
-          <span class="text-base font-semibold text-white"><span class="text-ok">$</span> workflow statuses · {{ selectedTeam?.key }}</span>
-          <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showStates = false" />
-        </div>
-        <div v-for="st in store.teamStates(selectedTeamId)" :key="st.id" class="flex items-center gap-2">
-          <span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(st.category) }">{{ statusGlyph(st.category) }}</span>
-          <UInput :model-value="st.name" size="sm" class="flex-1" @change="(v:any) => store.updateState(st.id, { name: v })" />
-          <USelectMenu :model-value="st.category" :options="labelOpts(STATE_CATS)" value-attribute="value" option-attribute="label" size="sm" class="w-36" @update:model-value="(c) => store.updateState(st.id, { category: c })" />
-          <UButton icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square title="Delete (must be empty)" @click="delState(st.id)" />
-        </div>
-        <div class="flex items-center gap-2 border-t border-subtle pt-3">
-          <UInput v-model="newStateName" placeholder="New status name" size="sm" class="flex-1" @keyup.enter="addState" />
-          <USelectMenu v-model="newStateCat" :options="labelOpts(STATE_CATS)" value-attribute="value" option-attribute="label" size="sm" class="w-36" />
-          <UButton icon="i-heroicons-plus" size="xs" square @click="addState" />
-        </div>
-        <p v-if="err" class="text-xs text-danger">{{ err }}</p>
-      </div>
-    </UModal>
+    <ModalsWorkflowStatesModal v-model="showStates" :team-id="selectedTeamId" :team-key="selectedTeam?.key" />
 
     <!-- Workspace Settings (большая модалка с сайдбаром) -->
     <UModal v-model="showSettings" :prevent-close="showAuto" :ui="{ ...modalUi, width: 'sm:max-w-3xl', rounded: 'rounded-xl' }">
@@ -4019,43 +3822,8 @@ useHead({ title: () => pageTitle.value })
     </UModal>
 
     <!-- Members модалка -->
-    <UModal v-model="showMembers" :ui="modalUi">
-      <div class="space-y-3 p-4">
-        <div class="flex items-center gap-2">
-          <UIcon name="i-heroicons-user-group" class="text-tertiary" />
-          <span class="text-base font-semibold text-white"><span class="text-ok">$</span> members</span>
-          <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="showMembers = false" />
-        </div>
-        <!-- invite -->
-        <div v-if="store.isWsAdmin" class="flex gap-2">
-          <UInput v-model="inviteEmail" placeholder="email to invite" class="flex-1" @keyup.enter="doInvite" />
-          <USelectMenu v-model="inviteRole" :options="labelOpts(ROLES)" value-attribute="value" option-attribute="label" class="w-32" />
-          <UButton :disabled="!inviteEmail.trim()" @click="doInvite">[ invite ]</UButton>
-        </div>
-        <div v-if="inviteLink" class="flex items-center gap-2 rounded-md bg-elevated px-2 py-1.5 text-xs">
-          <UIcon name="i-heroicons-link" class="shrink-0 text-tertiary" />
-          <span class="flex-1 truncate font-mono text-tertiary">{{ inviteLink }}</span>
-          <UButton size="2xs" color="gray" @click="copyInviteLink">[ copy ]</UButton>
-        </div>
-        <!-- members list -->
-        <div class="max-h-72 overflow-y-auto">
-          <div class="mb-1 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Members ({{ store.workspaceMembers.length }})</div>
-          <div v-for="m in store.workspaceMembers" :key="m.id" class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
-            <span class="flex h-7 w-7 items-center justify-center rounded-full bg-elevated text-xs">{{ (m.name || '?')[0].toUpperCase() }}</span>
-            <span class="flex-1 truncate text-sm">{{ m.name }}</span>
-            <USelectMenu v-if="store.isWsAdmin" :model-value="m.role" :options="labelOpts(ROLES)" value-attribute="value" option-attribute="label" size="xs" class="w-28" @update:model-value="(r) => store.updateMemberRole(m.userId, r)" />
-            <span v-else class="w-28 text-right text-xs text-tertiary">{{ m.role }}</span>
-          </div>
-          <template v-if="store.isWsAdmin && store.pendingInvites.length">
-            <div class="mb-1 mt-3 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Pending invites</div>
-            <div v-for="iv in store.pendingInvites" :key="iv.id" class="group flex items-center gap-2 px-2 py-1.5 text-sm text-tertiary">
-              <UIcon name="i-heroicons-envelope" /> <span class="flex-1 truncate">{{ iv.email }}</span><span class="text-xs">{{ iv.role }}</span>
-              <UButton icon="i-heroicons-x-mark" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Revoke" @click="store.revokeInvitation(iv.id)" />
-            </div>
-          </template>
-        </div>
-      </div>
-    </UModal>
+    <ModalsMembersModal v-model="showMembers" v-model:invite-email="inviteEmail" v-model:invite-role="inviteRole"
+      :invite-link="inviteLink" @invite="doInvite" @copy-link="copyInviteLink" />
 
     <!-- Command palette (Cmd/Ctrl+K) -->
     <div v-if="paletteOpen" class="fixed inset-0 z-[100] flex items-start justify-center bg-black/40 pt-32" @click.self="paletteOpen = false">
