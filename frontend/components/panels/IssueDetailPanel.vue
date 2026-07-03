@@ -271,14 +271,7 @@ function onDescKeydown(e: KeyboardEvent) {
           <UButton color="gray" variant="ghost" size="2xs" square icon="i-heroicons-plus" title="Add time manually" @click="emit('log-time', selectedIssue.id)" />
         </PropertyRow>
         <!-- записи времени -->
-        <div v-for="te in store.timeEntriesForIssue(selectedIssue.id)" :key="te.id" class="group ml-24 flex items-center gap-2 pl-3 text-xs text-tertiary">
-          <UIcon :name="te.endedAt ? 'i-heroicons-check-circle' : 'i-heroicons-play-circle'" :class="te.endedAt ? '' : 'text-ok'" class="shrink-0" />
-          <span class="tabular-nums">{{ new Date(te.startedAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) }} {{ new Date(te.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</span>
-          <span class="flex-1 truncate">{{ te.description }}</span>
-          <span v-if="te.endedAt" class="tabular-nums">{{ fmtMin(Math.max(0, Math.round((new Date(te.endedAt).getTime() - new Date(te.startedAt).getTime()) / 60000))) }}</span>
-          <span v-else class="text-ok">running</span>
-          <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="wrap(() => time.deleteTimeEntry(te.id))" />
-        </div>
+        <TimeEntryRow v-for="te in store.timeEntriesForIssue(selectedIssue.id)" :key="te.id" :entry="te" @delete="(id) => wrap(() => time.deleteTimeEntry(id))" />
         <!-- Custom fields -->
         <div v-for="f in store.fieldsForTeam(selectedIssue.teamId)" :key="f.id" class="flex min-h-8 items-center gap-3">
           <span class="w-24 shrink-0 truncate text-tertiary">{{ f.name }}</span>
