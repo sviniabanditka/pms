@@ -13,7 +13,7 @@ export function withStore(override: Record<string, any> = {}) {
     setup() {
       const app = useAppStore()
       app.$reset()
-      app.$patch({ ...seedSnapshot(), ...override })
+      app.$patch({ ...seedSnapshot(), ...override } as any)
       return {}
     },
     template: '<div class="dark storybook-surface"><story /></div>',
@@ -26,8 +26,8 @@ export function withChat(chatOverride: Record<string, any> = {}, appOverride: Re
   return (story: any) => ({
     components: { story },
     setup() {
-      const app = useAppStore(); app.$reset(); app.$patch({ ...seedSnapshot(), ...appOverride })
-      const chat = useChatStore(); chat.$reset(); chat.$patch({ ...chatSeed(), ...chatOverride })
+      const app = useAppStore(); app.$reset(); app.$patch({ ...seedSnapshot(), ...appOverride } as any)
+      const chat = useChatStore(); chat.$reset(); chat.$patch({ ...chatSeed(), ...chatOverride } as any)
       return {}
     },
     template: '<div class="dark storybook-surface"><story /></div>',
