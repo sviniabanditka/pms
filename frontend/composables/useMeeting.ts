@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { Room, RoomEvent, Track, createLocalTracks, type RemoteTrack, type Participant } from 'livekit-client'
 import { useAppStore } from '~/stores/app'
+import { activeMeetingId } from '~/composables/useMeetingSignal'
 
 // Митинги через LiveKit SFU: 1 upstream + N downstream (без mesh N²). Сервер выдаёт JWT-токен
 // на JoinMeeting, медиа полностью на SFU. Singleton-состояние живёт между ре-рендерами.
@@ -15,7 +16,6 @@ export type Part = {
   audioTrack: Track | null
 }
 
-const activeMeetingId = ref('')
 const participants = ref<Record<string, Part>>({})
 const muted = ref(false)
 const camOff = ref(false)

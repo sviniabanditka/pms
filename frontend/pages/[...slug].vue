@@ -468,9 +468,10 @@ function inboxCount(key: string) {
 }
 
 // --- Meetings ---
-const meeting = useMeeting()
+const { activeMeetingId } = useMeetingSignal()
 // ресайз правых панелей — внутри самих панелей (PanelsIssueDetailPanel/PanelsCycleInsightsPanel/SectionsThreadPanel)
-const joinScheduled = (mid: string) => wrap(() => meeting.join(mid))
+// livekit грузится динамически только при клике join → нет в главном бандле
+const joinScheduled = (mid: string) => wrap(async () => { const { useMeeting } = await import('~/composables/useMeeting'); await useMeeting().join(mid) })
 
 // --- Chats ---
 // композер/шапка/скролл/хадлы живут в SectionsChatSection, тред — в SectionsThreadPanel.
@@ -928,27 +929,27 @@ useHead({ title: () => pageTitle.value })
       </template>
 
       <!-- CALENDAR: месяц-сетка + week/day тайм-сетка -->
-      <SectionsCalendarSection v-else-if="activeSection === 'calendar'"
+      <LazySectionsCalendarSection v-else-if="activeSection === 'calendar'"
         v-model:anchor="calAnchor" :cal-users="calUsers"
         @create="openCalCreate" @create-at="onCalCreateAt" @edit-event="openCalEdit"
         @open-issue="openIssue" @open-meetings="activeSection = 'meetings'" @ical="openIcal" />
 
       <!-- REPORTS: учёт времени -->
-      <SectionsReportsSection v-else-if="activeSection === 'reports'" />
+      <LazySectionsReportsSection v-else-if="activeSection === 'reports'" />
 
       <!-- DASHBOARD: грид виджетов -->
-      <SectionsDashboardSection v-else-if="activeSection === 'dashboard'"
+      <LazySectionsDashboardSection v-else-if="activeSection === 'dashboard'"
         :dashboard-id="selectedDashboardId" @add-widget="showWidget = true" />
 
       <!-- INBOX section -->
-      <SectionsInboxSection v-else-if="activeSection === 'inbox'" :filter="inboxFilter" :notif-prefs="notifPrefs" @open="openNotif" />
+      <LazySectionsInboxSection v-else-if="activeSection === 'inbox'" :filter="inboxFilter" :notif-prefs="notifPrefs" @open="openNotif" />
 
       <!-- CHATS section -->
-      <SectionsChatSection v-else-if="activeSection === 'chats'" ref="chatSection"
+      <LazySectionsChatSection v-else-if="activeSection === 'chats'" ref="chatSection"
         :link-copied="linkCopied" :first-unread-msg-id="firstUnreadMsgId" @copy-link="copyLink" />
 
       <!-- MEETINGS section -->
-      <SectionsMeetingsSection v-else-if="activeSection === 'meetings'" @create="openCreate('meeting')" @join="joinScheduled" />
+      <LazySectionsMeetingsSection v-else-if="activeSection === 'meetings'" @create="openCreate('meeting')" @join="joinScheduled" />
 
       <!-- TASKS section -->
       <template v-else>
@@ -982,24 +983,24 @@ useHead({ title: () => pageTitle.value })
       </template>
 
       <!-- CYCLES page -->
-      <ViewsCyclesPage v-else-if="teamSection === 'cycles' && selectedTeam" :team-id="selectedTeamId"
+      <LazyViewsCyclesPage v-else-if="teamSection === 'cycles' && selectedTeam" :team-id="selectedTeamId"
         @open-team="selectTeamIssues(selectedTeam)" @open-cycle="(c) => openCycleFor(selectedTeamId, c)" @create-cycle="openCreate('cycle')" />
 
       <!-- MILESTONES page -->
-      <ViewsMilestonesPage v-else-if="teamSection === 'milestones' && selectedTeam" :team-id="selectedTeamId" :ms-id="selectedMsId"
+      <LazyViewsMilestonesPage v-else-if="teamSection === 'milestones' && selectedTeam" :team-id="selectedTeamId" :ms-id="selectedMsId"
         @open-team="selectTeamIssues(selectedTeam)" @open-issue="openIssue" @open-ms="openMilestone"
         @close-ms="selectedMsId = ''" @create-milestone="openCreate('milestone')" />
 
       <!-- DOCS home -->
-      <ViewsDocsHome v-else-if="teamSection === 'docs' && selectedTeam" :team-id="selectedTeamId"
+      <LazyViewsDocsHome v-else-if="teamSection === 'docs' && selectedTeam" :team-id="selectedTeamId"
         @open-team="selectTeamIssues(selectedTeam)" @open-doc="openDoc" @create-doc="openCreate('doc')" />
 
       <!-- VIEWS page -->
-      <ViewsViewsPage v-else-if="teamSection === 'views' && selectedTeam" :team-id="selectedTeamId"
+      <LazyViewsViewsPage v-else-if="teamSection === 'views' && selectedTeam" :team-id="selectedTeamId"
         @open-team="selectTeamIssues(selectedTeam)" @open-view="openView" />
 
       <!-- DOC editor -->
-      <ViewsDocEditor v-else-if="selectedDoc" :doc-id="selectedDocId" :link-copied="linkCopied"
+      <LazyViewsDocEditor v-else-if="selectedDoc" :doc-id="selectedDocId" :link-copied="linkCopied"
         @open-team="(tid) => selectTeamIssues(store.teams[tid])" @open-docs="(tid) => openTeamSection(tid, 'docs')"
         @copy-link="copyLink" @close="selectedDocId = ''" />
 
@@ -1054,14 +1055,14 @@ useHead({ title: () => pageTitle.value })
         </div>
 
         <!-- BOARD -->
-        <ViewsIssueBoard v-if="store.layout==='board'" :team-id="selectedTeamId" :selected-issue-id="selectedIssueId"
+        <LazyViewsIssueBoard v-if="store.layout==='board'" :team-id="selectedTeamId" :selected-issue-id="selectedIssueId"
           @open-issue="openIssue" @create-issue="openCreate('issue')" />
 
         <!-- CALENDAR -->
-        <ViewsTeamCalendar v-else-if="store.layout==='calendar'" :team-id="selectedTeamId" @open-issue="openIssue" />
+        <LazyViewsTeamCalendar v-else-if="store.layout==='calendar'" :team-id="selectedTeamId" @open-issue="openIssue" />
 
         <!-- LIST (Linear-стиль: плотные строки, edit в detail; виртуализованный плоский поток) -->
-        <ViewsIssueList v-else :team-id="selectedTeamId" :selected-issue-id="selectedIssueId"
+        <LazyViewsIssueList v-else :team-id="selectedTeamId" :selected-issue-id="selectedIssueId"
           :selected-ids="selectedIds" :filters-shown="showFilters" :scroll-el="mainEl"
           @open-issue="openIssue" @toggle-sel="toggleSel" />
       </template>
@@ -1073,15 +1074,15 @@ useHead({ title: () => pageTitle.value })
     </main>
 
     <!-- Cycle insights panel (когда выбран цикл и не открыт issue) -->
-    <PanelsCycleInsightsPanel v-if="store.cycles[selectedCycleId] && !selectedIssue" :cycle-id="selectedCycleId" @close="closeCycle" />
+    <LazyPanelsCycleInsightsPanel v-if="store.cycles[selectedCycleId] && !selectedIssue" :cycle-id="selectedCycleId" @close="closeCycle" />
 
     <!-- Issue detail panel (M4) -->
-    <PanelsIssueDetailPanel v-if="selectedIssue" :issue-id="selectedIssueId" :link-copied="linkCopied"
+    <LazyPanelsIssueDetailPanel v-if="selectedIssue" :issue-id="selectedIssueId" :link-copied="linkCopied"
       @open-issue="openIssue" @copy-link="copyLink" @close="selectedIssueId = ''"
       @add-label="showLabelModal = true" @add-relation="showRelModal = true" @log-time="openTimeEntry" />
 
     <!-- Thread panel (плавающая) -->
-    <SectionsThreadPanel v-if="chat.threadParentId && activeSection === 'chats'" />
+    <LazySectionsThreadPanel v-if="chat.threadParentId && activeSection === 'chats'" />
     </div><!-- /content panel -->
     </div><!-- /flex flex-1 -->
 
@@ -1100,38 +1101,38 @@ useHead({ title: () => pageTitle.value })
     </div>
 
     <!-- Create-модалка (поля под выбранную сущность) -->
-    <ModalsCreateModal v-model="createOpen" :type="createType" :default-team="selectedTeamId" @created="onCreated" />
+    <LazyModalsCreateModal v-if="createOpen" v-model="createOpen" :type="createType" :default-team="selectedTeamId" @created="onCreated" />
 
     <!-- Add-widget модалка -->
-    <ModalsWidgetModal v-model="showWidget" :dashboard-id="selectedDashboardId" />
+    <LazyModalsWidgetModal v-if="showWidget" v-model="showWidget" :dashboard-id="selectedDashboardId" />
 
     <!-- Calendar event модалка -->
-    <ModalsCalendarEventModal v-model="showCalEvent" :form="calForm" @save="saveCalEvent" @delete="deleteCalEvent" />
+    <LazyModalsCalendarEventModal v-if="showCalEvent" v-model="showCalEvent" :form="calForm" @save="saveCalEvent" @delete="deleteCalEvent" />
 
     <!-- Ручная запись времени -->
-    <ModalsTimeEntryModal v-model="showTimeEntry" :form="teForm" @save="saveTimeEntry" />
+    <LazyModalsTimeEntryModal v-if="showTimeEntry" v-model="showTimeEntry" :form="teForm" @save="saveTimeEntry" />
 
     <!-- iCal subscribe модалка -->
-    <ModalsIcalModal v-model="showIcal" v-model:url="icalUrl" />
+    <LazyModalsIcalModal v-if="showIcal" v-model="showIcal" v-model:url="icalUrl" />
 
     <!-- Add label модалка -->
-    <ModalsAddLabelModal v-model="showLabelModal" :issue="selectedIssue" />
+    <LazyModalsAddLabelModal v-if="showLabelModal" v-model="showLabelModal" :issue="selectedIssue" />
 
     <!-- Add relation модалка -->
-    <ModalsAddRelationModal v-model="showRelModal" :issue="selectedIssue" />
+    <LazyModalsAddRelationModal v-if="showRelModal" v-model="showRelModal" :issue="selectedIssue" />
 
     <!-- Statuses модалка -->
-    <ModalsWorkflowStatesModal v-model="showStates" :team-id="selectedTeamId" :team-key="selectedTeam?.key" />
+    <LazyModalsWorkflowStatesModal v-if="showStates" v-model="showStates" :team-id="selectedTeamId" :team-key="selectedTeam?.key" />
 
     <!-- Workspace Settings (большая модалка с сайдбаром) -->
-    <ModalsSettingsModal v-model="showSettings" v-model:tab="settingsTab" :selected-team-id="selectedTeamId"
+    <LazyModalsSettingsModal v-if="showSettings" v-model="showSettings" v-model:tab="settingsTab" :selected-team-id="selectedTeamId"
       :cfg-list="cfgList" :notif-prefs="notifPrefs"
       @new-team="openCreate('team')" @open-states="(id) => { selectedTeamId = id; showStates = true }"
       @delete-team="confirmDeleteTeam" @open-issue="openIssue" @logout="logout"
       @toggle-pref="toggleNotifPref" @toggle-section="toggleSection" @move-section="moveSection" />
 
     <!-- Members модалка -->
-    <ModalsMembersModal v-model="showMembers" v-model:invite-email="inviteEmail" v-model:invite-role="inviteRole"
+    <LazyModalsMembersModal v-if="showMembers" v-model="showMembers" v-model:invite-email="inviteEmail" v-model:invite-role="inviteRole"
       :invite-link="inviteLink" @invite="doInvite" @copy-link="copyInviteLink" />
 
     <!-- Command palette (Cmd/Ctrl+K) -->
@@ -1160,7 +1161,7 @@ useHead({ title: () => pageTitle.value })
     </div>
 
     <!-- активный звонок (плавающая панель, сама прячется) -->
-    <MeetingCall />
+    <LazyMeetingCall v-if="activeMeetingId" />
     <!-- лайтбокс картинок -->
     <ImageLightbox />
   </div>
