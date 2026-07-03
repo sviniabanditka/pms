@@ -1,5 +1,6 @@
 export default defineNuxtConfig({
-  modules: ['@nuxt/ui', '@pinia/nuxt'],
+  modules: ['@nuxt/ui', '@pinia/nuxt', '@nuxtjs/storybook'],
+  storybook: { port: 6006 },
   // local-first логика — клиентская (guarded import.meta.client); SSR оставляем дефолтным.
   devtools: { enabled: false },
   colorMode: { preference: 'dark', fallback: 'dark', storageKey: 'pms-theme' },
