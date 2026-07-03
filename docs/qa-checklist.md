@@ -811,3 +811,10 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Views: у строки view (страница views команды) на hover появляются ✎ rename / × delete; rename меняет имя везде, delete убирает view (и из sidebar).
 - [ ] Большой воркспейс (~8k issues): скролл списка с прогрессами milestone/чипами CF/связями не деградирует (параметрик-геттеры на индексах, не полные сканы).
 - [ ] Logout/уход со страницы приложения не оставляет глобальных keydown/popstate-листенеров и minute-интервала.
+
+## 102. Page decomposition (behavior-preserving; ручной смок всех экранов)
+- [ ] Все 10 модалок открываются/работают: create (⌘N, все типы), settings (все 9 табов, автомейшн-билдер, шаблоны, API-токены, вебхуки), widget, calendar event, time entry, ical, add label, add relation, workflow states, members/invite.
+- [ ] Секции: chat (composer, mentions, paste, тред, scroll-to-unread), inbox (фильтры, клик-навигация), meetings (join/create), календарь (drag create/move/resize, month/week/day), reports (фильтры + AI-инсайты), dashboards (виджеты, add).
+- [ ] Панели: issue detail (описание+AI summary, свойства, CF, labels/relations/sub-issues, комменты+реакции, activity, time), cycle insights (burndown, breakdown-фильтры).
+- [ ] Вьюхи: board DnD, list (виртуализация, bulk-выбор переживает переключение layout), team calendar (due DnD), doc editor (автосейв, preview, mentions), cycles/milestones/docs/views страницы.
+- [ ] Гость: inert read-only в issue detail сохранился.
