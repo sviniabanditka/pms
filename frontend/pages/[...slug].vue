@@ -2,7 +2,7 @@
 import { isAuthed, clearAuth } from '~/lib/token'
 import { fileViewUrl } from '~/lib/upload'
 import { useAppStore } from '~/stores/app'
-import { PRIO, cap, labelOpts, propSelUi, modalUi, STATE_CATS, REL_TYPES, ROLES, notifTime, fmtD, d10, localDate, localHM, fmtMin, colorForUser } from '~/lib/ui'
+import { PRIO, labelOpts, fmtD, d10, localDate, localHM, colorForUser } from '~/lib/ui'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 
 const store = useAppStore()
@@ -80,62 +80,12 @@ const draggedId = ref('')
 // --- Issue detail panel (M4) ---
 const selectedIssueId = ref('')
 const selectedIssue = computed(() => store.issues[selectedIssueId.value])
-const newSub = ref('')
 const showLabelModal = ref(false)
 const showRelModal = ref(false)
-// issue description (markdown, inline edit + md toolbar)
-const descDraft = ref('')
-const descEditing = ref(false)
-const descEl = ref<HTMLTextAreaElement | null>(null)
-function startDescEdit() { descDraft.value = selectedIssue.value?.description?.md || ''; descEditing.value = true; nextTick(() => descEl.value?.focus()) }
-function saveDesc() { descEditing.value = false; if (selectedIssue.value) store.setIssueDescription(selectedIssue.value.id, descDraft.value) }
-function descWrap(pre: string, post = pre) {
-  const el = descEl.value; if (!el) { descDraft.value += pre + post; return }
-  const s = el.selectionStart, e = el.selectionEnd, v = descDraft.value
-  descDraft.value = v.slice(0, s) + pre + v.slice(s, e) + post + v.slice(e)
-  nextTick(() => { el.focus(); el.selectionStart = s + pre.length; el.selectionEnd = e + pre.length })
-}
-// AI-резюме описания (Фаза 4)
-const descSummary = ref(''); const descSummaryLoading = ref(false)
-async function summarizeDesc() {
-  if (!selectedIssue.value) return
-  descSummaryLoading.value = true
-  descSummary.value = await store.summarizeIssue(selectedIssue.value.id)
-  descSummaryLoading.value = false
-}
-watch(selectedIssueId, () => { descSummary.value = '' })
-const aiSuggest = ref<any>(null)
-const simIssues = computed(() => (aiSuggest.value?.similar || []).filter((s: any) => s.id !== selectedIssueId.value))
+// описание/AI-подсказки/комменты/активность — в PanelsIssueDetailPanel (issue-id проп)
 function openIssue(id: string) {
-  selectedIssueId.value = id; descEditing.value = false; store.loadComments(id); store.loadActivity(id)
-  aiSuggest.value = null
-  store.suggestForIssue(store.issues[id]).then((r) => { if (selectedIssueId.value === id) aiSuggest.value = r })
+  selectedIssueId.value = id; store.loadComments(id); store.loadActivity(id)
 }
-// подсказки, которых у issue ещё нет
-const suggestLabels = computed(() => {
-  const iss = selectedIssue.value; if (!iss || !aiSuggest.value) return []
-  const have = store.labelsByIssue.get(iss.id) || new Set()
-  return (aiSuggest.value.labelIds || []).filter((lid: string) => !have.has(lid) && store.labels[lid]).slice(0, 3)
-})
-const suggestAssignee = computed(() => {
-  const iss = selectedIssue.value; if (!iss || !aiSuggest.value?.assigneeId) return null
-  return (!iss.assigneeId && aiSuggest.value.assigneeId !== iss.assigneeId) ? aiSuggest.value.assigneeId : null
-})
-const PRI_LABELS = ['none', 'urgent', 'high', 'medium', 'low']
-const suggestPriority = computed(() => {
-  const iss = selectedIssue.value; const p = aiSuggest.value?.priority
-  if (!iss || p == null || p === iss.priority) return null
-  return p
-})
-const suggestEstimate = computed(() => {
-  const iss = selectedIssue.value; const e = aiSuggest.value?.estimate
-  if (!iss || e == null || iss.estimate != null) return null
-  return Math.max(1, Math.round(e))
-})
-const slipWarn = computed(() => {
-  const iss = selectedIssue.value
-  return !!(aiSuggest.value?.slipRisk && iss?.dueDate && !iss.completedAt)
-})
 // bulk selection (List)
 const selectedIds = ref<Set<string>>(new Set())
 const selCount = computed(() => selectedIds.value.size)
@@ -155,33 +105,6 @@ const todayISO = new Date().toISOString().slice(0, 10)
 function msOverdue(m: any) { return m.targetDate && String(m.targetDate).slice(0, 10) < todayISO && m.status !== 'done' }
 // workflow states manager
 const showStates = ref(false)
-// comments
-const commentDraft = ref('')
-const commentEl = ref<HTMLTextAreaElement | null>(null)
-const commentPending = ref<File[]>([])
-const commentFileEl = ref<HTMLInputElement | null>(null)
-const onCommentFilePick = (e: Event) => {
-  const files = (e.target as HTMLInputElement).files; if (!files?.length) return
-  for (const f of Array.from(files)) commentPending.value = [...commentPending.value, f]
-  if (commentFileEl.value) commentFileEl.value.value = ''
-}
-const onCommentPaste = (e: ClipboardEvent) => {
-  const items = e.clipboardData?.items; if (!items) return
-  for (const it of Array.from(items)) if (it.type.startsWith('image/')) { e.preventDefault(); const f = it.getAsFile(); if (f) commentPending.value = [...commentPending.value, f] }
-}
-const editCommentId = ref('')
-const editCommentDraft = ref('')
-const addComment = () => wrap(async () => {
-  const b = commentDraft.value.trim()
-  if ((!b && !commentPending.value.length) || !selectedIssue.value) return
-  const files = commentPending.value.slice()
-  commentDraft.value = ''; commentPending.value = []
-  await store.addCommentAttached(selectedIssue.value.id, b, files)
-})
-function startEditComment(c: any) { editCommentId.value = c.id; editCommentDraft.value = c.body }
-const saveComment = () => wrap(async () => { if (editCommentDraft.value.trim()) await store.editComment(editCommentId.value, selectedIssue.value.id, editCommentDraft.value); editCommentId.value = '' })
-const addSub = () => wrap(async () => { if (newSub.value.trim()) { await store.createSubIssue(selectedIssueId.value, newSub.value); newSub.value = '' } })
-
 // --- Cycles (M4 ч.2) ---
 const cycleStart = ref('')
 const cycleEnd = ref('')
@@ -241,135 +164,11 @@ function closeCycle() {
   selectedCycleId.value = ''; store.setFieldPredicate('cycle', null); clearBreakdownFilters()
 }
 
-// burndown: live-расчёт из completedAt issues цикла (scope константа = текущее число).
-const cycleBurndown = computed(() => {
-  const c = store.cycles[selectedCycleId.value]
-  if (!c) return null
-  const iss = store.issuesInCycle(c.id)
-  const scope = iss.length
-  const start = String(c.startsOn).slice(0, 10)
-  const end = String(c.endsOn).slice(0, 10)
-  const days: string[] = []
-  let d = new Date(start + 'T00:00:00Z')
-  const e = new Date(end + 'T00:00:00Z')
-  while (d <= e && days.length < 120) { days.push(d.toISOString().slice(0, 10)); d = new Date(d.getTime() + 86400000) }
-  const stats = store.cycleStats(c.id)
-  if (days.length < 2) return { ...stats, idealPts: '', actualPts: '' }
-  const completed = iss.filter((i) => i.completedAt).map((i) => String(i.completedAt).slice(0, 10))
-  const W = 280, H = 70
-  const pt = (idx: number, val: number) => `${(idx / (days.length - 1)) * W},${(H - (scope ? (val / scope) * H : 0)).toFixed(1)}`
-  const idealPts = days.map((_, i) => pt(i, scope * (1 - i / (days.length - 1)))).join(' ')
-  const actualPts = days.map((day, i) => pt(i, scope - completed.filter((cd) => cd <= day).length)).join(' ')
-  const areaPts = `0,${H} ${actualPts} ${W},${H}`
-  const fmt = (s: string) => new Date(s + 'T00:00:00Z').toLocaleDateString('en', { month: 'short', day: 'numeric' })
-  return { ...stats, idealPts, actualPts, areaPts, startLabel: fmt(start), midLabel: fmt(days[Math.floor(days.length / 2)]), endLabel: fmt(end) }
-})
-const insightTab = ref<'assignees' | 'priority' | 'labels' | 'milestones' | 'teams'>('priority')
-if (import.meta.client) {
-  const s = localStorage.getItem('cycleInsightTab')
-  if (s) insightTab.value = s as any
-}
-watch(insightTab, (v) => { if (import.meta.client) localStorage.setItem('cycleInsightTab', v) })
-const INSIGHT_TABS = ['Assignees', 'Labels', 'Priority', 'Milestones', 'Teams']
-const cycleRange = computed(() => {
-  const c = store.cycles[selectedCycleId.value]
-  if (!c) return ''
-  const f = (d: string) => new Date(d).toLocaleDateString('en', { month: 'short', day: 'numeric' })
-  return `${f(c.startsOn)} → ${f(c.endsOn)}`
-})
-// edit cycle (name + dates) через UpdateCycle
-const cycleEdit = ref(false)
-const cycleForm = reactive({ name: '', startsOn: '', endsOn: '' })
-function startCycleEdit() {
-  const c = store.cycles[selectedCycleId.value]; if (!c) return
-  cycleForm.name = c.name || `Cycle ${c.number}`; cycleForm.startsOn = d10(c.startsOn); cycleForm.endsOn = d10(c.endsOn)
-  cycleEdit.value = true
-}
-const saveCycle = () => wrap(async () => {
-  await store.updateCycle(selectedCycleId.value, { name: cycleForm.name, startsOn: cycleForm.startsOn, endsOn: cycleForm.endsOn })
-  cycleEdit.value = false
-})
-const cycleStatus = computed(() => {
-  const c = store.cycles[selectedCycleId.value]; if (!c) return 'Cycle'
-  const today = new Date().toISOString().slice(0, 10)
-  if (today < c.startsOn) return 'Upcoming'
-  if (today > c.endsOn) return 'Past'
-  return 'Current'
-})
-const BREAKDOWN_PALETTE = ['#5e6ad2', '#26a69a', '#d29922', '#e5484d', '#9c5cf6', '#0ea5e9', '#f76808', '#46a758']
-const NONE = '__none__' // сентинел «без значения» (isNotSet)
-// фильтр по любой breakdown-строке: priority/assignee/milestone/team — predicate; label — labelFilter.
-function activeValueFor(field: string) {
-  const f = store.activeFilter
-  const kids = f && f.type === 'and' ? f.children : f ? [f] : []
-  const p: any = kids.find((c: any) => c.type === 'predicate' && c.field === field && (c.op === 'eq' || c.op === 'isNotSet'))
-  if (!p) return null
-  return p.op === 'isNotSet' ? NONE : p.value
-}
-function rowActive(r: any) {
-  if (r.kind === 'label') return store.labelFilter.includes(r.value)
-  return activeValueFor(r.field) === r.value
-}
-function toggleRow(r: any) {
-  if (r.kind === 'label') { store.toggleLabelFilter(r.value); return }
-  const next = activeValueFor(r.field) === r.value ? null : r.value
-  store.setFieldPredicate(r.field, next === null ? null
-    : next === NONE ? { type: 'predicate', field: r.field, op: 'isNotSet' }
-    : { type: 'predicate', field: r.field, op: 'eq', value: next })
-}
+// burndown/breakdown/edit-форма цикла — в PanelsCycleInsightsPanel; здесь только сброс фильтров при закрытии
 function clearBreakdownFilters() {
   for (const fld of ['assignee', 'priority', 'milestone', 'team']) store.setFieldPredicate(fld, null)
   store.labelFilter = []
 }
-const cycleBreakdown = computed(() => {
-  const iss = store.issuesInCycle(selectedCycleId.value)
-  const total = iss.length || 1
-  const pct = (n: number) => Math.round((n / total) * 100)
-  if (insightTab.value === 'priority') {
-    return PRIO.map((p, idx) => ({ field: 'priority', value: idx, label: p, color: prioColor(idx), count: iss.filter((i) => i.priority === idx).length }))
-      .filter((r) => r.count).map((r) => ({ ...r, pct: pct(r.count) }))
-  }
-  if (insightTab.value === 'assignees') {
-    const ids = Array.from(new Set(iss.map((i) => i.assigneeId).filter(Boolean)))
-    const rows = ids.map((uid, n) => ({
-      field: 'assignee', value: uid as string, label: store.userName(uid as string),
-      color: BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length],
-      count: iss.filter((i) => i.assigneeId === uid).length,
-    })).map((r) => ({ ...r, pct: pct(r.count) }))
-    const none = iss.filter((i) => !i.assigneeId).length
-    if (none) rows.push({ field: 'assignee', value: NONE, label: 'No assignee', color: '#7c828c', count: none, pct: pct(none) })
-    return rows
-  }
-  if (insightTab.value === 'labels') {
-    // один проход по issues цикла через кэш-индекс labelsByIssue (раньше O(labels×issues×issueLabels))
-    const lbi = store.labelsByIssue
-    const counts = new Map<string, number>()
-    for (const i of iss) { const ids = lbi.get(i.id); if (ids) for (const lid of ids) counts.set(lid, (counts.get(lid) || 0) + 1) }
-    return Array.from(counts.entries()).map(([lid, count], n) => {
-      const l: any = store.labels[lid]
-      return { kind: 'label', value: lid, label: l?.name || '?', color: l?.colorToken || BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length], count, pct: pct(count) }
-    }).filter((r) => r.count)
-  }
-  if (insightTab.value === 'milestones') {
-    // один проход (раньше O(milestones×issues))
-    const counts = new Map<string, number>()
-    let none = 0
-    for (const i of iss) { if (i.milestoneId) counts.set(i.milestoneId, (counts.get(i.milestoneId) || 0) + 1); else none++ }
-    const rows = Array.from(counts.entries()).map(([mid, count], n) => ({
-      field: 'milestone', value: mid, label: (store.milestones[mid] as any)?.name || '?',
-      color: BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length], count, pct: pct(count),
-    }))
-    if (none) rows.push({ field: 'milestone', value: NONE, label: 'No milestone', color: '#7c828c', count: none, pct: pct(none) })
-    return rows
-  }
-  if (insightTab.value === 'teams') {
-    return Object.values(store.teams).map((t: any, n: number) => ({
-      field: 'team', value: t.id, label: `${t.key} · ${t.name}`, color: BREAKDOWN_PALETTE[n % BREAKDOWN_PALETTE.length],
-      count: iss.filter((i) => i.teamId === t.id).length,
-    })).filter((r) => r.count).map((r) => ({ ...r, pct: pct(r.count) }))
-  }
-  return []
-})
 
 // --- Dashboards (M6 ч.2) ---
 const selectedDashboardId = ref('')
@@ -390,11 +189,6 @@ const addField = () => wrap(async () => {
   await store.createCustomField(selectedTeamId.value, cfName.value, cfType.value, opts)
   cfName.value = ''; cfOptions.value = ''
 })
-function cfMultiToggle(fieldId: string, opt: string) {
-  const cur = (store.cfValue(selectedIssueId.value, fieldId) as string[]) || []
-  store.setCustomFieldValue(selectedIssueId.value, fieldId, cur.includes(opt) ? cur.filter((x) => x !== opt) : [...cur, opt])
-}
-
 // --- FilterBar (M3) ---
 const search = computed({
   get: () => (store.getFieldPredicate('title') as any)?.value ?? '',
@@ -574,37 +368,7 @@ function copyLink() {
   navigator.clipboard?.writeText(location.origin + currentPath())
   linkCopied.value = true; setTimeout(() => (linkCopied.value = false), 1500)
 }
-function copyText(t: string) { if (import.meta.client) navigator.clipboard?.writeText(t) }
-const duplicateIssue = (i: any) => wrap(async () => {
-  const id = await store.createIssue(i.teamId, i.title + ' (copy)', i.stateId)
-  if (i.priority) await store.setIssuePriority(id, i.priority)
-  if (i.assigneeId) await store.setIssueAssignee(id, i.assigneeId)
-  openIssue(id)
-})
-// completed-category state for "Mark complete"
-function completedStateId(teamId: string) {
-  return store.teamStates(teamId).find((s: any) => s.category === 'completed')?.id || ''
-}
-const issueActions = computed(() => {
-  const i = selectedIssue.value
-  if (!i) return []
-  const doneId = completedStateId(i.teamId)
-  return [
-    [
-      { label: 'Copy link', icon: 'i-heroicons-link', click: copyLink },
-      { label: 'Copy ID', icon: 'i-heroicons-hashtag', click: () => copyText(i.identifier) },
-    ],
-    ...(store.canWrite ? [
-      [
-        ...(doneId && i.stateId !== doneId ? [{ label: 'Mark complete', icon: 'i-heroicons-check-circle', click: () => store.setIssueState(i.id, doneId) }] : []),
-        { label: 'Duplicate', icon: 'i-heroicons-document-duplicate', click: () => duplicateIssue(i) },
-      ],
-      [
-        { label: 'Archive', icon: 'i-heroicons-archive-box', click: () => { store.archiveIssue(i.id); selectedIssueId.value = '' } },
-      ],
-    ] : []),
-  ]
-})
+// copy-id/duplicate/archive-меню задачи — в PanelsIssueDetailPanel
 
 // --- Team tree expand state ---
 const expandTeam = reactive<Record<string, boolean>>({})
@@ -865,9 +629,7 @@ function inboxCount(key: string) {
 
 // --- Meetings ---
 const meeting = useMeeting()
-// ресайз правых панелей (таска/цикл; тред — в SectionsThreadPanel)
-const detailPanel = useResizable('detail', 384)
-const cyclePanel = useResizable('cycle', 320)
+// ресайз правых панелей — внутри самих панелей (PanelsIssueDetailPanel/PanelsCycleInsightsPanel/SectionsThreadPanel)
 const joinScheduled = (mid: string) => wrap(() => meeting.join(mid))
 
 // --- Chats ---
@@ -875,28 +637,9 @@ const joinScheduled = (mid: string) => wrap(() => meeting.join(mid))
 // Здесь — открытие каналов (зовётся из сайдбара/палитры/роутера/уведомлений) + unread-разделитель.
 const currentChannel = computed(() => store.channels[store.activeChannelId])
 const chatSection = ref<{ scrollBottom: () => void; scrollToUnread: () => void } | null>(null)
-// inline @/# пикеры (юзеры + сущности)
-const descMention = useMention(descDraft, descEl)
+// inline @/# пикеры (юзеры + сущности); desc/comment-пикеры — в PanelsIssueDetailPanel
 const docMention = useMention(docDraft, docEl)
-const commentMention = useMention(commentDraft, commentEl)
-function onCommentKeydown(e: KeyboardEvent) {
-  if (commentMention.onKeydown(e)) return
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addComment() }
-}
-// вложения в описании/доках — chat-модель: paste/пик → attachment (тумба/плашка), не inline md
-const descFileEl = ref<HTMLInputElement | null>(null)
 const docFileEl = ref<HTMLInputElement | null>(null)
-const attachFiles = (entityType: string, entityId: string, files?: FileList | File[] | null) => wrap(async () => {
-  if (!files || !entityId) return
-  for (const f of Array.from(files)) await store.addAttachment(entityType, entityId, f)
-})
-function onAttachPaste(e: ClipboardEvent, entityType: string, entityId: string) {
-  const items = e.clipboardData?.items; if (!items) return
-  const fs: File[] = []
-  for (const it of Array.from(items)) if (it.kind === 'file') { const f = it.getAsFile(); if (f) fs.push(f) }
-  if (fs.length) { e.preventDefault(); attachFiles(entityType, entityId, fs) }
-}
-const onDescFilePick = (e: Event) => { attachFiles('issue', selectedIssueId.value, (e.target as HTMLInputElement).files); (e.target as HTMLInputElement).value = '' }
 // доки: вставка прямо в тело (markdown), рендер как обычно
 function docInsertAtCaret(text: string) {
   const el = docEl.value
@@ -917,10 +660,6 @@ function onDocPaste(e: ClipboardEvent) {
   if (fs.length) { e.preventDefault(); fs.forEach(docInsertFile) }
 }
 const onDocFilePick = (e: Event) => { const files = (e.target as HTMLInputElement).files; if (files) Array.from(files).forEach(docInsertFile); (e.target as HTMLInputElement).value = '' }
-function onDescKeydown(e: KeyboardEvent) {
-  if (descMention.onKeydown(e)) return
-  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') saveDesc()
-}
 function onDocKeydown(e: KeyboardEvent) {
   if (docMention.onKeydown(e)) return
 }
@@ -955,18 +694,7 @@ async function openChannel(id: string) {
   store.markChannelRead(id)
 }
 const openDM = (userId: string) => wrap(async () => { activeSection.value = 'chats'; store.closeThread(); await store.createDM(userId); chatSection.value?.scrollBottom() })
-// reactions (комменты задачи; чат-сообщения рендерит ChatMessage)
-const EMOJIS = ['👍', '❤️', '😄', '🎉', '👀', '🚀', '✅', '🔥']
-function reactionGroups(m: any) {
-  const g: Record<string, { emoji: string; count: number; mine: boolean }> = {}
-  for (const r of m.reactions || []) {
-    ;(g[r.emoji] ||= { emoji: r.emoji, count: 0, mine: false }).count++
-    if (r.userId === store.currentUserId) g[r.emoji].mine = true
-  }
-  return Object.values(g)
-}
-const cReactPickerId = ref('')
-const commentReact = (c: any, emoji: string) => { cReactPickerId.value = ''; if (selectedIssue.value) wrap(() => store.toggleCommentReaction(c.id, selectedIssue.value!.id, emoji)) }
+// reactions на комменты задачи — в PanelsIssueDetailPanel; чат-сообщения рендерит ChatMessage
 // members
 const showMembers = ref(false)
 // invite-стейт — синглтон-композабл: им пользуются MembersModal (через страницу) и SettingsModal
@@ -1799,384 +1527,12 @@ useHead({ title: () => pageTitle.value })
     </main>
 
     <!-- Cycle insights panel (когда выбран цикл и не открыт issue) -->
-    <ResizeHandle v-if="cycleBurndown && !selectedIssue" @down="cyclePanel.onResizeStart" />
-    <aside v-if="cycleBurndown && !selectedIssue" :style="{ width: cyclePanel.w.value + 'px' }" class="shrink-0 overflow-y-auto rounded-xl border border-subtle bg-surface px-4 py-3 text-sm">
-      <!-- header: Current pill + range -->
-      <div class="mb-3 flex items-center gap-2 text-sm">
-        <span class="rounded-md px-2 py-0.5 text-xs font-medium"
-          :class="cycleStatus === 'Current' ? 'bg-accent/20 text-accent' : 'bg-elevated text-secondary'">{{ cycleStatus }}</span>
-        <span class="text-tertiary">{{ cycleRange }}</span>
-        <UButton class="ml-auto" size="2xs" color="gray" variant="ghost" square icon="i-heroicons-x-mark" @click="closeCycle" />
-      </div>
-      <!-- title -->
-      <div class="mb-4 flex items-center gap-2">
-        <UIcon name="i-heroicons-play-circle" class="text-accent" />
-        <span class="text-base font-semibold text-white">{{ store.cycles[selectedCycleId]?.name || `Cycle ${store.cycles[selectedCycleId]?.number}` }}</span>
-        <UButton class="ml-auto" icon="i-heroicons-pencil-square" color="gray" variant="ghost" size="xs" square title="Edit cycle" @click="startCycleEdit" />
-      </div>
-
-      <!-- edit form -->
-      <div v-if="cycleEdit" class="mb-4 space-y-2 rounded-lg border border-subtle bg-elevated p-3">
-        <UInput v-model="cycleForm.name" size="xs" placeholder="Cycle name (optional)" />
-        <div class="flex gap-2">
-          <div class="flex-1"><label class="mb-1 block text-[11px] text-tertiary">Start</label><DatePicker v-model="cycleForm.startsOn" block /></div>
-          <div class="flex-1"><label class="mb-1 block text-[11px] text-tertiary">End</label><DatePicker v-model="cycleForm.endsOn" block /></div>
-        </div>
-        <div class="flex justify-end gap-2"><UButton size="2xs" color="gray" variant="ghost" @click="cycleEdit = false">[ cancel ]</UButton><UButton size="2xs" @click="saveCycle">[ save ]</UButton></div>
-      </div>
-
-      <!-- Progress -->
-      <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Progress</div>
-      <div class="mb-3 grid grid-cols-3 gap-2 text-xs">
-        <div>
-          <div class="flex items-center gap-1.5 text-tertiary"><span class="h-2 w-2 rounded-sm bg-tertiary" />Scope</div>
-          <div class="mt-1 font-medium">{{ cycleBurndown.scope }}</div>
-        </div>
-        <div>
-          <div class="flex items-center gap-1.5 text-tertiary"><span class="h-2 w-2 rounded-sm" style="background:#d29922" />Started</div>
-          <div class="mt-1 font-medium">{{ cycleBurndown.started }} <span class="text-tertiary">· {{ cycleBurndown.scope ? Math.round(cycleBurndown.started / cycleBurndown.scope * 100) : 0 }}%</span></div>
-        </div>
-        <div>
-          <div class="flex items-center gap-1.5 text-tertiary"><span class="h-2 w-2 rounded-sm bg-accent" />Completed</div>
-          <div class="mt-1 font-medium">{{ cycleBurndown.completed }} <span class="text-tertiary">· {{ cycleBurndown.scope ? Math.round(cycleBurndown.completed / cycleBurndown.scope * 100) : 0 }}%</span></div>
-        </div>
-      </div>
-      <div class="flex items-center gap-4 text-xs">
-        <span class="text-tertiary">Points <span class="text-secondary">{{ cycleBurndown.donePoints }}/{{ cycleBurndown.scopePoints }}</span></span>
-        <span class="text-tertiary">Velocity <span class="text-secondary">{{ store.teamVelocity(store.cycles[selectedCycleId]?.teamId) }}</span> pts/cycle</span>
-      </div>
-
-      <div class="my-4 h-px bg-subtle" />
-
-      <!-- burndown chart (реальные ежедневные слепки, River) -->
-      <div class="mb-1 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Burndown</div>
-      <Burndown :cycle-id="selectedCycleId" />
-
-      <div class="my-4 h-px bg-subtle" />
-
-      <!-- breakdown -->
-      <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Breakdown</div>
-      <!-- tabs -->
-      <div class="mb-3 flex flex-wrap gap-1 text-xs">
-        <button v-for="t in INSIGHT_TABS" :key="t"
-          class="rounded-md px-2 py-1"
-          :class="insightTab === t.toLowerCase() ? 'bg-elevated font-medium' : 'text-tertiary hover:bg-hover'"
-          @click="insightTab = t.toLowerCase() as any">{{ t }}</button>
-      </div>
-      <!-- breakdown -->
-      <div class="space-y-1">
-        <div v-for="r in cycleBreakdown" :key="r.label"
-          class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5"
-          :class="rowActive(r) ? 'bg-accent/15 ring-1 ring-accent/40' : 'hover:bg-hover'"
-          @click="toggleRow(r)">
-          <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="{ background: r.color }" />
-          <span class="flex-1 truncate">{{ r.label }}</span>
-          <UIcon v-if="rowActive(r)" name="i-heroicons-funnel" class="text-accent" />
-          <span class="text-tertiary">{{ r.pct }}% of {{ r.count }}</span>
-        </div>
-        <div v-if="!cycleBreakdown.length" class="px-2 py-3 text-xs text-tertiary">No data for {{ insightTab }}</div>
-      </div>
-      <p class="mt-1 px-2 text-[11px] text-tertiary/70">Click a row to filter the list · click again to clear.</p>
-    </aside>
+    <PanelsCycleInsightsPanel v-if="store.cycles[selectedCycleId] && !selectedIssue" :cycle-id="selectedCycleId" @close="closeCycle" />
 
     <!-- Issue detail panel (M4) -->
-    <ResizeHandle v-if="selectedIssue" @down="detailPanel.onResizeStart" />
-    <aside v-if="selectedIssue" :style="{ width: detailPanel.w.value + 'px' }" class="flex shrink-0 flex-col overflow-y-auto rounded-xl border border-subtle bg-surface text-sm">
-      <!-- top bar -->
-      <div class="flex items-center gap-2 border-b border-subtle px-4 py-2.5">
-        <span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(store.states[selectedIssue.stateId]?.category) }">{{ statusGlyph(store.states[selectedIssue.stateId]?.category) }}</span>
-        <span class="text-xs text-accent2">{{ selectedIssue.identifier }}</span>
-        <UButton class="ml-auto" :icon="linkCopied ? 'i-heroicons-check' : 'i-heroicons-link'" color="gray" variant="ghost" size="xs" square :title="linkCopied ? 'Copied!' : 'Copy link'" @click="copyLink" />
-        <UDropdown :items="issueActions" :popper="{ placement: 'bottom-end' }">
-          <UButton icon="i-heroicons-ellipsis-horizontal" color="gray" variant="ghost" size="xs" square />
-        </UDropdown>
-        <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="selectedIssueId = ''" />
-      </div>
-
-      <div class="px-4 py-4">
-        <!-- title -->
-        <UInput :model-value="selectedIssue.title" variant="none" size="xl" class="mb-3 w-full font-semibold" :padded="false"
-          :ui="{ base: 'text-white' }" :disabled="!store.canWrite"
-          @change="(v:any) => store.setIssueTitle(selectedIssue.id, v)" />
-
-        <!-- description -->
-        <div class="mb-6">
-          <div v-if="descEditing" class="rounded-lg border border-subtle bg-elevated">
-            <div class="flex items-center gap-0.5 border-b border-subtle px-1.5 py-1">
-              <UButton size="2xs" square color="gray" variant="ghost" class="font-bold" title="Bold" @click="descWrap('**')">B</UButton>
-              <UButton size="2xs" square color="gray" variant="ghost" class="italic" title="Italic" @click="descWrap('_')">I</UButton>
-              <UButton size="2xs" square color="gray" variant="ghost" class="font-bold" title="Heading" @click="descWrap('\n# ', '')">H</UButton>
-              <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-list-bullet" title="List" @click="descWrap('\n- ', '')" />
-              <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-code-bracket" title="Code" @click="descWrap('`')" />
-              <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-link" title="Link" @click="descWrap('[', '](url)')" />
-              <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-paper-clip" title="Attach file/image" @click="descFileEl?.click()" />
-              <input ref="descFileEl" type="file" multiple class="hidden" @change="onDescFilePick" />
-              <UButton class="ml-auto" size="2xs" color="gray" variant="ghost" title="Save (⌘↵)" @click="saveDesc">[ done ]</UButton>
-            </div>
-            <div class="relative">
-              <MentionMenu :m="descMention" />
-              <textarea ref="descEl" v-model="descDraft" rows="5"
-                class="block w-full resize-y bg-transparent px-3 py-2 text-sm leading-relaxed text-secondary outline-none placeholder:text-tertiary"
-                placeholder="Add description… (markdown, @mention, #ref)" @paste="onAttachPaste($event, 'issue', selectedIssue.id)" @input="descMention.detect()" @keydown="onDescKeydown"></textarea>
-            </div>
-          </div>
-          <template v-else-if="selectedIssue.description?.md">
-            <div
-              class="prose-invert -mx-2 cursor-text rounded-md px-2 py-1.5 text-sm leading-relaxed text-secondary hover:bg-elevated [&_a]:text-accent [&_code]:rounded [&_code]:bg-elevated [&_code]:px-1 [&_h1]:mb-1 [&_h1]:mt-2 [&_h1]:text-base [&_h1]:font-semibold [&_h1]:text-white [&_h2]:mb-1 [&_h2]:mt-2 [&_h2]:font-semibold [&_h2]:text-white [&_li]:ml-4 [&_li]:list-disc [&_p]:mb-1.5 [&_strong]:text-white"
-              @click="store.canWrite && startDescEdit()" v-html="renderMarkdown(selectedIssue.description.md)" />
-            <!-- AI-резюме для длинных описаний -->
-            <div v-if="(selectedIssue.description.md || '').length > 280" class="mt-1.5">
-              <button v-if="!descSummary && !descSummaryLoading" class="text-xs text-tertiary hover:text-accent2" @click="summarizeDesc">≈ summarize</button>
-              <span v-else-if="descSummaryLoading" class="text-xs text-tertiary">≈ summarizing…</span>
-              <div v-else class="rounded-md border border-subtle bg-elevated px-3 py-2 text-xs leading-relaxed text-secondary">
-                <span class="text-accent2">≈ TL;DR </span>{{ descSummary }}
-              </div>
-            </div>
-          </template>
-          <button v-else-if="store.canWrite" class="-mx-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-tertiary hover:bg-elevated" @click="startDescEdit">
-            <UIcon name="i-heroicons-bars-3-bottom-left" /> Add description…
-          </button>
-        </div>
-
-        <!-- Properties (guest = read-only: inert отключает все контролы, значения видны) -->
-        <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Properties</div>
-        <div class="mb-6 space-y-1" :inert="!store.canWrite" :class="{ 'opacity-70': !store.canWrite }">
-          <div class="flex min-h-8 items-center gap-3">
-            <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(store.states[selectedIssue.stateId]?.category) }">{{ statusGlyph(store.states[selectedIssue.stateId]?.category) }}</span> Status</span>
-            <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" :model-value="selectedIssue.stateId" value-attribute="value" option-attribute="label"
-              :options="store.teamStates(selectedIssue.teamId).map((s2) => ({ label: s2.name, value: s2.id }))"
-              @update:model-value="store.setIssueState(selectedIssue.id, $event)" />
-          </div>
-          <div class="flex min-h-8 items-center gap-3">
-            <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: prioColor(selectedIssue.priority) }">{{ prioGlyph(selectedIssue.priority) }}</span> Priority</span>
-            <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" :model-value="selectedIssue.priority" value-attribute="value" option-attribute="label"
-              :options="PRIO.map((p, idx) => ({ label: p, value: idx }))"
-              @update:model-value="store.setIssuePriority(selectedIssue.id, Number($event))" />
-          </div>
-          <div class="flex min-h-8 items-center gap-3">
-            <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-user-circle" /> Assignee</span>
-            <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="unassigned" :model-value="selectedIssue.assigneeId || undefined" value-attribute="value" option-attribute="label"
-              :options="[{ label: 'unassigned', value: '' }, ...store.wsUsers.map((u) => ({ label: u.name || u.email, value: u.id })), ...(store.users[store.currentUserId] ? [{ label: (store.users[store.currentUserId].name || store.users[store.currentUserId].email) + ' (me)', value: store.currentUserId }] : [])]"
-              @update:model-value="store.setIssueAssignee(selectedIssue.id, $event)" />
-          </div>
-          <div class="flex min-h-8 items-center gap-3">
-            <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-arrow-path-rounded-square" /> Cycle</span>
-            <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="no cycle" :model-value="selectedIssue.cycleId || undefined" value-attribute="value" option-attribute="label"
-              :options="[{ label: 'no cycle', value: '' }, ...store.teamCycles(selectedIssue.teamId).map((c) => ({ label: `Cycle ${c.number} (${c.status})`, value: c.id }))]"
-              @update:model-value="store.setIssueCycle(selectedIssue.id, $event)" />
-          </div>
-          <div class="flex min-h-8 items-center gap-3">
-            <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-flag" /> Milestone</span>
-            <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="no milestone" :model-value="selectedIssue.milestoneId || undefined" value-attribute="value" option-attribute="label"
-              :options="[{ label: 'no milestone', value: '' }, ...store.teamMilestones(selectedIssue.teamId).map((m) => ({ label: m.name, value: m.id }))]"
-              @update:model-value="store.setIssueMilestone(selectedIssue.id, $event)" />
-          </div>
-          <div class="flex min-h-8 items-center gap-3">
-            <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-calendar" /> Due date</span>
-            <DatePicker class="flex-1" placeholder="No due date" :model-value="selectedIssue.scheduledDate ? String(selectedIssue.scheduledDate).slice(0,10) : ''"
-              @update:model-value="(v:any) => store.setIssueSchedule(selectedIssue.id, v)" />
-          </div>
-          <div class="flex min-h-8 items-center gap-3">
-            <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-scale" /> Estimate</span>
-            <UInput class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" type="number" min="0" :model-value="selectedIssue.estimate ?? ''" placeholder="no estimate"
-              @change="(v:any) => store.setIssueEstimate(selectedIssue.id, Number(v))" />
-          </div>
-          <!-- Time tracking -->
-          <div class="flex min-h-8 items-center gap-3">
-            <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-clock" /> Time</span>
-            <span class="flex-1 text-sm" :class="store.issueTrackedMin(selectedIssue.id) ? 'text-white' : 'text-tertiary'">{{ store.issueTrackedMin(selectedIssue.id) ? fmtMin(store.issueTrackedMin(selectedIssue.id)) : 'Not tracked' }}</span>
-            <UButton v-if="store.runningTimer?.issueId === selectedIssue.id" color="red" size="2xs" @click="wrap(() => store.stopTimer())">Stop</UButton>
-            <UButton v-else color="gray" size="2xs" @click="wrap(() => store.startTimer(selectedIssue.id))">Start</UButton>
-            <UButton color="gray" variant="ghost" size="2xs" square icon="i-heroicons-plus" title="Add time manually" @click="openTimeEntry(selectedIssue.id)" />
-          </div>
-          <!-- записи времени -->
-          <div v-for="te in store.timeEntriesForIssue(selectedIssue.id)" :key="te.id" class="group ml-24 flex items-center gap-2 pl-3 text-xs text-tertiary">
-            <UIcon :name="te.endedAt ? 'i-heroicons-check-circle' : 'i-heroicons-play-circle'" :class="te.endedAt ? '' : 'text-ok'" class="shrink-0" />
-            <span class="tabular-nums">{{ new Date(te.startedAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) }} {{ new Date(te.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</span>
-            <span class="flex-1 truncate">{{ te.description }}</span>
-            <span v-if="te.endedAt" class="tabular-nums">{{ fmtMin(Math.max(0, Math.round((new Date(te.endedAt).getTime() - new Date(te.startedAt).getTime()) / 60000))) }}</span>
-            <span v-else class="text-ok">running</span>
-            <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="wrap(() => store.deleteTimeEntry(te.id))" />
-          </div>
-          <!-- Custom fields -->
-          <div v-for="f in store.fieldsForTeam(selectedIssue.teamId)" :key="f.id" class="flex min-h-8 items-center gap-3">
-            <span class="w-24 shrink-0 truncate text-tertiary">{{ f.name }}</span>
-            <div v-if="f.type==='checkbox'" class="flex-1 pl-2"><TermCheck :model-value="!!store.cfValue(selectedIssue.id, f.id)"
-              @update:model-value="store.setCustomFieldValue(selectedIssue.id, f.id, $event)" /></div>
-            <USelectMenu v-else-if="f.type==='select'" class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="—" value-attribute="value" option-attribute="label"
-              :model-value="store.cfValue(selectedIssue.id, f.id) || undefined" :options="[{ label: '—', value: '' }, ...(f.config?.options || []).map((o) => ({ label: o, value: o }))]"
-              @update:model-value="store.setCustomFieldValue(selectedIssue.id, f.id, $event)" />
-            <div v-else-if="f.type==='multiselect'" class="flex flex-1 flex-wrap gap-1 py-1">
-              <button v-for="o in (f.config?.options || [])" :key="o"
-                class="rounded-md px-2 py-0.5 text-xs"
-                :class="(store.cfValue(selectedIssue.id, f.id) || []).includes(o) ? 'bg-active text-white' : 'bg-elevated text-tertiary hover:bg-hover'"
-                @click="cfMultiToggle(f.id, o)">{{ o }}</button>
-            </div>
-            <USelectMenu v-else-if="f.type==='people'" class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="—"
-              :model-value="store.cfValue(selectedIssue.id, f.id) || undefined" value-attribute="value" option-attribute="label"
-              :options="[{ label: '—', value: '' }, ...store.wsUsers.map((u) => ({ label: u.name || u.email, value: u.id }))]"
-              @update:model-value="store.setCustomFieldValue(selectedIssue.id, f.id, $event)" />
-            <USelectMenu v-else-if="f.type==='relationship'" class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="—"
-              :model-value="store.cfValue(selectedIssue.id, f.id) || undefined" value-attribute="value" option-attribute="label"
-              :options="[{ label: '—', value: '' }, ...store.issuesForTeamAll(selectedIssue.teamId).map((i) => ({ label: `${i.identifier} ${i.title}`, value: i.id }))]"
-              @update:model-value="store.setCustomFieldValue(selectedIssue.id, f.id, $event)" />
-            <UInput v-else class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" :type="f.type==='number' ? 'number' : f.type==='date' ? 'date' : 'text'"
-              :model-value="store.cfValue(selectedIssue.id, f.id) ?? ''" placeholder="—"
-              @change="(v:any) => store.setCustomFieldValue(selectedIssue.id, f.id, f.type==='number' ? Number(v) : v)" />
-          </div>
-        </div>
-
-        <!-- Labels -->
-        <div class="mb-5">
-          <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Labels</div>
-          <div class="flex flex-wrap items-center gap-1.5" :inert="!store.canWrite" :class="{ 'opacity-70': !store.canWrite }">
-            <span v-for="l in store.labelsForIssue(selectedIssue.id)" :key="l.id" class="group/lbl flex items-center gap-1 rounded-full border border-subtle px-2 py-0.5 text-xs">
-              <span :style="{ color: l.colorToken }">#{{ l.name }}</span>
-              <UIcon name="i-heroicons-x-mark" class="cursor-pointer text-tertiary hover:text-danger" @click="store.removeLabel(selectedIssue.id, l.id)" />
-            </span>
-            <button class="flex items-center gap-1 rounded-full border border-dashed border-subtle px-2 py-0.5 text-xs text-tertiary hover:border-strong hover:text-secondary" @click="showLabelModal = true">
-              <UIcon name="i-heroicons-plus" /> Add label
-            </button>
-          </div>
-        </div>
-
-        <!-- Sub-issues -->
-        <div class="mb-5">
-          <div class="mb-1.5 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-tertiary">
-            <span class="text-ok"># </span>Sub-issues
-            <span v-if="store.childProgress(selectedIssue.id).total" class="rounded bg-elevated px-1.5 text-tertiary">{{ store.childProgress(selectedIssue.id).done }}/{{ store.childProgress(selectedIssue.id).total }}</span>
-          </div>
-          <div v-for="c in store.subIssuesOf(selectedIssue.id)" :key="c.id"
-            class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover" @click="openIssue(c.id)">
-            <span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(store.states[c.stateId]?.category) }">{{ statusGlyph(store.states[c.stateId]?.category) }}</span>
-            <span class="text-xs text-accent2">{{ c.identifier }}</span>
-            <span class="truncate" :class="{ 'text-tertiary line-through': c.completedAt }">{{ c.title }}</span>
-          </div>
-          <UInput v-if="store.canWrite" v-model="newSub" placeholder="+ Add sub-issue" size="xs" variant="none" class="w-full" @keyup.enter="addSub" />
-        </div>
-
-        <!-- Relations -->
-        <div class="mb-4">
-          <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Relations</div>
-          <div v-for="r in store.relationsForIssue(selectedIssue.id)" :key="r.id"
-            class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
-            <span class="text-tertiary">{{ r.label }}</span>
-            <span class="cursor-pointer hover:text-accent" @click="openIssue(r.otherId)">{{ store.issueById(r.otherId)?.identifier || '—' }}</span>
-            <UButton v-if="store.canWrite" class="ml-auto opacity-0 group-hover:opacity-100" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="store.removeRelation(r.id)" />
-          </div>
-          <button v-if="store.canWrite" class="mt-1 flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-tertiary hover:bg-hover hover:text-secondary" @click="showRelModal = true">
-            <UIcon name="i-heroicons-plus" /> Add relation
-          </button>
-        </div>
-
-        <!-- Attachments -->
-        <div class="mb-5">
-          <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Attachments</div>
-          <Attachments entity-type="issue" :entity-id="selectedIssue.id" />
-        </div>
-
-        <!-- AI: suggestions + similar (Фаза 1–2) -->
-        <div v-if="simIssues.length || suggestLabels.length || suggestAssignee || suggestPriority !== null || suggestEstimate !== null || slipWarn" class="mb-4">
-          <div class="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-tertiary">
-            <span class="text-accent2">≈ </span>AI
-          </div>
-          <div v-if="slipWarn" class="mb-2 flex items-center gap-1 text-xs text-danger">
-            ⚠ likely to miss its due date
-          </div>
-          <!-- подсказки в один клик -->
-          <div v-if="suggestLabels.length || suggestAssignee || suggestPriority !== null || suggestEstimate !== null" class="mb-2 flex flex-wrap gap-1.5">
-            <button v-if="suggestPriority !== null" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs text-secondary hover:border-warn hover:text-warn"
-              @click="store.setIssuePriority(selectedIssue.id, suggestPriority); store.aiFeedback('priority','applied',selectedIssue.id,String(suggestPriority))">
-              ⚑ priority {{ PRI_LABELS[suggestPriority] }}
-            </button>
-            <button v-if="suggestEstimate !== null" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs text-secondary hover:border-accent hover:text-accent"
-              @click="store.setIssueEstimate(selectedIssue.id, suggestEstimate); store.aiFeedback('estimate','applied',selectedIssue.id,String(suggestEstimate))">
-              ≈ est {{ suggestEstimate }} pts
-            </button>
-            <button v-if="suggestAssignee" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs text-secondary hover:border-accent hover:text-accent"
-              @click="store.setIssueAssignee(selectedIssue.id, suggestAssignee); store.aiFeedback('assignee','applied',selectedIssue.id,suggestAssignee)">
-              ＋ assign {{ store.userName(suggestAssignee) }}
-            </button>
-            <button v-for="lid in suggestLabels" :key="lid" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs hover:border-accent"
-              :style="{ color: store.labels[lid]?.colorToken ? undefined : undefined }" @click="store.addLabel(selectedIssue.id, lid); store.aiFeedback('label','applied',selectedIssue.id,lid)">
-              ＋ {{ store.labels[lid]?.name }}
-            </button>
-          </div>
-          <!-- похожие / дубли -->
-          <button v-for="s in simIssues" :key="s.id" class="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-sm hover:bg-hover" @click="openIssue(s.id)">
-            <span class="shrink-0 text-xs text-accent2">{{ s.identifier }}</span>
-            <span class="min-w-0 flex-1 truncate text-secondary">{{ s.title }}</span>
-          </button>
-        </div>
-
-        <!-- Comments -->
-        <div class="mb-4">
-          <div class="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-tertiary">
-            <span class="text-ok"># </span>Comments <span class="text-tertiary">{{ store.issueComments(selectedIssue.id).length }}</span>
-          </div>
-          <div v-for="c in store.issueComments(selectedIssue.id)" :key="c.id" class="group mb-2 flex gap-2">
-            <Avatar class="mt-0.5" :name="store.userName(c.authorId)" :avatar-key="store.users[c.authorId]?.avatarKey" :size="28" />
-            <div class="min-w-0 flex-1">
-              <div class="flex items-baseline gap-2">
-                <span class="text-sm font-medium">{{ store.userName(c.authorId) }}</span>
-                <span class="text-xs text-tertiary">{{ notifTime(c.createdAt) }}</span>
-                <span v-if="c.editedAt" class="text-xs text-tertiary/60">(edited)</span>
-                <div class="relative ml-auto" :class="c.authorId === store.currentUserId ? '' : 'ml-auto'">
-                  <UButton v-if="!c.deletedAt" class="opacity-0 group-hover:opacity-100" icon="i-heroicons-face-smile" color="gray" variant="ghost" size="2xs" square @click="cReactPickerId = cReactPickerId === c.id ? '' : c.id" />
-                  <div v-if="cReactPickerId === c.id" class="absolute right-0 z-20 mt-1 flex gap-0.5 rounded-md border border-subtle bg-elevated p-1 shadow-lg">
-                    <button v-for="e in EMOJIS" :key="e" class="rounded p-1 text-base hover:bg-hover" @click="commentReact(c, e)">{{ e }}</button>
-                  </div>
-                </div>
-                <template v-if="c.authorId === store.currentUserId && !c.deletedAt && editCommentId !== c.id">
-                  <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square @click="startEditComment(c)" />
-                  <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square @click="store.deleteComment(c.id, selectedIssue.id)" />
-                </template>
-              </div>
-              <div v-if="editCommentId === c.id" class="mt-1">
-                <textarea v-model="editCommentDraft" rows="2" class="w-full rounded-md border border-subtle bg-elevated px-2 py-1 text-sm outline-none" @keydown.enter.exact.prevent="saveComment" @keydown.esc="editCommentId = ''" />
-                <div class="mt-1 flex gap-2"><UButton size="2xs" @click="saveComment">[ save ]</UButton><UButton size="2xs" color="gray" variant="ghost" @click="editCommentId = ''">[ cancel ]</UButton></div>
-              </div>
-              <div v-else-if="c.deletedAt" class="text-sm italic text-tertiary">(deleted)</div>
-              <div v-else class="prose-chat text-sm leading-relaxed" v-html="renderMarkdown(c.body)" />
-              <Attachments v-if="store.attachmentsFor('comment', c.id).length" class="mt-1.5" entity-type="comment" :entity-id="c.id" readonly />
-              <div v-if="reactionGroups(c).length" class="mt-1 flex flex-wrap gap-1">
-                <button v-for="g in reactionGroups(c)" :key="g.emoji"
-                  class="rounded border px-1.5 py-0.5 text-xs"
-                  :class="g.mine ? 'border-accent bg-accent/15 text-accent' : 'border-subtle text-secondary hover:bg-hover'"
-                  @click="commentReact(c, g.emoji)">{{ g.emoji }} {{ g.count }}</button>
-              </div>
-            </div>
-          </div>
-          <PendingAttachments v-if="store.canWrite && commentPending.length" class="mt-2" :files="commentPending" @remove="(i) => commentPending = commentPending.filter((_, j) => j !== i)" />
-          <div v-if="store.canWrite" class="mt-2 flex items-end gap-2">
-            <div class="relative flex flex-1 gap-2 rounded-md border border-subtle bg-elevated px-2.5 py-1.5">
-              <MentionMenu :m="commentMention" />
-              <span class="select-none pt-px text-ok">&gt;</span>
-              <textarea ref="commentEl" v-model="commentDraft" rows="1" placeholder="comment… (markdown, @mention, #ref)"
-                class="block w-full resize-none bg-transparent text-sm outline-none placeholder:text-tertiary"
-                @paste="onCommentPaste" @input="commentMention.detect()" @keydown="onCommentKeydown" />
-            </div>
-            <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="sm" square title="Attach" @click="commentFileEl?.click()" />
-            <input ref="commentFileEl" type="file" multiple class="hidden" @change="onCommentFilePick" />
-            <UButton icon="i-heroicons-paper-airplane" size="sm" :disabled="!commentDraft.trim() && !commentPending.length" @click="addComment" />
-          </div>
-        </div>
-
-        <!-- Activity -->
-        <div class="mb-4">
-          <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Activity</div>
-          <div v-for="(a, idx) in store.issueActivity(selectedIssue.id)" :key="idx" class="flex items-center gap-2 py-1 text-xs text-tertiary">
-            <UIcon :name="a.op === 'create' ? 'i-heroicons-plus-circle' : a.op === 'delete' ? 'i-heroicons-trash' : 'i-heroicons-pencil'" />
-            <span class="text-secondary">{{ a.actorId ? store.userName(a.actorId) : 'Someone' }}</span>
-            <span>{{ a.op === 'create' ? 'created' : a.op === 'delete' ? 'deleted' : 'updated' }}</span>
-            <span class="ml-auto">{{ notifTime(a.at) }}</span>
-          </div>
-          <div v-if="!store.issueActivity(selectedIssue.id).length" class="text-xs text-tertiary/60">No activity</div>
-        </div>
-
-        <p v-if="err" class="text-xs text-danger">{{ err }}</p>
-      </div>
-    </aside>
+    <PanelsIssueDetailPanel v-if="selectedIssue" :issue-id="selectedIssueId" :link-copied="linkCopied"
+      @open-issue="openIssue" @copy-link="copyLink" @close="selectedIssueId = ''"
+      @add-label="showLabelModal = true" @add-relation="showRelModal = true" @log-time="openTimeEntry" />
 
     <!-- Thread panel (плавающая) -->
     <SectionsThreadPanel v-if="store.threadParentId && activeSection === 'chats'" />
