@@ -394,7 +394,7 @@ const NOTIF_PREF_LIST = [
               <button v-for="c in LABEL_COLORS" :key="c" class="h-3.5 w-3.5 rounded-full" :class="l.colorToken === c ? 'ring-1 ring-white ring-offset-1 ring-offset-base' : ''" :style="{ background: c }" @click="store.updateLabel(l.id, { colorToken: c })" />
             </div>
             <UInput :model-value="l.name" variant="none" :padded="false" class="flex-1 text-sm" @change="(v:any) => store.updateLabel(l.id, { name: v })" />
-            <span class="text-xs text-tertiary">{{ store.teams[l.teamId]?.key || 'workspace' }}</span>
+            <span class="text-xs text-tertiary">{{ (l.teamId ? store.teams[l.teamId]?.key : '') || 'workspace' }}</span>
             <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" @click="store.deleteLabel(l.id)" />
           </div>
           <div v-if="!allLabels.length" class="py-6 text-center text-sm text-tertiary">No labels yet</div>
@@ -520,7 +520,7 @@ const NOTIF_PREF_LIST = [
               <div class="min-w-0 flex-1 cursor-pointer" @click="openTmplEdit(t)">
                 <div class="truncate text-sm font-medium text-white">{{ t.name }}</div>
                 <div class="truncate text-xs text-tertiary">
-                  {{ store.teams[t.teamId]?.key }}
+                  {{ t.teamId ? store.teams[t.teamId]?.key : '' }}
                   <span v-if="t.recurrence && t.recurrence !== 'none'" class="text-accent2"> · ↻ {{ t.recurrence }}</span>
                   <span v-if="t.nextRunAt && t.recurrence !== 'none'"> · next {{ dayShort(String(t.nextRunAt).slice(0,10)) }}</span>
                 </div>

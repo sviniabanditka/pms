@@ -66,10 +66,10 @@ function onDocKeydown(e: KeyboardEvent) {
 <template>
   <template v-if="doc">
     <div class="sticky top-0 z-10 flex items-center gap-1.5 border-b border-subtle bg-surface px-4 py-3 text-sm">
-      <template v-if="store.teams[doc.teamId]">
-        <button class="text-tertiary hover:text-secondary" @click="emit('open-team', doc.teamId)">{{ store.teams[doc.teamId].name }}</button>
+      <template v-if="doc.teamId && store.teams[doc.teamId]">
+        <button class="text-tertiary hover:text-secondary" @click="emit('open-team', doc.teamId!)">{{ store.teams[doc.teamId!].name }}</button>
         <span class="text-tertiary">/</span>
-        <button class="text-tertiary hover:text-secondary" @click="emit('open-docs', doc.teamId)">Docs</button>
+        <button class="text-tertiary hover:text-secondary" @click="emit('open-docs', doc.teamId!)">Docs</button>
         <span class="text-tertiary">/</span>
       </template>
       <UIcon name="i-heroicons-document-text" class="text-tertiary" />

@@ -128,7 +128,7 @@ const faqs = [
   { q: 'Do you bill per seat?', a: 'Pro and Business are per active user, monthly or annual (save 20%). Free is flat. Cancel anytime.' },
 ]
 
-const cmp = [
+const cmp: { f: string; stdtask: boolean | 'part'; jira: boolean | 'part'; linear: boolean | 'part' }[] = [
   { f: 'Issues, docs, chat, calendar & meetings in one', stdtask: true, jira: false, linear: false },
   { f: 'Local-first, instant realtime', stdtask: true, jira: false, linear: 'part' },
   { f: 'Built-in video huddles', stdtask: true, jira: false, linear: false },

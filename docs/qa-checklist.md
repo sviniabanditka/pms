@@ -829,3 +829,8 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] FULL_BUCKETS-prune: удалённая/архивная сущность исчезает после ре-bootstrap; notification (не full) не подчищается.
 - [ ] issue.description (ленивая загрузка) переживает bootstrap-чанк без описания.
 - [ ] Смена воркспейса чистит срез корректно (reset-блок не менялся).
+
+## 105. Typecheck gate (vue-tsc)
+- [ ] `cd frontend && npm run typecheck` → 0 ошибок (nuxt prepare + vue-tsc --noEmit). Гейт для CI/pre-commit.
+- [ ] Свежий клон: npm install (postinstall=nuxt prepare генерит .nuxt/tsconfig) → typecheck резолвит tsconfig.
+- [ ] Все правки под гейт — type-only, рантайм не изменился: vitest 74/74, nuxt build проходит.

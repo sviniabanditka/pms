@@ -122,7 +122,7 @@ const issueActions = computed(() => {
   return [
     [
       { label: 'Copy link', icon: 'i-heroicons-link', click: () => emit('copy-link') },
-      { label: 'Copy ID', icon: 'i-heroicons-hashtag', click: () => copyText(i.identifier) },
+      { label: 'Copy ID', icon: 'i-heroicons-hashtag', click: () => copyText(i.identifier || '') },
     ],
     ...(store.canWrite ? [
       [
@@ -242,7 +242,7 @@ const commentReact = (c: any, emoji: string) => { cReactPickerId.value = ''; if 
             @update:model-value="store.setIssueState(selectedIssue.id, $event)" />
         </div>
         <div class="flex min-h-8 items-center gap-3">
-          <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: prioColor(selectedIssue.priority) }">{{ prioGlyph(selectedIssue.priority) }}</span> Priority</span>
+          <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: prioColor(selectedIssue.priority ?? 0) }">{{ prioGlyph(selectedIssue.priority ?? 0) }}</span> Priority</span>
           <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" :model-value="selectedIssue.priority" value-attribute="value" option-attribute="label"
             :options="PRIO.map((p, idx) => ({ label: p, value: idx }))"
             @update:model-value="store.setIssuePriority(selectedIssue.id, Number($event))" />
@@ -298,7 +298,7 @@ const commentReact = (c: any, emoji: string) => { cReactPickerId.value = ''; if 
           <div v-if="f.type==='checkbox'" class="flex-1 pl-2"><TermCheck :model-value="!!store.cfValue(selectedIssue.id, f.id)"
             @update:model-value="store.setCustomFieldValue(selectedIssue.id, f.id, $event)" /></div>
           <USelectMenu v-else-if="f.type==='select'" class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="—" value-attribute="value" option-attribute="label"
-            :model-value="store.cfValue(selectedIssue.id, f.id) || undefined" :options="[{ label: '—', value: '' }, ...(f.config?.options || []).map((o) => ({ label: o, value: o }))]"
+            :model-value="store.cfValue(selectedIssue.id, f.id) || undefined" :options="[{ label: '—', value: '' }, ...(f.config?.options || []).map((o: string) => ({ label: o, value: o }))]"
             @update:model-value="store.setCustomFieldValue(selectedIssue.id, f.id, $event)" />
           <div v-else-if="f.type==='multiselect'" class="flex flex-1 flex-wrap gap-1 py-1">
             <button v-for="o in (f.config?.options || [])" :key="o"

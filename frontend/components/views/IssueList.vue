@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ComponentPublicInstance } from 'vue'
 import { useAppStore } from '~/stores/app'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 
@@ -23,7 +24,9 @@ const selCount = computed(() => props.selectedIds.size)
 const collapsedStatus = reactive<Record<string, boolean>>({}) // свёрнутые группы статусов в списке
 
 // --- List virtualization (плоский поток: header-строки + issue-строки) ---
-type ListRow = { type: 'header'; key: string; g: any } | { type: 'issue'; key: string; i: any; g: any }
+// header|issue в одном плоском потоке; g/i — any, поэтому union без дискриминации
+// (индексный доступ listRows[idx] в шаблоне не нарезался бы по type).
+type ListRow = { type: 'header' | 'issue'; key: string; g: any; i?: any }
 const listRows = computed<ListRow[]>(() => {
   const rows: ListRow[] = []
   if (!props.teamId || store.layout !== 'list') return rows
@@ -50,7 +53,7 @@ const rowVirtualizer = useVirtualizer(computed(() => {
     getItemKey: (idx: number) => listRows.value[idx]?.key ?? idx,
   }
 }))
-const measureRow = (el: Element | null) => { if (el) rowVirtualizer.value.measureElement(el) }
+const measureRow = (el: Element | ComponentPublicInstance | null) => { if (el instanceof Element) rowVirtualizer.value.measureElement(el) }
 // пересчёт оффсета списка при изменениях, влияющих на высоту sticky-хедера/раскладку
 watch([() => props.filtersShown, () => store.layout, () => props.teamId, () => props.scrollEl], () => nextTick(measureScrollMargin))
 onMounted(() => nextTick(measureScrollMargin))
@@ -58,7 +61,7 @@ onMounted(() => nextTick(measureScrollMargin))
 
 <template>
   <div ref="listEl" :style="{ height: rowVirtualizer.getTotalSize() + 'px', position: 'relative', width: '100%' }">
-    <div v-for="vRow in rowVirtualizer.getVirtualItems()" :key="vRow.key"
+    <div v-for="vRow in rowVirtualizer.getVirtualItems()" :key="String(vRow.key)"
       :ref="measureRow" :data-index="vRow.index"
       :style="{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${vRow.start - listScrollMargin}px)` }">
       <!-- group header bar -->

@@ -40,9 +40,9 @@ describe('store — canManageTeam (ltree inheritance)', () => {
     s.currentUserId = 'u1'
     s.members = { m1: { id: 'm1', userId: 'u1', role } }
     s.teams = {
-      parent: { id: 'parent', path: 'p', deletedAt: null },
-      child: { id: 'child', path: 'p.c', deletedAt: null },
-      other: { id: 'other', path: 'o', deletedAt: null },
+      parent: { id: 'parent', path: 'p', key: 'K', name: 'N', deletedAt: null },
+      child: { id: 'child', path: 'p.c', key: 'K', name: 'N', deletedAt: null },
+      other: { id: 'other', path: 'o', key: 'K', name: 'N', deletedAt: null },
     }
     s.teamMembers = { tm1: { id: 'tm1', teamId: 'parent', userId: 'u1', role: 'lead' } }
     return s
@@ -65,7 +65,7 @@ describe('store — canManageTeam (ltree inheritance)', () => {
   })
   it('prefix match requires a dot boundary (p must not match p2)', () => {
     const s = seedTeams('member')
-    s.teams = { p2: { id: 'p2', path: 'p2', deletedAt: null }, ...s.teams }
+    s.teams = { p2: { id: 'p2', path: 'p2', key: 'K', name: 'N', deletedAt: null }, ...s.teams }
     expect(s.canManageTeam('p2')).toBe(false)
   })
 })
@@ -82,10 +82,10 @@ describe('store — derived indexes & lists', () => {
   it('activeIssuesByTeam groups non-archived/deleted by team', () => {
     const s = useAppStore()
     s.issues = {
-      a: { id: 'a', teamId: 't1', archivedAt: null, deletedAt: null },
-      b: { id: 'b', teamId: 't1', archivedAt: 'x', deletedAt: null },
-      c: { id: 'c', teamId: 't1', archivedAt: null, deletedAt: 'x' },
-      d: { id: 'd', teamId: 't2', archivedAt: null, deletedAt: null },
+      a: { id: 'a', teamId: 't1', title: 't', stateId: 's', archivedAt: null, deletedAt: null },
+      b: { id: 'b', teamId: 't1', title: 't', stateId: 's', archivedAt: 'x', deletedAt: null },
+      c: { id: 'c', teamId: 't1', title: 't', stateId: 's', archivedAt: null, deletedAt: 'x' },
+      d: { id: 'd', teamId: 't2', title: 't', stateId: 's', archivedAt: null, deletedAt: null },
     }
     const m = s.activeIssuesByTeam
     expect(m.get('t1')?.length).toBe(1)
@@ -137,7 +137,7 @@ describe('store — applyChunk (sync core)', () => {
 
   it('preserves lazily-loaded issue description when a chunk omits it', () => {
     const s = useAppStore()
-    s.issues = { a: { id: 'a', title: 't', description: { md: 'kept' } } }
+    s.issues = { a: { id: 'a', teamId: 't', stateId: 's', title: 't', description: { md: 'kept' } } }
     s.applyChunk('issue', [{ id: 'a', title: 't2' }]) // no description in the chunk
     expect(s.issues.a.title).toBe('t2')
     expect(s.issues.a.description).toEqual({ md: 'kept' })

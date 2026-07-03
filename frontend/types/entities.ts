@@ -81,8 +81,8 @@ export interface View extends BaseEntity {
 export interface Cycle extends BaseEntity {
   teamId: string
   name?: string
-  startsOn?: string
-  endsOn?: string
+  startsOn: string
+  endsOn: string
 }
 
 export interface CycleSnapshot { cycleId: string; day: string; [k: string]: any }
@@ -127,7 +127,7 @@ export interface Workspace extends BaseEntity {
 }
 
 export interface WorkspaceMember extends BaseEntity {
-  userId?: string
+  userId: string
   role?: string
   status?: string
 }

@@ -20,7 +20,7 @@ export function notifTime(at: any) {
 // --- Общие дата/время-хелперы (страница + Calendar/Reports секции) ---
 export const fmtD = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 export const parseD = (ds: string) => new Date(ds + 'T00:00:00')
-export const d10 = (s: string) => (s ? String(s).slice(0, 10) : '') // ISO → YYYY-MM-DD для input[type=date]
+export const d10 = (s?: string | null) => (s ? String(s).slice(0, 10) : '') // ISO → YYYY-MM-DD для input[type=date]
 // ISO (UTC) → локальные дата/время/минуты. События хранятся в UTC, показываем в таймзоне юзера.
 export const localDate = (iso: string) => fmtD(new Date(iso))
 export const localHM = (iso: string) => { const d = new Date(iso); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` }

@@ -224,7 +224,7 @@ function applyRoute(path: string) {
     case 'dashboard': activeSection.value = 'dashboard'; if (seg[1]) selectedDashboardId.value = seg[1]; break
     case 'my': activeSection.value = 'tasks'; personalView.value = (seg[1] as any) || 'assigned'; break
     case 'issue': { const i = store.issueByIdentifier(seg[1]); if (i) { activeSection.value = 'tasks'; selectedTeamId.value = i.teamId; openIssue(i.id) } break }
-    case 'doc': { activeSection.value = 'tasks'; const d = store.documents[seg[1]]; if (d) selectedTeamId.value = d.teamId; openDoc(seg[1]); break }
+    case 'doc': { activeSection.value = 'tasks'; const d = store.documents[seg[1]]; if (d?.teamId) selectedTeamId.value = d.teamId; openDoc(seg[1]); break }
     case 'cycle': { activeSection.value = 'tasks'; const c = store.cycles[seg[1]]; if (c) { selectedTeamId.value = c.teamId; openCycle(seg[1]) } break }
     case 'team': { const t = store.teamByKey(seg[1]); if (t) { activeSection.value = 'tasks'; selectedTeamId.value = t.id; if (seg[2]) teamSection.value = seg[2] as any } break }
     default: activeSection.value = 'tasks'; if (!seg.length) personalView.value = 'assigned' // дефолт-лендинг — My issues
@@ -423,7 +423,7 @@ const icalUrl = ref('')
 const openIcal = () => wrap(async () => { icalUrl.value = await store.icalFeedUrl(false); showIcal.value = true })
 
 // страницы-разделы команды (cycles / docs / views)
-const teamSection = ref<'' | 'cycles' | 'docs' | 'views'>('')
+const teamSection = ref<'' | 'cycles' | 'docs' | 'views' | 'milestones'>('')
 function openTeamSection(tid: string, section: any) {
   selectedTeamId.value = tid; teamSection.value = section
   personalView.value = ''; selectedDocId.value = ''; selectedCycleId.value = ''; selectedIssueId.value = ''; selectedMsId.value = ''
@@ -482,7 +482,7 @@ function onRefClick(e: MouseEvent) {
   const iss = el.dataset.issue
   if (iss) { const i = store.issueByIdentifier(iss); if (i) { activeSection.value = 'tasks'; selectedTeamId.value = i.teamId; openIssue(i.id) } return }
   const type = el.dataset.type, id = el.dataset.id || ''
-  if (type === 'doc') { const d = store.documents[id]; if (d) { activeSection.value = 'tasks'; selectedTeamId.value = d.teamId; openDoc(id) } }
+  if (type === 'doc') { const d = store.documents[id]; if (d) { activeSection.value = 'tasks'; if (d.teamId) selectedTeamId.value = d.teamId; openDoc(id) } }
   else if (type === 'channel') { openChannel(id) }
   else if (type === 'meeting') { activeSection.value = 'meetings' }
 }
@@ -604,7 +604,7 @@ onMounted(() => {
 })
 
 // глубина отступа дерева по числу сегментов ltree-path
-const depth = (p: string) => Math.max(0, String(p || '').split('.').length - 1)
+const depth = (p?: string) => Math.max(0, String(p || '').split('.').length - 1)
 
 // роут-синк (в конце — после объявления всех ref, иначе TDZ)
 // состояние → URL (history.replace, без перерендера и без эха в applyRoute)
@@ -949,7 +949,7 @@ useHead({ title: () => pageTitle.value })
       <!-- Personal view (My issues / Active / Created) -->
       <template v-if="personalView">
         <div class="sticky top-0 z-10 flex items-center gap-2 border-b border-subtle bg-surface px-4 py-3 text-sm">
-          <UIcon :name="PERSONAL.find((p) => p.key === personalView)?.icon" class="text-tertiary" />
+          <UIcon :name="PERSONAL.find((p) => p.key === personalView)?.icon || ''" class="text-tertiary" />
           <span class="font-medium">{{ PERSONAL.find((p) => p.key === personalView)?.label }}</span>
           <span class="text-tertiary">{{ store.personalIssues(personalView).length }}</span>
         </div>

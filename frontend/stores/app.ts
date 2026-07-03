@@ -278,7 +278,7 @@ export const useAppStore = defineStore('app', {
       const t = q.trim().toLowerCase()
       if (!t) return [] as any[]
       const out: any[] = []
-      const hit = (str: string) => str && str.toLowerCase().includes(t)
+      const hit = (str?: string) => str && str.toLowerCase().includes(t)
       for (const i of Object.values(s.issues)) {
         if (i.archivedAt) continue
         if (hit(i.identifier) || hit(i.title)) out.push({ type: 'issue', id: i.id, label: `${i.identifier} ${i.title}`, teamId: i.teamId })
@@ -1097,7 +1097,8 @@ export const useAppStore = defineStore('app', {
       if (!parent) return
       const { issues } = useClients()
       const res = await issues.createIssue({ workspaceId: this.activeWorkspaceId, teamId: parent.teamId, title, parentId })
-      this.issues[res.entityId] = { id: res.entityId, teamId: parent.teamId, parentId, title, identifier: '…', priority: 0, archivedAt: null }
+      // Optimistic sub-issue: stateId is filled in by the server delta that follows; typed via Issue's index signature.
+      this.issues[res.entityId] = { id: res.entityId, teamId: parent.teamId, parentId, title, stateId: parent.stateId, identifier: '…', priority: 0, archivedAt: null }
     },
     async addRelation(sourceId: string, targetIdentifier: string, type: string) {
       const target = Object.values(this.issues).find((i) => i.identifier === targetIdentifier.trim())
