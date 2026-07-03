@@ -18,7 +18,7 @@ const addRel = () => wrap(async () => { if (relTarget.value.trim()) { await stor
     <div v-if="issue" class="space-y-4 p-4">
       <div class="flex items-center gap-2">
         <span class="text-base font-semibold text-white"><span class="text-ok">$</span> add relation</span>
-        <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" />
+        <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" aria-label="Close" />
       </div>
       <div>
         <label class="mb-1 block text-xs text-tertiary">Type</label>

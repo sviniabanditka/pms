@@ -37,14 +37,14 @@ const save = () => wrap(async () => { if (draft.value.trim()) await store.editCo
         <span class="text-xs text-tertiary">{{ notifTime(comment.createdAt) }}</span>
         <span v-if="comment.editedAt" class="text-xs text-tertiary/60">(edited)</span>
         <div class="relative ml-auto">
-          <UButton v-if="!comment.deletedAt" class="opacity-0 group-hover:opacity-100" icon="i-heroicons-face-smile" color="gray" variant="ghost" size="2xs" square @click="pickerOpen = !pickerOpen" />
+          <UButton v-if="!comment.deletedAt" class="opacity-0 group-hover:opacity-100" icon="i-heroicons-face-smile" color="gray" variant="ghost" size="2xs" square @click="pickerOpen = !pickerOpen" aria-label="Add reaction" />
           <div v-if="pickerOpen" class="absolute right-0 z-20 mt-1 flex gap-0.5 rounded-md border border-subtle bg-elevated p-1 shadow-lg">
             <button v-for="e in EMOJIS" :key="e" class="rounded p-1 text-base hover:bg-hover" @click="react(e)">{{ e }}</button>
           </div>
         </div>
         <template v-if="comment.authorId === store.currentUserId && !comment.deletedAt && !editing">
-          <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square @click="startEdit" />
-          <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square @click="store.deleteComment(comment.id, issueId)" />
+          <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square @click="startEdit" aria-label="Edit" />
+          <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square @click="store.deleteComment(comment.id, issueId)" aria-label="Delete" />
         </template>
       </div>
       <div v-if="editing" class="mt-1">

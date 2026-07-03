@@ -1,9 +1,10 @@
 import type { TestRunnerConfig } from '@storybook/test-runner'
 import { injectAxe, getViolations } from 'axe-playwright'
 
-// Дефолтный smoke-раннер фейлит на throw при рендере. Здесь — АУДИТ a11y: axe на
-// каждой story, нарушения ЛОГируются (не фейлят) → видно масштаб. Строку A11Y легко
-// сгрепать/просуммировать. Для CI-гейта потом заменить getViolations на checkA11y.
+// Дефолтный smoke-раннер фейлит на throw при рендере. Здесь + АУДИТ a11y: axe на
+// каждой story, нарушения ЛОГируются строкой `A11Y <story> ...` (не фейлят) → видно
+// масштаб. Для CI-гейта критикалов заменить getViolations на checkA11y с
+// includedImpacts:['critical'].
 const config: TestRunnerConfig = {
   async preVisit(page) {
     page.on('pageerror', (e) => console.log('PAGEERROR', e.message))

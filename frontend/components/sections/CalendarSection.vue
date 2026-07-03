@@ -205,9 +205,9 @@ function calClickItem(it: any) {
     <UIcon name="i-heroicons-calendar-days" class="text-tertiary" />
     <span class="font-medium">{{ calHeaderLabel }}</span>
     <div class="ml-2 flex items-center gap-1">
-      <UButton color="gray" variant="ghost" size="xs" square @click="shiftRange(-1)" />
+      <UButton icon="i-heroicons-chevron-left" color="gray" variant="ghost" size="xs" square @click="shiftRange(-1)" aria-label="Previous" />
       <UButton color="gray" variant="ghost" size="xs" @click="calToday">[ today ]</UButton>
-      <UButton icon="i-heroicons-chevron-right" color="gray" variant="ghost" size="xs" square @click="shiftRange(1)" />
+      <UButton icon="i-heroicons-chevron-right" color="gray" variant="ghost" size="xs" square @click="shiftRange(1)" aria-label="Next" />
     </div>
     <div class="ml-2 flex items-center gap-0.5 rounded-md bg-elevated p-0.5">
       <button v-for="v in ['month','week','day']" :key="v"

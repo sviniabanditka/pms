@@ -66,14 +66,14 @@ function notifTime(at: any) {
 
     <div v-if="!m.deletedAt && !editing" class="absolute -top-3 right-2 hidden items-center gap-0.5 rounded-md border border-subtle bg-elevated px-1 py-0.5 shadow group-hover:flex">
       <div class="relative">
-        <UButton icon="i-heroicons-face-smile" color="gray" variant="ghost" size="2xs" square title="React" @click="pickerOpen = !pickerOpen" />
+        <UButton icon="i-heroicons-face-smile" color="gray" variant="ghost" size="2xs" square title="React" @click="pickerOpen = !pickerOpen" aria-label="React" />
         <div v-if="pickerOpen" class="absolute bottom-7 right-0 z-20 flex gap-1 rounded-md border border-subtle bg-elevated p-1 shadow-lg">
           <button v-for="e in EMOJIS" :key="e" class="rounded p-1 text-base hover:bg-hover" @click="react(e)">{{ e }}</button>
         </div>
       </div>
-      <UButton v-if="canReply && !m.parentId" icon="i-heroicons-chat-bubble-oval-left" color="gray" variant="ghost" size="2xs" square title="Reply in thread" @click="chat.loadThread(m.id)" />
-      <UButton v-if="mine" icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square title="Edit" @click="startEdit" />
-      <UButton v-if="mine" icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square title="Delete" @click="chat.deleteMessage(m.id)" />
+      <UButton v-if="canReply && !m.parentId" icon="i-heroicons-chat-bubble-oval-left" color="gray" variant="ghost" size="2xs" square title="Reply in thread" @click="chat.loadThread(m.id)" aria-label="Reply in thread" />
+      <UButton v-if="mine" icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square title="Edit" @click="startEdit" aria-label="Edit" />
+      <UButton v-if="mine" icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square title="Delete" @click="chat.deleteMessage(m.id)" aria-label="Delete" />
     </div>
   </div>
 </template>

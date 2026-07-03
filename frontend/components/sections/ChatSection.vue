@@ -133,7 +133,7 @@ const startOrJoinHuddle = (channelId: string) => wrap(async () => {
             <div v-for="uid in store.channelParticipants(currentChannel.id)" :key="uid" class="group flex items-center gap-2 rounded px-1.5 py-1 hover:bg-hover">
               <Avatar :name="store.userName(uid)" :avatar-key="store.users[uid]?.avatarKey" :size="22" />
               <span class="min-w-0 flex-1 truncate text-sm">{{ store.userName(uid) }}{{ uid === store.currentUserId ? ' (you)' : '' }}</span>
-              <UButton v-if="canManageMembers && uid !== store.currentUserId" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square title="Remove" @click="chat.removeChannelMember(currentChannel.id, uid)" />
+              <UButton v-if="canManageMembers && uid !== store.currentUserId" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square title="Remove" @click="chat.removeChannelMember(currentChannel.id, uid)" aria-label="Remove" />
             </div>
           </div>
           <template v-if="canManageMembers">
@@ -150,10 +150,10 @@ const startOrJoinHuddle = (channelId: string) => wrap(async () => {
           · {{ store.meetingJoined(store.liveHuddleForChannel(currentChannel.id)!.id).length }}
         </UButton>
       </template>
-      <UButton v-else class="ml-auto" color="gray" variant="ghost" size="xs" title="Start huddle" @click="startOrJoinHuddle(currentChannel.id)">[ huddle ]</UButton>
-      <UButton :icon="linkCopied ? 'i-heroicons-check' : 'i-heroicons-link'" color="gray" variant="ghost" size="xs" square :title="linkCopied ? 'Copied!' : 'Copy link'" @click="$emit('copy-link')" />
+      <UButton v-else class="ml-auto" color="gray" variant="ghost" size="xs" title="Start huddle" @click="startOrJoinHuddle(currentChannel.id)" aria-label="Start huddle">[ huddle ]</UButton>
+      <UButton :icon="linkCopied ? 'i-heroicons-check' : 'i-heroicons-link'" color="gray" variant="ghost" size="xs" square :title="linkCopied ? 'Copied!' : 'Copy link'" @click="$emit('copy-link')" :aria-label="linkCopied ? 'Copied!' : 'Copy link'" />
       <UDropdown v-if="channelActions.length" :items="channelActions" :popper="{ placement: 'bottom-end' }">
-        <UButton icon="i-heroicons-ellipsis-horizontal" color="gray" variant="ghost" size="xs" square title="Channel actions" />
+        <UButton icon="i-heroicons-ellipsis-horizontal" color="gray" variant="ghost" size="xs" square title="Channel actions" aria-label="Channel actions" />
       </UDropdown>
     </div>
     <!-- messages -->
@@ -180,17 +180,17 @@ const startOrJoinHuddle = (channelId: string) => wrap(async () => {
       <PendingAttachments v-if="pendingFiles.length" class="mb-1.5" :files="pendingFiles" @remove="(i) => pendingFiles = pendingFiles.filter((_, j) => j !== i)" />
       <div class="rounded-lg border border-subtle bg-elevated">
         <div class="flex items-center gap-1 border-b border-subtle px-2 py-1">
-          <UButton color="gray" variant="ghost" size="2xs" square title="Bold" class="font-bold" @click="wrapSel('**')">B</UButton>
-          <UButton color="gray" variant="ghost" size="2xs" square title="Italic" class="italic" @click="wrapSel('_')">I</UButton>
-          <UButton icon="i-heroicons-code-bracket" color="gray" variant="ghost" size="2xs" square title="Code" @click="wrapSel('`')" />
-          <UButton icon="i-heroicons-link" color="gray" variant="ghost" size="2xs" square title="Link" @click="wrapSel('[', '](url)')" />
-          <UButton icon="i-heroicons-list-bullet" color="gray" variant="ghost" size="2xs" square title="List" @click="wrapSel('\n- ', '')" />
+          <UButton color="gray" variant="ghost" size="2xs" square title="Bold" class="font-bold" @click="wrapSel('**')" aria-label="Bold">B</UButton>
+          <UButton color="gray" variant="ghost" size="2xs" square title="Italic" class="italic" @click="wrapSel('_')" aria-label="Italic">I</UButton>
+          <UButton icon="i-heroicons-code-bracket" color="gray" variant="ghost" size="2xs" square title="Code" @click="wrapSel('`')" aria-label="Code" />
+          <UButton icon="i-heroicons-link" color="gray" variant="ghost" size="2xs" square title="Link" @click="wrapSel('[', '](url)')" aria-label="Link" />
+          <UButton icon="i-heroicons-list-bullet" color="gray" variant="ghost" size="2xs" square title="List" @click="wrapSel('\n- ', '')" aria-label="List" />
           <UDropdown :items="mentionItems" :popper="{ placement: 'top-start' }">
-            <UButton icon="i-heroicons-at-symbol" color="gray" variant="ghost" size="2xs" square title="Mention" />
+            <UButton icon="i-heroicons-at-symbol" color="gray" variant="ghost" size="2xs" square title="Mention" aria-label="Mention" />
           </UDropdown>
-          <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="2xs" square title="Attach file" @click="chatFileEl?.click()" />
+          <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="2xs" square title="Attach file" @click="chatFileEl?.click()" aria-label="Attach file" />
           <input ref="chatFileEl" type="file" multiple class="hidden" @change="onChatFilePick" />
-          <UButton class="ml-auto" :icon="showPreview ? 'i-heroicons-pencil' : 'i-heroicons-eye'" color="gray" variant="ghost" size="2xs" square @click="showPreview = !showPreview" />
+          <UButton class="ml-auto" :aria-label="showPreview ? 'Edit' : 'Preview'" :icon="showPreview ? 'i-heroicons-pencil' : 'i-heroicons-eye'" color="gray" variant="ghost" size="2xs" square @click="showPreview = !showPreview" />
         </div>
         <div v-if="showPreview" class="prose-chat min-h-[60px] px-3 py-2 text-sm" v-html="renderMarkdown(msgDraft) || '<span class=&quot;text-tertiary&quot;>// nothing to preview</span>'" />
         <div v-else class="relative flex gap-2 px-3 py-2">

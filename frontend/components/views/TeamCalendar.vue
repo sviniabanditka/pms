@@ -51,9 +51,9 @@ const calRangeLabel = computed(() => {
 <template>
   <div class="p-4">
     <div class="mb-2 flex items-center gap-2 text-sm">
-      <UButton icon="i-heroicons-chevron-left" color="gray" variant="ghost" size="xs" square @click="monthOffset--" />
+      <UButton icon="i-heroicons-chevron-left" color="gray" variant="ghost" size="xs" square @click="monthOffset--" aria-label="Previous" />
       <span class="font-medium">{{ calRangeLabel }}</span>
-      <UButton color="gray" variant="ghost" size="xs" square @click="monthOffset++" />
+      <UButton color="gray" variant="ghost" size="xs" square @click="monthOffset++" aria-label="Next" />
       <UButton class="ml-2" color="gray" variant="ghost" size="xs" @click="monthOffset = 0">[ today ]</UButton>
       <div class="ml-auto flex gap-1">
         <UButton size="2xs" :color="calMode === 'month' ? 'primary' : 'gray'" variant="ghost" @click="calMode = 'month'; monthOffset = 0">[ month ]</UButton>

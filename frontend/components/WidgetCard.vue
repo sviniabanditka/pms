@@ -21,7 +21,7 @@ function statValue(w: any) {
     draggable="true" @dragstart="emit('dragstart')" @dragend="emit('dragend')" @dragover.prevent @drop="emit('drop')">
     <div class="absolute right-2 top-2 flex gap-0.5 opacity-0 group-hover:opacity-100">
       <UButton :icon="(widget.w || 1) >= 2 ? 'i-heroicons-arrows-pointing-in' : 'i-heroicons-arrows-pointing-out'" color="gray" variant="ghost" size="2xs" square :title="(widget.w||1)>=2 ? 'Shrink' : 'Widen'" @click="store.resizeWidget(widget.id, (widget.w||1) >= 2 ? 1 : 2, widget.h || 1)" />
-      <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="store.removeWidget(widget.id)" />
+      <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="store.removeWidget(widget.id)" aria-label="Close" />
     </div>
     <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>{{ widget.title || widget.type }}</div>
     <div v-if="widget.type==='note'" class="whitespace-pre-wrap text-sm">{{ widget.config?.text }}</div>

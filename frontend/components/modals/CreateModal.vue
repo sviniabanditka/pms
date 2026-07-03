@@ -58,7 +58,7 @@ const submitCreate = () => wrap(async () => {
     <div class="p-4">
       <div class="mb-4 flex items-center gap-2">
         <span class="text-base font-semibold text-white"><span class="text-ok">$</span> new {{ createTypeLabel.toLowerCase() }}</span>
-        <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" />
+        <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" aria-label="Close" />
       </div>
 
       <!-- ISSUE -->

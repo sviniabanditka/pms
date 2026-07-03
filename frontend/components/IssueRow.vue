@@ -32,6 +32,6 @@ const store = useAppStore()
     <span v-if="issue.dueDate || issue.scheduledDate" class="shrink-0 text-sm tabular-nums text-tertiary">{{ String(issue.scheduledDate || issue.dueDate).slice(5, 10) }}</span>
     <span v-if="issue.assigneeId" class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-elevated text-[10px]" :title="store.userName(issue.assigneeId)">{{ (store.userName(issue.assigneeId) || '?')[0].toUpperCase() }}</span>
     <UButton v-if="store.canWrite" icon="i-heroicons-trash" color="gray" variant="ghost" size="xs" square
-      class="shrink-0 opacity-0 hover:opacity-100" title="Archive" @click.stop="store.archiveIssue(issue.id)" />
+      class="shrink-0 opacity-0 hover:opacity-100" title="Archive" @click.stop="store.archiveIssue(issue.id)" aria-label="Archive" />
   </div>
 </template>

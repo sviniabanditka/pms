@@ -35,7 +35,7 @@ const sendThread = () => wrap(async () => {
     <div class="flex shrink-0 items-center gap-2 border-b border-subtle px-4 py-3">
       <UIcon name="i-heroicons-chat-bubble-left-right" class="text-tertiary" />
       <span class="font-medium">thread</span>
-      <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="chat.closeThread()" />
+      <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="chat.closeThread()" aria-label="Close" />
     </div>
     <div class="flex-1 overflow-y-auto px-2 py-3">
       <!-- parent (full message: reactions/attachments, без reply-в-тред) -->
@@ -52,7 +52,7 @@ const sendThread = () => wrap(async () => {
         <textarea v-model="threadDraft" rows="2" placeholder="reply…" class="w-full resize-none bg-transparent text-sm outline-none" @paste="onThreadPaste" @keydown.enter.exact.prevent="sendThread" />
       </div>
       <div class="mt-1 flex items-center justify-end gap-2">
-        <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="2xs" square title="Attach" @click="threadFileEl?.click()" />
+        <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="2xs" square title="Attach" @click="threadFileEl?.click()" aria-label="Attach" />
         <input ref="threadFileEl" type="file" multiple class="hidden" @change="onThreadFilePick" />
         <UButton size="2xs" :disabled="!threadDraft.trim() && !threadPending.length" @click="sendThread">[ reply ]</UButton>
       </div>

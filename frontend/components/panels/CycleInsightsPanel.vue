@@ -147,13 +147,13 @@ const cycleBreakdown = computed(() => {
       <span class="rounded-md px-2 py-0.5 text-xs font-medium"
         :class="cycleStatus === 'Current' ? 'bg-accent/20 text-accent' : 'bg-elevated text-secondary'">{{ cycleStatus }}</span>
       <span class="text-tertiary">{{ cycleRange }}</span>
-      <UButton class="ml-auto" size="2xs" color="gray" variant="ghost" square icon="i-heroicons-x-mark" @click="emit('close')" />
+      <UButton class="ml-auto" size="2xs" color="gray" variant="ghost" square icon="i-heroicons-x-mark" @click="emit('close')" aria-label="Close" />
     </div>
     <!-- title -->
     <div class="mb-4 flex items-center gap-2">
       <UIcon name="i-heroicons-play-circle" class="text-accent" />
       <span class="text-base font-semibold text-white">{{ store.cycles[cycleId]?.name || `Cycle ${store.cycles[cycleId]?.number}` }}</span>
-      <UButton class="ml-auto" icon="i-heroicons-pencil-square" color="gray" variant="ghost" size="xs" square title="Edit cycle" @click="startCycleEdit" />
+      <UButton class="ml-auto" icon="i-heroicons-pencil-square" color="gray" variant="ghost" size="xs" square title="Edit cycle" @click="startCycleEdit" aria-label="Edit cycle" />
     </div>
 
     <!-- edit form -->

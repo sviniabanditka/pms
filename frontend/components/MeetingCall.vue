@@ -26,7 +26,7 @@ const title = computed(() => meeting.value?.kind === 'huddle' ? 'Huddle' : (meet
       <span class="text-sm font-medium text-white">{{ title }}</span>
       <span class="text-xs text-tertiary">{{ tiles.length }}</span>
       <span v-if="connecting" class="text-xs text-tertiary">connecting…</span>
-      <UButton class="ml-auto" :icon="expanded ? 'i-heroicons-minus' : 'i-heroicons-arrows-pointing-out'" color="gray" variant="ghost" size="2xs" square @click="expanded = !expanded" />
+      <UButton class="ml-auto" :aria-label="expanded ? 'Collapse' : 'Expand'" :icon="expanded ? 'i-heroicons-minus' : 'i-heroicons-arrows-pointing-out'" color="gray" variant="ghost" size="2xs" square @click="expanded = !expanded" />
     </div>
 
     <!-- video grid -->
@@ -42,8 +42,8 @@ const title = computed(() => meeting.value?.kind === 'huddle' ? 'Huddle' : (meet
 
     <!-- controls -->
     <div class="flex items-center justify-center gap-2 border-t border-subtle px-3 py-2">
-      <UButton :icon="muted ? 'i-heroicons-no-symbol' : 'i-heroicons-microphone'" :color="muted ? 'red' : 'gray'" variant="soft" size="sm" square :title="muted ? 'Unmute' : 'Mute'" @click="toggleMute" />
-      <UButton :icon="camOff ? 'i-heroicons-video-camera-slash' : 'i-heroicons-video-camera'" :color="camOff ? 'red' : 'gray'" variant="soft" size="sm" square :title="camOff ? 'Camera on' : 'Camera off'" @click="toggleCam" />
+      <UButton :icon="muted ? 'i-heroicons-no-symbol' : 'i-heroicons-microphone'" :color="muted ? 'red' : 'gray'" variant="soft" size="sm" square :title="muted ? 'Unmute' : 'Mute'" @click="toggleMute" :aria-label="muted ? 'Unmute' : 'Mute'" />
+      <UButton :icon="camOff ? 'i-heroicons-video-camera-slash' : 'i-heroicons-video-camera'" :color="camOff ? 'red' : 'gray'" variant="soft" size="sm" square :title="camOff ? 'Camera on' : 'Camera off'" @click="toggleCam" :aria-label="camOff ? 'Camera on' : 'Camera off'" />
       <UButton color="red" variant="solid" size="sm" @click="leave">[ leave ]</UButton>
     </div>
   </div>

@@ -73,26 +73,26 @@ function onDocKeydown(e: KeyboardEvent) {
         <span class="text-tertiary">/</span>
       </template>
       <UIcon name="i-heroicons-document-text" class="text-tertiary" />
-      <UInput :model-value="doc.title" variant="none" :padded="false" class="flex-1 font-medium"
+      <UInput :model-value="doc.title" aria-label="Document title" variant="none" :padded="false" class="flex-1 font-medium"
         @change="(v:any) => store.updateDoc(doc.id, { title: v })" />
       <div class="flex gap-0.5">
-        <UButton size="2xs" square icon="i-heroicons-pencil" :color="docMode==='edit'?'primary':'gray'" :variant="docMode==='edit'?'soft':'ghost'" title="Edit" @click="docMode='edit'" />
-        <UButton size="2xs" square icon="i-heroicons-view-columns" :color="docMode==='split'?'primary':'gray'" :variant="docMode==='split'?'soft':'ghost'" title="Split" @click="docMode='split'" />
-        <UButton size="2xs" square icon="i-heroicons-eye" :color="docMode==='preview'?'primary':'gray'" :variant="docMode==='preview'?'soft':'ghost'" title="Preview" @click="docMode='preview'" />
+        <UButton size="2xs" square icon="i-heroicons-pencil" :color="docMode==='edit'?'primary':'gray'" :variant="docMode==='edit'?'soft':'ghost'" title="Edit" @click="docMode='edit'" aria-label="Edit" />
+        <UButton size="2xs" square icon="i-heroicons-view-columns" :color="docMode==='split'?'primary':'gray'" :variant="docMode==='split'?'soft':'ghost'" title="Split" @click="docMode='split'" aria-label="Split" />
+        <UButton size="2xs" square icon="i-heroicons-eye" :color="docMode==='preview'?'primary':'gray'" :variant="docMode==='preview'?'soft':'ghost'" title="Preview" @click="docMode='preview'" aria-label="Preview" />
       </div>
-      <UButton class="ml-1" :icon="linkCopied ? 'i-heroicons-check' : 'i-heroicons-link'" size="xs" color="gray" variant="ghost" square :title="linkCopied?'Copied!':'Copy link'" @click="emit('copy-link')" />
-      <UButton size="xs" color="red" variant="ghost" square icon="i-heroicons-trash" @click="store.deleteDoc(doc.id); emit('close')" />
-      <UButton size="xs" color="gray" variant="ghost" square icon="i-heroicons-x-mark" @click="emit('close')" />
+      <UButton class="ml-1" :icon="linkCopied ? 'i-heroicons-check' : 'i-heroicons-link'" size="xs" color="gray" variant="ghost" square :title="linkCopied?'Copied!':'Copy link'" @click="emit('copy-link')" :aria-label="linkCopied?'Copied!':'Copy link'" />
+      <UButton size="xs" color="red" variant="ghost" square icon="i-heroicons-trash" @click="store.deleteDoc(doc.id); emit('close')" aria-label="Delete" />
+      <UButton size="xs" color="gray" variant="ghost" square icon="i-heroicons-x-mark" @click="emit('close')" aria-label="Close" />
     </div>
     <!-- toolbar -->
     <div v-if="docMode !== 'preview'" class="flex items-center gap-1 border-b border-subtle px-3 py-1">
-      <UButton size="2xs" square color="gray" variant="ghost" class="font-bold" title="Bold" @click="docWrap('**')">B</UButton>
-      <UButton size="2xs" square color="gray" variant="ghost" class="italic" title="Italic" @click="docWrap('_')">I</UButton>
-      <UButton size="2xs" square color="gray" variant="ghost" class="font-bold" title="Heading" @click="docWrap('\n# ', '')">H</UButton>
-      <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-list-bullet" title="List" @click="docWrap('\n- ', '')" />
-      <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-code-bracket" title="Code" @click="docWrap('`')" />
-      <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-link" title="Link" @click="docWrap('[', '](url)')" />
-      <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-paper-clip" title="Attach file/image" @click="docFileEl?.click()" />
+      <UButton size="2xs" square color="gray" variant="ghost" class="font-bold" title="Bold" @click="docWrap('**')" aria-label="Bold">B</UButton>
+      <UButton size="2xs" square color="gray" variant="ghost" class="italic" title="Italic" @click="docWrap('_')" aria-label="Italic">I</UButton>
+      <UButton size="2xs" square color="gray" variant="ghost" class="font-bold" title="Heading" @click="docWrap('\n# ', '')" aria-label="Heading">H</UButton>
+      <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-list-bullet" title="List" @click="docWrap('\n- ', '')" aria-label="List" />
+      <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-code-bracket" title="Code" @click="docWrap('`')" aria-label="Code" />
+      <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-link" title="Link" @click="docWrap('[', '](url)')" aria-label="Link" />
+      <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-paper-clip" title="Attach file/image" @click="docFileEl?.click()" aria-label="Attach file/image" />
       <input ref="docFileEl" type="file" multiple class="hidden" @change="onDocFilePick" />
     </div>
     <div class="flex h-[calc(100vh-150px)]">

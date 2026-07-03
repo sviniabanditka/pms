@@ -167,16 +167,16 @@ function onDescKeydown(e: KeyboardEvent) {
     <div class="flex items-center gap-2 border-b border-subtle px-4 py-2.5">
       <StatusGlyph :category="store.states[selectedIssue.stateId]?.category" />
       <span class="text-xs text-accent2">{{ selectedIssue.identifier }}</span>
-      <UButton class="ml-auto" :icon="linkCopied ? 'i-heroicons-check' : 'i-heroicons-link'" color="gray" variant="ghost" size="xs" square :title="linkCopied ? 'Copied!' : 'Copy link'" @click="emit('copy-link')" />
+      <UButton class="ml-auto" :icon="linkCopied ? 'i-heroicons-check' : 'i-heroicons-link'" color="gray" variant="ghost" size="xs" square :title="linkCopied ? 'Copied!' : 'Copy link'" @click="emit('copy-link')" :aria-label="linkCopied ? 'Copied!' : 'Copy link'" />
       <UDropdown :items="issueActions" :popper="{ placement: 'bottom-end' }">
-        <UButton icon="i-heroicons-ellipsis-horizontal" color="gray" variant="ghost" size="xs" square />
+        <UButton icon="i-heroicons-ellipsis-horizontal" color="gray" variant="ghost" size="xs" square aria-label="More actions" />
       </UDropdown>
-      <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="emit('close')" />
+      <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="emit('close')" aria-label="Close" />
     </div>
 
     <div class="px-4 py-4">
       <!-- title -->
-      <UInput :model-value="selectedIssue.title" variant="none" size="xl" class="mb-3 w-full font-semibold" :padded="false"
+      <UInput :model-value="selectedIssue.title" aria-label="Issue title" variant="none" size="xl" class="mb-3 w-full font-semibold" :padded="false"
         :ui="{ base: 'text-white' }" :disabled="!store.canWrite"
         @change="(v:any) => store.setIssueTitle(selectedIssue.id, v)" />
 
@@ -184,15 +184,15 @@ function onDescKeydown(e: KeyboardEvent) {
       <div class="mb-6">
         <div v-if="descEditing" class="rounded-lg border border-subtle bg-elevated">
           <div class="flex items-center gap-0.5 border-b border-subtle px-1.5 py-1">
-            <UButton size="2xs" square color="gray" variant="ghost" class="font-bold" title="Bold" @click="descWrap('**')">B</UButton>
-            <UButton size="2xs" square color="gray" variant="ghost" class="italic" title="Italic" @click="descWrap('_')">I</UButton>
-            <UButton size="2xs" square color="gray" variant="ghost" class="font-bold" title="Heading" @click="descWrap('\n# ', '')">H</UButton>
-            <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-list-bullet" title="List" @click="descWrap('\n- ', '')" />
-            <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-code-bracket" title="Code" @click="descWrap('`')" />
-            <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-link" title="Link" @click="descWrap('[', '](url)')" />
-            <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-paper-clip" title="Attach file/image" @click="descFileEl?.click()" />
+            <UButton size="2xs" square color="gray" variant="ghost" class="font-bold" title="Bold" @click="descWrap('**')" aria-label="Bold">B</UButton>
+            <UButton size="2xs" square color="gray" variant="ghost" class="italic" title="Italic" @click="descWrap('_')" aria-label="Italic">I</UButton>
+            <UButton size="2xs" square color="gray" variant="ghost" class="font-bold" title="Heading" @click="descWrap('\n# ', '')" aria-label="Heading">H</UButton>
+            <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-list-bullet" title="List" @click="descWrap('\n- ', '')" aria-label="List" />
+            <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-code-bracket" title="Code" @click="descWrap('`')" aria-label="Code" />
+            <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-link" title="Link" @click="descWrap('[', '](url)')" aria-label="Link" />
+            <UButton size="2xs" square color="gray" variant="ghost" icon="i-heroicons-paper-clip" title="Attach file/image" @click="descFileEl?.click()" aria-label="Attach file/image" />
             <input ref="descFileEl" type="file" multiple class="hidden" @change="onDescFilePick" />
-            <UButton class="ml-auto" size="2xs" color="gray" variant="ghost" title="Save (⌘↵)" @click="saveDesc">[ done ]</UButton>
+            <UButton class="ml-auto" size="2xs" color="gray" variant="ghost" title="Save (⌘↵)" @click="saveDesc" aria-label="Save (⌘↵)">[ done ]</UButton>
           </div>
           <div class="relative">
             <MentionMenu :m="descMention" />
@@ -268,7 +268,7 @@ function onDescKeydown(e: KeyboardEvent) {
           <span class="flex-1 text-sm" :class="store.issueTrackedMin(selectedIssue.id) ? 'text-white' : 'text-tertiary'">{{ store.issueTrackedMin(selectedIssue.id) ? fmtMin(store.issueTrackedMin(selectedIssue.id)) : 'Not tracked' }}</span>
           <UButton v-if="store.runningTimer?.issueId === selectedIssue.id" color="red" size="2xs" @click="wrap(() => time.stopTimer())">Stop</UButton>
           <UButton v-else color="gray" size="2xs" @click="wrap(() => time.startTimer(selectedIssue.id))">Start</UButton>
-          <UButton color="gray" variant="ghost" size="2xs" square icon="i-heroicons-plus" title="Add time manually" @click="emit('log-time', selectedIssue.id)" />
+          <UButton color="gray" variant="ghost" size="2xs" square icon="i-heroicons-plus" title="Add time manually" @click="emit('log-time', selectedIssue.id)" aria-label="Add time manually" />
         </PropertyRow>
         <!-- записи времени -->
         <TimeEntryRow v-for="te in store.timeEntriesForIssue(selectedIssue.id)" :key="te.id" :entry="te" @delete="(id) => wrap(() => time.deleteTimeEntry(id))" />
@@ -388,9 +388,9 @@ function onDescKeydown(e: KeyboardEvent) {
               class="block w-full resize-none bg-transparent text-sm outline-none placeholder:text-tertiary"
               @paste="onCommentPaste" @input="commentMention.detect()" @keydown="onCommentKeydown" />
           </div>
-          <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="sm" square title="Attach" @click="commentFileEl?.click()" />
+          <UButton icon="i-heroicons-paper-clip" color="gray" variant="ghost" size="sm" square title="Attach" @click="commentFileEl?.click()" aria-label="Attach" />
           <input ref="commentFileEl" type="file" multiple class="hidden" @change="onCommentFilePick" />
-          <UButton icon="i-heroicons-paper-airplane" size="sm" :disabled="!commentDraft.trim() && !commentPending.length" @click="addComment" />
+          <UButton icon="i-heroicons-paper-airplane" size="sm" :disabled="!commentDraft.trim() && !commentPending.length" @click="addComment" aria-label="Send" />
         </div>
       </div>
 

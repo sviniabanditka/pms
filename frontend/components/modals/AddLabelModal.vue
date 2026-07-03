@@ -23,7 +23,7 @@ const addLabelFromModal = (lid: any) => lid && wrap(async () => { await store.ad
     <div v-if="issue" class="space-y-4 p-4">
       <div class="flex items-center gap-2">
         <span class="text-base font-semibold text-white"><span class="text-ok">$</span> add label</span>
-        <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" />
+        <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" aria-label="Close" />
       </div>
       <div>
         <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Existing</div>

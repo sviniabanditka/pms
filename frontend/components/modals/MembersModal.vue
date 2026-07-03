@@ -18,7 +18,7 @@ const store = useAppStore()
       <div class="flex items-center gap-2">
         <UIcon name="i-heroicons-user-group" class="text-tertiary" />
         <span class="text-base font-semibold text-white"><span class="text-ok">$</span> members</span>
-        <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" />
+        <UButton class="ml-auto" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" aria-label="Close" />
       </div>
       <!-- invite -->
       <div v-if="store.isWsAdmin" class="flex gap-2">
@@ -44,7 +44,7 @@ const store = useAppStore()
           <div class="mb-1 mt-3 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Pending invites</div>
           <div v-for="iv in store.pendingInvites" :key="iv.id" class="group flex items-center gap-2 px-2 py-1.5 text-sm text-tertiary">
             <UIcon name="i-heroicons-envelope" /> <span class="flex-1 truncate">{{ iv.email }}</span><span class="text-xs">{{ iv.role }}</span>
-            <UButton icon="i-heroicons-x-mark" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Revoke" @click="store.revokeInvitation(iv.id)" />
+            <UButton icon="i-heroicons-x-mark" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Revoke" @click="store.revokeInvitation(iv.id)" aria-label="Revoke" />
           </div>
         </template>
       </div>

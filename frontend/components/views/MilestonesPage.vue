@@ -34,7 +34,7 @@ const { statusColor, statusGlyph } = useColors()
         <span class="text-tertiary">/</span>
         <UIcon name="i-heroicons-flag" :class="selectedMs.status === 'done' ? 'text-accent' : selectedMs.status === 'active' ? 'text-warn' : 'text-tertiary'" />
         <span class="font-medium">{{ selectedMs.name }}</span>
-        <USelectMenu :model-value="selectedMs.status" :options="labelOpts(['planned', 'active', 'done'])" value-attribute="value" option-attribute="label" size="xs" class="w-28" @update:model-value="(st) => store.updateMilestone(selectedMs.id, { status: st })" />
+        <USelectMenu :model-value="selectedMs.status" aria-label="Milestone status" :options="labelOpts(['planned', 'active', 'done'])" value-attribute="value" option-attribute="label" size="xs" class="w-28" @update:model-value="(st) => store.updateMilestone(selectedMs.id, { status: st })" />
         <span v-if="selectedMs.targetDate" class="text-xs" :class="msOverdue(selectedMs) ? 'text-danger' : 'text-tertiary'">{{ String(selectedMs.targetDate).slice(0,10) }}{{ msOverdue(selectedMs) ? ' · overdue' : '' }}</span>
         <span class="ml-auto text-xs text-tertiary">{{ store.milestoneProgress(selectedMs.id).done }}/{{ store.milestoneProgress(selectedMs.id).total }}</span>
       </div>
@@ -69,7 +69,7 @@ const { statusColor, statusGlyph } = useColors()
             <span class="flex-1 truncate font-medium">{{ m.name }}</span>
             <span class="rounded bg-surface px-1.5 text-xs text-tertiary">{{ m.status }}</span>
             <span v-if="m.targetDate" class="text-xs" :class="msOverdue(m) ? 'text-danger' : 'text-tertiary'">{{ String(m.targetDate).slice(5,10) }}</span>
-            <UButton icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" @click.stop="store.deleteMilestone(m.id)" />
+            <UButton icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" @click.stop="store.deleteMilestone(m.id)" aria-label="Delete" />
           </div>
           <div class="mt-2 flex items-center gap-2 text-xs text-tertiary">
             <TermBar :width="14" :done="store.milestoneProgress(m.id).done" :total="store.milestoneProgress(m.id).total" />

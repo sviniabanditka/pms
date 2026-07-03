@@ -49,7 +49,7 @@ const meeting = useMeeting()
         </span>
       </div>
       <UButton color="gray" size="sm" @click="$emit('join', m.id)">[ start ]</UButton>
-      <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="xs" square title="Delete" @click="store.endMeeting(m.id)" />
+      <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="xs" square title="Delete" @click="store.endMeeting(m.id)" aria-label="Delete" />
     </div>
 
     <div v-if="store.pastMeetings.length" class="mb-2 mt-6 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Past</div>
@@ -61,8 +61,8 @@ const meeting = useMeeting()
           <span v-if="m.scheduledAt">{{ new Date(m.scheduledAt).toLocaleString() }}<span v-if="m.endsAt">–{{ new Date(m.endsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }}</span> · </span>{{ store.meetingParts(m.id).length }} invited
         </div>
       </div>
-      <UButton color="gray" size="sm" title="Start again" @click="$emit('join', m.id)">[ restart ]</UButton>
-      <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="xs" square title="Delete" @click="store.endMeeting(m.id)" />
+      <UButton color="gray" size="sm" title="Start again" @click="$emit('join', m.id)" aria-label="Start again">[ restart ]</UButton>
+      <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="xs" square title="Delete" @click="store.endMeeting(m.id)" aria-label="Delete" />
     </div>
 
     <div v-if="!store.scheduledMeetings.length && !store.liveMeetings.length" class="py-16 text-center text-sm text-tertiary">

@@ -280,7 +280,7 @@ const NOTIF_PREF_LIST = [
         <template v-if="tab === 'general'">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> general</h2>
-            <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" />
+            <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" aria-label="Close" />
           </div>
           <div class="space-y-4 text-sm">
             <div>
@@ -313,7 +313,7 @@ const NOTIF_PREF_LIST = [
         <template v-else-if="tab === 'members'">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> members</h2>
-            <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" />
+            <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" aria-label="Close" />
           </div>
           <div v-if="store.isWsAdmin" class="mb-4 flex gap-2">
             <UInput v-model="inviteEmail" placeholder="email to invite" class="flex-1" @keyup.enter="doInvite" />
@@ -330,13 +330,13 @@ const NOTIF_PREF_LIST = [
             <span class="flex-1 truncate text-sm">{{ m.name }}<span v-if="m.userId === store.currentUserId" class="ml-1 text-xs text-tertiary">(you)</span></span>
             <USelectMenu v-if="store.isWsAdmin" :model-value="m.role" :options="labelOpts(ROLES)" value-attribute="value" option-attribute="label" size="xs" class="w-28" @update:model-value="(r) => store.updateMemberRole(m.userId, r)" />
             <span v-else class="w-28 text-right text-xs text-tertiary">{{ m.role }}</span>
-            <UButton v-if="store.isWsAdmin && m.userId !== store.currentUserId" icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Remove" @click="store.removeMember(m.userId)" />
+            <UButton v-if="store.isWsAdmin && m.userId !== store.currentUserId" icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Remove" @click="store.removeMember(m.userId)" aria-label="Remove" />
           </div>
           <template v-if="store.isWsAdmin && store.pendingInvites.length">
             <div class="mb-1 mt-3 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Pending</div>
             <div v-for="iv in store.pendingInvites" :key="iv.id" class="group flex items-center gap-2 px-2 py-1.5 text-sm text-tertiary">
               <UIcon name="i-heroicons-envelope" /> <span class="flex-1 truncate">{{ iv.email }}</span><span class="text-xs">{{ iv.role }}</span>
-              <UButton icon="i-heroicons-x-mark" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Revoke" @click="store.revokeInvitation(iv.id)" />
+              <UButton icon="i-heroicons-x-mark" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Revoke" @click="store.revokeInvitation(iv.id)" aria-label="Revoke" />
             </div>
           </template>
         </template>
@@ -347,7 +347,7 @@ const NOTIF_PREF_LIST = [
             <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> teams</h2>
             <div class="flex items-center gap-2">
               <UButton v-if="store.isWsAdmin" size="xs" @click="open = false; emit('new-team')">[ new team ]</UButton>
-              <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" />
+              <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" aria-label="Close" />
             </div>
           </div>
           <div v-for="t in store.teamList" :key="t.id" class="rounded-md px-2 py-2 hover:bg-hover">
@@ -355,19 +355,19 @@ const NOTIF_PREF_LIST = [
               <UIcon :name="t.private ? 'i-heroicons-lock-closed' : 'i-heroicons-cube'" :class="t.private ? 'text-accent2' : 'text-tertiary'" />
               <UInput :model-value="t.name" variant="none" :padded="false" class="flex-1 font-medium" :disabled="!store.canManageTeam(t.id)" @change="(v:any) => store.updateTeam(t.id, { name: v })" />
               <span class="text-xs text-tertiary">{{ t.key }}</span>
-              <UButton v-if="store.canManageTeam(t.id)" :icon="t.private ? 'i-heroicons-lock-closed' : 'i-heroicons-lock-open'" :color="t.private ? 'red' : 'gray'" variant="ghost" size="2xs" square :title="t.private ? 'Make public' : 'Make private'" @click="store.updateTeam(t.id, { private: !t.private })" />
+              <UButton v-if="store.canManageTeam(t.id)" :icon="t.private ? 'i-heroicons-lock-closed' : 'i-heroicons-lock-open'" :color="t.private ? 'red' : 'gray'" variant="ghost" size="2xs" square :title="t.private ? 'Make public' : 'Make private'" @click="store.updateTeam(t.id, { private: !t.private })" :aria-label="t.private ? 'Make public' : 'Make private'" />
               <USelectMenu v-if="store.canManageTeam(t.id)" :model-value="t.parentId || ''" size="2xs" class="w-32" value-attribute="value" option-attribute="label"
                 :options="[{ label: '— root —', value: '' }, ...store.teamList.filter((x) => x.id !== t.id).map((x) => ({ label: x.key, value: x.id }))]"
                 @update:model-value="(p) => store.moveTeam(t.id, p)" />
-              <UButton icon="i-heroicons-adjustments-horizontal" color="gray" variant="ghost" size="2xs" square title="Statuses" @click="open = false; emit('open-states', t.id)" />
-              <UButton v-if="store.canManageTeam(t.id)" icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Delete team" @click="emit('delete-team', t)" />
+              <UButton icon="i-heroicons-adjustments-horizontal" color="gray" variant="ghost" size="2xs" square title="Statuses" @click="open = false; emit('open-states', t.id)" aria-label="Statuses" />
+              <UButton v-if="store.canManageTeam(t.id)" icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Delete team" @click="emit('delete-team', t)" aria-label="Delete team" />
             </div>
             <!-- team membership (управляет lead/ws-admin) -->
             <div v-if="store.canManageTeam(t.id)" class="ml-6 mt-1.5 flex flex-wrap items-center gap-1.5">
               <span v-for="tm in store.teamMembersOf(t.id)" :key="tm.id" class="group/m flex items-center gap-1 rounded bg-elevated px-1.5 py-0.5 text-xs">
                 <span :class="tm.role === 'lead' ? 'text-accent2' : 'text-secondary'">{{ store.users[tm.userId]?.name || store.users[tm.userId]?.email || '—' }}</span>
                 <span v-if="tm.role === 'lead'" class="text-[10px] text-tertiary">lead</span>
-                <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square class="opacity-0 group-hover/m:opacity-100" title="Remove from team" @click="store.removeTeamMember(t.id, tm.userId)" />
+                <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square class="opacity-0 group-hover/m:opacity-100" title="Remove from team" @click="store.removeTeamMember(t.id, tm.userId)" aria-label="Remove from team" />
               </span>
               <USelectMenu size="2xs" class="w-40" placeholder="+ add member" value-attribute="value" option-attribute="label"
                 :options="store.workspaceMembers.filter((m) => !store.teamMembersOf(t.id).some((tm) => tm.userId === m.userId)).map((m) => ({ label: m.name, value: m.userId }))"
@@ -380,7 +380,7 @@ const NOTIF_PREF_LIST = [
         <template v-else-if="tab === 'labels'">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> labels</h2>
-            <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" />
+            <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" aria-label="Close" />
           </div>
           <div class="mb-4 flex items-center gap-2">
             <div class="flex gap-1">
@@ -395,7 +395,7 @@ const NOTIF_PREF_LIST = [
             </div>
             <UInput :model-value="l.name" variant="none" :padded="false" class="flex-1 text-sm" @change="(v:any) => store.updateLabel(l.id, { name: v })" />
             <span class="text-xs text-tertiary">{{ (l.teamId ? store.teams[l.teamId]?.key : '') || 'workspace' }}</span>
-            <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" @click="store.deleteLabel(l.id)" />
+            <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" @click="store.deleteLabel(l.id)" aria-label="Delete" />
           </div>
           <div v-if="!allLabels.length" class="py-6 text-center text-sm text-tertiary">No labels yet</div>
         </template>
@@ -405,7 +405,7 @@ const NOTIF_PREF_LIST = [
           <!-- редактор правила (inline, без вложенной модалки) -->
           <template v-if="showAuto">
             <div class="mb-4 flex items-center gap-2">
-              <UButton icon="i-heroicons-arrow-left" color="gray" variant="ghost" size="xs" square @click="showAuto = false" />
+              <UButton icon="i-heroicons-arrow-left" color="gray" variant="ghost" size="xs" square @click="showAuto = false" aria-label="Back" />
               <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> {{ autoForm.id ? 'Edit rule' : 'New rule' }}</h2>
             </div>
             <div class="space-y-3">
@@ -436,7 +436,7 @@ const NOTIF_PREF_LIST = [
                     <USelectMenu v-model="ac.channelId" class="w-32 shrink-0" :options="channelOptsAuto" value-attribute="value" option-attribute="label" placeholder="channel" />
                     <UInput v-model="ac.text" class="flex-1" placeholder="Message ({issue})" />
                   </template>
-                  <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="autoForm.actions.splice(i, 1)" />
+                  <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="autoForm.actions.splice(i, 1)" aria-label="Close" />
                 </div>
                 <div v-if="!autoForm.actions.length" class="py-2 text-center text-xs text-tertiary">No actions — add one.</div>
               </div>
@@ -454,7 +454,7 @@ const NOTIF_PREF_LIST = [
               <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> automations</h2>
               <div class="flex items-center gap-2">
                 <UButton v-if="store.isWsAdmin" color="gray" size="xs" @click="openAutoCreate">[ new rule ]</UButton>
-                <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" />
+                <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" aria-label="Close" />
               </div>
             </div>
             <p class="mb-3 text-xs text-tertiary">When something happens to an issue, run actions automatically.</p>
@@ -464,8 +464,8 @@ const NOTIF_PREF_LIST = [
                 <div class="truncate text-sm font-medium" :class="a.enabled ? 'text-white' : 'text-tertiary'">{{ a.name }}</div>
                 <div class="truncate text-xs text-tertiary">{{ autoSummary(a) }}<span v-if="a.teamId"> · {{ store.teams[a.teamId]?.key }}</span></div>
               </div>
-              <UButton v-if="store.isWsAdmin" icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square @click="openAutoEdit(a)" />
-              <UButton v-if="store.isWsAdmin" icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square @click="store.deleteAutomation(a.id)" />
+              <UButton v-if="store.isWsAdmin" icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square @click="openAutoEdit(a)" aria-label="Edit" />
+              <UButton v-if="store.isWsAdmin" icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square @click="store.deleteAutomation(a.id)" aria-label="Delete" />
             </div>
             <div v-if="!store.automationsList.length" class="py-6 text-center text-sm text-tertiary">No automations yet. Create your first rule.</div>
           </template>
@@ -475,7 +475,7 @@ const NOTIF_PREF_LIST = [
         <template v-else-if="tab === 'templates'">
           <template v-if="showTmpl">
             <div class="mb-4 flex items-center gap-2">
-              <UButton icon="i-heroicons-arrow-left" color="gray" variant="ghost" size="xs" square @click="showTmpl = false" />
+              <UButton icon="i-heroicons-arrow-left" color="gray" variant="ghost" size="xs" square @click="showTmpl = false" aria-label="Back" />
               <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> {{ tmplForm.id ? 'Edit template' : 'New template' }}</h2>
             </div>
             <div class="space-y-3">
@@ -512,7 +512,7 @@ const NOTIF_PREF_LIST = [
               <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> templates</h2>
               <div class="flex items-center gap-2">
                 <UButton color="gray" size="xs" @click="openTmplCreate">[ new template ]</UButton>
-                <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" />
+                <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" aria-label="Close" />
               </div>
             </div>
             <p class="mb-3 text-xs text-tertiary">Reusable issue blueprints. Give one a repeat cadence and it spawns issues automatically.</p>
@@ -525,9 +525,9 @@ const NOTIF_PREF_LIST = [
                   <span v-if="t.nextRunAt && t.recurrence !== 'none'"> · next {{ dayShort(String(t.nextRunAt).slice(0,10)) }}</span>
                 </div>
               </div>
-              <UButton color="gray" variant="ghost" size="2xs" title="Create issue now" @click="spawnTmpl(t.id)">[ create issue ]</UButton>
-              <UButton icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square @click="openTmplEdit(t)" />
-              <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square @click="store.deleteTemplate(t.id)" />
+              <UButton color="gray" variant="ghost" size="2xs" title="Create issue now" @click="spawnTmpl(t.id)" aria-label="Create issue now">[ create issue ]</UButton>
+              <UButton icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square @click="openTmplEdit(t)" aria-label="Edit" />
+              <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square @click="store.deleteTemplate(t.id)" aria-label="Delete" />
             </div>
             <div v-if="!store.templatesList.length" class="py-6 text-center text-sm text-tertiary">No templates yet. Create your first one.</div>
           </template>
@@ -537,7 +537,7 @@ const NOTIF_PREF_LIST = [
         <template v-else-if="tab === 'apitokens'">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> API tokens</h2>
-            <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" />
+            <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" aria-label="Close" />
           </div>
           <p class="mb-3 text-xs text-tertiary">Call the API as you: <code class="rounded bg-elevated px-1">Authorization: Bearer pms_…</code> on any RPC endpoint (POST <code class="rounded bg-elevated px-1">/pms.v1.&lt;Service&gt;/&lt;Method&gt;</code>). A token carries your access in this workspace.</p>
           <div class="mb-3 flex gap-2">
@@ -558,7 +558,7 @@ const NOTIF_PREF_LIST = [
             <span class="flex-1 truncate text-sm">{{ t.name }} <span class="ml-1 font-mono text-xs text-tertiary">{{ t.prefix }}…</span></span>
             <span v-if="t.readOnly" class="shrink-0 rounded bg-elevated px-1 text-[10px] text-tertiary">read-only</span>
             <span class="shrink-0 text-xs text-tertiary">{{ t.lastUsedAt ? 'used ' + d10(t.lastUsedAt) : 'never used' }}</span>
-            <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Revoke" @click="revokeApiToken(t.id)" />
+            <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Revoke" @click="revokeApiToken(t.id)" aria-label="Revoke" />
           </div>
           <div v-if="!apiTokens.length" class="py-6 text-center text-sm text-tertiary">// no API tokens yet</div>
         </template>
@@ -567,7 +567,7 @@ const NOTIF_PREF_LIST = [
         <template v-else-if="tab === 'webhooks'">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> webhooks</h2>
-            <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" />
+            <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" aria-label="Close" />
           </div>
           <p class="mb-3 text-xs text-tertiary">POST JSON to your URL on events, signed with HMAC-SHA256 (<code class="rounded bg-elevated px-1">X-PMS-Signature: sha256=…</code>) using the secret shown once below.</p>
           <div class="mb-2 flex gap-2">
@@ -588,7 +588,7 @@ const NOTIF_PREF_LIST = [
               <span class="min-w-0 flex-1 truncate text-sm">{{ wh.url }}<span class="ml-1 text-xs text-tertiary">{{ (wh.events || []).join(', ') }}</span></span>
               <UButton size="2xs" color="gray" variant="ghost" @click="toggleDeliveries(wh.id)">{{ deliveriesByHook[wh.id] ? 'hide' : 'log' }}</UButton>
               <UButton size="2xs" color="gray" variant="ghost" @click="toggleWebhook(wh)">{{ wh.active ? 'disable' : 'enable' }}</UButton>
-              <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Delete" @click="deleteWebhook(wh.id)" />
+              <UButton icon="i-heroicons-trash" color="red" variant="ghost" size="2xs" square class="opacity-0 group-hover:opacity-100" title="Delete" @click="deleteWebhook(wh.id)" aria-label="Delete" />
             </div>
             <div v-if="deliveriesByHook[wh.id]" class="ml-4 mt-1 space-y-0.5">
               <div v-for="dlv in deliveriesByHook[wh.id]" :key="dlv.id" class="flex items-center gap-2 text-xs">
@@ -607,7 +607,7 @@ const NOTIF_PREF_LIST = [
         <template v-else-if="tab === 'account'">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> account</h2>
-            <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" />
+            <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" aria-label="Close" />
           </div>
           <div class="mb-4 flex items-center gap-3">
             <Avatar :name="store.userName(store.currentUserId)" :avatar-key="store.users[store.currentUserId]?.avatarKey" :size="48" />
@@ -626,7 +626,7 @@ const NOTIF_PREF_LIST = [
         <template v-else-if="tab === 'appearance'">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> appearance</h2>
-            <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" />
+            <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" aria-label="Close" />
           </div>
           <div class="mb-1 text-xs text-tertiary">Density</div>
           <div class="flex gap-2">
@@ -642,7 +642,7 @@ const NOTIF_PREF_LIST = [
         <template v-else-if="tab === 'notifications'">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> notifications</h2>
-            <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" />
+            <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" aria-label="Close" />
           </div>
           <p class="mb-3 text-xs text-tertiary">Which notifications to show in the Inbox.</p>
           <div v-for="p in NOTIF_PREF_LIST" :key="p.key" class="flex items-center gap-2 rounded-md px-2 py-2 hover:bg-hover">
@@ -655,15 +655,15 @@ const NOTIF_PREF_LIST = [
         <template v-else-if="tab === 'sections'">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="text-base font-semibold text-white"><span class="text-ok">$</span> sidebar sections</h2>
-            <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" />
+            <UButton icon="i-heroicons-x-mark" color="gray" variant="ghost" size="xs" square @click="open = false" aria-label="Close" />
           </div>
           <p class="mb-3 text-xs text-tertiary">Toggle rail sections and set their order.</p>
           <div v-for="(s, i) in cfgList" :key="s.key" class="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
             <TermCheck :model-value="s.visible" @update:model-value="emit('toggle-section', i)" />
             <UIcon :name="s.icon" class="text-tertiary" />
             <span class="flex-1 text-sm">{{ s.label }}</span>
-            <UButton icon="i-heroicons-chevron-up" color="gray" variant="ghost" size="2xs" square :disabled="i === 0" @click="emit('move-section', i, -1)" />
-            <UButton icon="i-heroicons-chevron-down" color="gray" variant="ghost" size="2xs" square :disabled="i === cfgList.length - 1" @click="emit('move-section', i, 1)" />
+            <UButton icon="i-heroicons-chevron-up" color="gray" variant="ghost" size="2xs" square :disabled="i === 0" @click="emit('move-section', i, -1)" aria-label="Move up" />
+            <UButton icon="i-heroicons-chevron-down" color="gray" variant="ghost" size="2xs" square :disabled="i === cfgList.length - 1" @click="emit('move-section', i, 1)" aria-label="Move down" />
           </div>
         </template>
       </div>

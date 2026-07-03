@@ -18,6 +18,6 @@ function dur(te: any) {
     <span class="flex-1 truncate">{{ entry.description }}</span>
     <span v-if="entry.endedAt" class="tabular-nums">{{ dur(entry) }}</span>
     <span v-else class="text-ok">running</span>
-    <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="emit('delete', entry.id)" />
+    <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="emit('delete', entry.id)" aria-label="Close" />
   </div>
 </template>

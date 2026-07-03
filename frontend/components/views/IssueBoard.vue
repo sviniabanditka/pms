@@ -67,7 +67,7 @@ function onDropOnColumn(stateId: string) {
         <StatusGlyph :category="st.category" />
         <span class="font-medium">{{ st.name }}</span>
         <span class="text-tertiary">{{ store.issuesFor(teamId, st.id).length }}</span>
-        <UButton v-if="store.canWrite" class="ml-auto opacity-0 group-hover/col:opacity-100" icon="i-heroicons-plus" color="gray" variant="ghost" size="2xs" square @click="emit('create-issue')" />
+        <UButton v-if="store.canWrite" class="ml-auto opacity-0 group-hover/col:opacity-100" icon="i-heroicons-plus" color="gray" variant="ghost" size="2xs" square @click="emit('create-issue')" aria-label="Add" />
       </div>
       <div class="flex-1 space-y-2 overflow-y-auto">
         <div v-for="i in store.issuesFor(teamId, st.id)" :key="i.id"

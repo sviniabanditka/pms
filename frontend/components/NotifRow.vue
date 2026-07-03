@@ -32,6 +32,6 @@ function meta(t: string) { return NOTIF_META[t] || { icon: 'i-heroicons-bell', v
       </div>
       <div class="truncate text-sm text-tertiary">{{ store.issueById(notification.entityId)?.title || notification.entityType }}</div>
     </div>
-    <UButton v-if="!notification.readAt" class="mt-0.5 opacity-0 group-hover:opacity-100" icon="i-heroicons-check" color="gray" variant="ghost" size="2xs" square title="Mark read" @click.stop="store.markNotificationRead(notification.id)" />
+    <UButton v-if="!notification.readAt" class="mt-0.5 opacity-0 group-hover:opacity-100" icon="i-heroicons-check" color="gray" variant="ghost" size="2xs" square title="Mark read" @click.stop="store.markNotificationRead(notification.id)" aria-label="Mark read" />
   </div>
 </template>
