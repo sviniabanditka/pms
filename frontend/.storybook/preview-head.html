@@ -1,0 +1,14 @@
+<!-- @nuxtjs/color-mode: реальный Nuxt инжектит head-скрипт, задающий
+     window.__NUXT_COLOR_MODE__ с add/removeColorScheme. В Storybook его нет →
+     плагин захватывает helper={} при импорте и watch(colorMode) кидает
+     `removeColorScheme is not a function`, ломая Vue-teardown (→ `.refs` у null
+     при смене стори). Ставим no-op helper в head — ДО загрузки модулей, чтобы
+     плагин захватил именно его. -->
+<script>
+  window.__NUXT_COLOR_MODE__ = window.__NUXT_COLOR_MODE__ || {
+    preference: 'dark', value: 'dark',
+    getColorScheme: function () { return 'dark' },
+    addColorScheme: function () {},
+    removeColorScheme: function () {},
+  }
+</script>

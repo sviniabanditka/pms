@@ -1,5 +1,6 @@
 import type { Preview } from '@storybook-vue/nuxt'
 import '~/assets/css/main.css'
+// color-mode helper-stub — в .storybook/preview-head.html (нужно до загрузки модулей).
 
 // Terminal-тёмный фон + отступ для всех стори (Nuxt UI + наш стиль рендерятся 1-в-1).
 const surfaceCss = `
