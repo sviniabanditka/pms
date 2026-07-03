@@ -6,51 +6,8 @@ import { connectWs } from '~/lib/ws'
 import { uploadFile } from '~/lib/upload'
 import { getUser, handleUnauthorized } from '~/lib/token'
 import { match, type FilterNode } from '~/lib/filter'
-
-type Entity = Record<string, any>
-
-const BUCKET: Record<string, 'workspaces' | 'teams' | 'states' | 'issues' | 'views' | 'relations' | 'projects' | 'cycles' | 'customFields' | 'customFieldValues' | 'dashboards' | 'dashboardWidgets' | 'members' | 'notifications' | 'documents' | 'channels' | 'channelMembers' | 'users' | 'labels' | 'issueLabels' | 'invitations' | 'milestones' | 'meetings' | 'meetingParticipants' | 'attachments' | 'channelUnread' | 'cycleSnapshots' | 'calendarEvents' | 'timeEntries' | 'automations' | 'teamMembers' | 'issueTemplates'> = {
-  workspace: 'workspaces',
-  team: 'teams',
-  team_member: 'teamMembers',
-  workflow_state: 'states',
-  issue: 'issues',
-  view: 'views',
-  issue_relation: 'relations',
-  cycle: 'cycles',
-  custom_field: 'customFields',
-  custom_field_value: 'customFieldValues',
-  dashboard: 'dashboards',
-  dashboard_widget: 'dashboardWidgets',
-  workspace_member: 'members',
-  notification: 'notifications',
-  document: 'documents',
-  channel: 'channels',
-  channel_member: 'channelMembers',
-  user: 'users',
-  label: 'labels',
-  issue_label: 'issueLabels',
-  invitation: 'invitations',
-  milestone: 'milestones',
-  meeting: 'meetings',
-  meeting_participant: 'meetingParticipants',
-  calendar_event: 'calendarEvents',
-  time_entry: 'timeEntries',
-  automation: 'automations',
-  attachment: 'attachments',
-  channel_unread: 'channelUnread',
-  cycle_snapshot: 'cycleSnapshots',
-  issue_template: 'issueTemplates',
-}
-
-// Полностью присылаемые в bootstrap справочники → отсутствующие можно удалять из стора.
-// notification исключён (лимит 100), message не в bootstrap.
-const FULL_BUCKETS = new Set([
-  'issue', 'team', 'workflow_state', 'label', 'issue_label', 'issue_relation', 'cycle',
-  'view', 'custom_field', 'custom_field_value', 'dashboard', 'dashboard_widget',
-  'document', 'channel', 'channel_member', 'workspace_member', 'team_member', 'user', 'invitation', 'milestone',
-  'meeting', 'meeting_participant', 'calendar_event', 'time_entry', 'automation', 'attachment', 'channel_unread', 'cycle_snapshot', 'issue_template',
-])
+import { applyChunk as applyChunkCore, emptyBuckets } from '~/lib/sync'
+import type { Entity } from '~/types/entities'
 
 // Метки направления связи (прямое / зеркальное).
 const REL_FWD: Record<string, string> = { blocks: 'blocks', blocked_by: 'blocked by', related: 'related', duplicate: 'duplicate', duplicate_of: 'duplicate of' }
@@ -64,24 +21,8 @@ let bootstrapEpoch = 0 // конкурентные bootstrap'ы: чанки ус
 
 export const useAppStore = defineStore('app', {
   state: () => ({
-    workspaces: {} as Record<string, Entity>,
-    teams: {} as Record<string, Entity>,
-    states: {} as Record<string, Entity>,
-    issues: {} as Record<string, Entity>,
-    views: {} as Record<string, Entity>,
-    relations: {} as Record<string, Entity>,
-    cycles: {} as Record<string, Entity>,
-    customFields: {} as Record<string, Entity>,
-    customFieldValues: {} as Record<string, Entity>,
-    dashboards: {} as Record<string, Entity>,
-    dashboardWidgets: {} as Record<string, Entity>,
-    members: {} as Record<string, Entity>,
-    teamMembers: {} as Record<string, Entity>,
-    notifications: {} as Record<string, Entity>,
-    documents: {} as Record<string, Entity>,
-    channels: {} as Record<string, Entity>,
-    channelMembers: {} as Record<string, Entity>,
-    users: {} as Record<string, Entity>,
+    // 31 сущностный бакет (Record<id, T>), типизированы через Entities — см. types/entities.ts и lib/sync.ts
+    ...emptyBuckets(),
     messages: {} as Record<string, any[]>, // channelId -> messages (DTO)
     hasMoreMessages: {} as Record<string, boolean>,
     activeChannelId: '' as string,
@@ -89,19 +30,6 @@ export const useAppStore = defineStore('app', {
     threadMessages: [] as any[],
     typing: {} as Record<string, Record<string, number>>, // channelId -> userId -> ts
     comments: {} as Record<string, any[]>, // issueId -> comments
-    labels: {} as Record<string, Entity>,
-    issueLabels: {} as Record<string, Entity>,
-    invitations: {} as Record<string, Entity>,
-    milestones: {} as Record<string, Entity>,
-    meetings: {} as Record<string, Entity>,
-    meetingParticipants: {} as Record<string, Entity>,
-    calendarEvents: {} as Record<string, Entity>,
-    timeEntries: {} as Record<string, Entity>,
-    automations: {} as Record<string, Entity>,
-    issueTemplates: {} as Record<string, Entity>,
-    attachments: {} as Record<string, Entity>,
-    channelUnread: {} as Record<string, Entity>, // channelId -> { count, lastReadAt }
-    cycleSnapshots: {} as Record<string, Entity>, // "cycleId:day" -> snapshot
     activity: {} as Record<string, any[]>, // issueId -> change_log rows
     labelFilter: [] as string[], // активный фильтр по лейблам (issuesFor)
     groupBy: 'status' as 'status' | 'priority' | 'assignee' | 'milestone', // группировка списка
@@ -539,30 +467,11 @@ export const useAppStore = defineStore('app', {
   },
 
   actions: {
-    // StoreGateway.upsert — пачка сущностей одного типа (camelCase из bootstrap).
-    // D7-merge: пишем только реально изменившиеся (по version/JSON) → нет реактивного
-    // churn при ре-bootstrap, не дёргается UI; неизменённые сохраняют ссылку.
+    // Влить пачку сущностей одного типа (camelCase из bootstrap). Ядро — чистая
+    // функция lib/sync.applyChunk (unit-тестируется отдельно); стор передаёт свой
+    // state-контейнер, D7-merge + prune делаются там.
     applyChunk(entityType: string, arr: Entity[]) {
-      const bucket = BUCKET[entityType]
-      if (!bucket || !Array.isArray(arr)) return
-      const b = (this as any)[bucket]
-      const isLabel = entityType === 'issue_label'
-      const isUnread = entityType === 'channel_unread'
-      const isSnap = entityType === 'cycle_snapshot'
-      const seen = new Set<string>()
-      for (const e of arr) {
-        const k = isLabel ? `${e.issueId}:${e.labelId}` : isUnread ? e.channelId : isSnap ? `${e.cycleId}:${e.day}` : e.id
-        seen.add(k)
-        const cur = b[k]
-        // issue.description грузится лениво (bootstrap/дельта его не шлют) → сохраняем уже загруженное
-        if (entityType === 'issue' && cur && e.description === undefined && cur.description) e.description = cur.description
-        if (cur && JSON.stringify(cur) === JSON.stringify(e)) continue
-        b[k] = e
-      }
-      // подчистка пропавших (для полностью присылаемых справочников, чтобы удалённые/архивные исчезали)
-      if (FULL_BUCKETS.has(entityType)) {
-        for (const k of Object.keys(b)) if (!seen.has(k)) delete b[k]
-      }
+      applyChunkCore(this as any, entityType, arr)
     },
 
     async bootstrap(wsId: string) {
