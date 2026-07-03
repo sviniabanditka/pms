@@ -19,7 +19,7 @@ export const StatusColors: Story = {
         <span :style="{ color: c.statusColor(s), fontSize:'18px', width:'20px', textAlign:'center' }">{{ c.statusGlyph(s) }}</span>
         <span :style="{ width:'14px', height:'14px', borderRadius:'4px', background: c.statusColor(s) }"></span>
         <code style="color:#c8d0e0">{{ s }}</code>
-        <code style="color:#6b7089">{{ c.statusColor(s) }}</code>
+        <code style="color:#8b91a8">{{ c.statusColor(s) }}</code>
       </div>
     </div>`,
   }),
@@ -33,7 +33,7 @@ export const PriorityColors: Story = {
         <span :style="{ color: c.prioColor(i), fontSize:'16px', width:'20px', textAlign:'center' }">{{ c.prioGlyph(i) }}</span>
         <span :style="{ width:'14px', height:'14px', borderRadius:'4px', background: c.prioColor(i) }"></span>
         <code style="color:#c8d0e0">{{ p }}</code>
-        <code style="color:#6b7089">{{ c.prioColor(i) }}</code>
+        <code style="color:#8b91a8">{{ c.prioColor(i) }}</code>
       </div>
     </div>`,
   }),
@@ -46,7 +46,7 @@ export const Typography: Story = {
       <div style="font-size:20px; font-weight:600">Semibold 600 — H2 20</div>
       <div style="font-size:16px; font-weight:500">Medium 500 — H3 16</div>
       <div style="font-size:14px">Regular 400 — body 14</div>
-      <div style="font-size:12px; color:#6b7089">Tertiary 12 — meta / captions</div>
+      <div style="font-size:12px; color:#8b91a8">Tertiary 12 — meta / captions</div>
       <div style="font-size:14px">Digits: 0123456789 · Glyphs: ○◔◐●⊘ ·▂▄▆█ [x] [ ]</div>
     </div>`,
   }),

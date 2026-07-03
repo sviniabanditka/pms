@@ -230,7 +230,7 @@ function calClickItem(it: any) {
         :class="cell.inMonth ? '' : 'bg-elevated/30'"
         @click="$emit('create', cell.ds)">
         <div class="flex items-center justify-between px-0.5">
-          <span class="text-xs" :class="cell.isToday ? 'flex h-5 w-5 items-center justify-center rounded bg-accent font-semibold text-base' : cell.inMonth ? 'text-secondary' : 'text-tertiary/50'">{{ cell.day }}</span>
+          <span class="text-xs" :class="cell.isToday ? 'flex h-5 w-5 items-center justify-center rounded bg-accent font-semibold text-base' : cell.inMonth ? 'text-secondary' : 'text-tertiary'">{{ cell.day }}</span>
         </div>
         <div class="mt-0.5 space-y-0.5">
           <div v-for="it in calItemsForDay(cell.ds).slice(0, 4)" :key="it.kind + it.id"

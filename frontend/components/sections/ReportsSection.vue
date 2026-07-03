@@ -75,7 +75,7 @@ watch([repFrom, repTo, repGroup, repUser], () => loadReport())
     <div v-if="aiThemes.length || aiOutliers.length || (aiMood && aiMood.n)" class="mt-8 border-t border-subtle pt-6">
       <!-- настроение команды -->
       <div v-if="aiMood && aiMood.n" class="mb-6">
-        <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-accent2">≈ </span>Team mood <span class="text-tertiary/60">({{ aiMood.n }} comments)</span></div>
+        <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-accent2">≈ </span>Team mood <span class="text-tertiary">({{ aiMood.n }} comments)</span></div>
         <div class="flex items-center gap-3">
           <div class="h-2 flex-1 overflow-hidden rounded-full bg-elevated">
             <div class="h-full rounded-full transition-all" :style="{ width: moodPct + '%', background: aiMood.avg >= 0 ? '#9ece6a' : '#f7768e' }" />
@@ -98,7 +98,7 @@ watch([repFrom, repTo, repGroup, repUser], () => loadReport())
 
       <!-- аномалии (выбивающиеся задачи) -->
       <div v-if="aiOutliers.length">
-        <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-accent2">≈ </span>Outliers <span class="text-tertiary/60">(unusual vs the rest)</span></div>
+        <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-accent2">≈ </span>Outliers <span class="text-tertiary">(unusual vs the rest)</span></div>
         <div class="space-y-1.5">
           <div v-for="o in aiOutliers" :key="o.identifier" class="flex items-center gap-3 rounded-lg border border-subtle bg-elevated px-3 py-2">
             <span class="shrink-0 text-xs font-medium text-accent2">{{ o.identifier }}</span>

@@ -15,7 +15,7 @@ export const InPanel: Story = {
   render: () => ({
     components: { ResizeHandle },
     template: `<div style="display:flex; height:180px; border:1px solid #2a2f3a; border-radius:8px; overflow:hidden">
-      <div style="width:200px; padding:12px; color:#6b7089; font-size:12px">panel</div>
+      <div style="width:200px; padding:12px; color:#8b91a8; font-size:12px">panel</div>
       <ResizeHandle @down="() => {}" />
       <div style="flex:1; padding:12px; color:#c8d0e0; font-size:12px">content — hover the divider</div>
     </div>`,

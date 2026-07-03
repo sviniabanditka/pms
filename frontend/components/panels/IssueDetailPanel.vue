@@ -403,7 +403,7 @@ function onDescKeydown(e: KeyboardEvent) {
           <span>{{ a.op === 'create' ? 'created' : a.op === 'delete' ? 'deleted' : 'updated' }}</span>
           <span class="ml-auto">{{ notifTime(a.at) }}</span>
         </div>
-        <div v-if="!store.issueActivity(selectedIssue.id).length" class="text-xs text-tertiary/60">No activity</div>
+        <div v-if="!store.issueActivity(selectedIssue.id).length" class="text-xs text-tertiary">No activity</div>
       </div>
 
       <p v-if="err" class="text-xs text-danger">{{ err }}</p>

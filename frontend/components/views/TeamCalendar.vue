@@ -63,7 +63,7 @@ const calRangeLabel = computed(() => {
     <div class="grid grid-cols-7 gap-px text-xs">
       <div v-for="w in WEEKDAYS" :key="w" class="px-1 py-1 text-tertiary">{{ w }}</div>
       <div v-for="c in calCells" :key="c.date"
-        :class="[calMode === 'week' ? 'min-h-[360px]' : 'min-h-[88px]', 'rounded-sm border p-1', c.inMonth ? 'border-subtle bg-surface' : 'border-transparent bg-base opacity-40', c.date === todayStr ? '!border-accent' : '']"
+        :class="[calMode === 'week' ? 'min-h-[360px]' : 'min-h-[88px]', 'rounded-sm border p-1', c.inMonth ? 'border-subtle bg-surface' : 'border-transparent bg-base', c.date === todayStr ? '!border-accent' : '']"
         @dragover.prevent @drop="dropOnDay(c.date)">
         <div class="mb-1 text-tertiary">{{ c.day }}</div>
         <div v-for="i in store.calendarIssues(teamId, c.date)" :key="i.id"

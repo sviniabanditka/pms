@@ -17,7 +17,7 @@ export const Interactive: Story = {
     components: { TimePicker },
     setup() { const v = ref(args.modelValue); return { v, args } },
     template: `<div style="width:180px"><TimePicker v-model="v" :step="args.step" />
-      <div style="margin-top:8px; color:#6b7089; font-size:12px">value: {{ v || '∅' }}</div></div>`,
+      <div style="margin-top:8px; color:#8b91a8; font-size:12px">value: {{ v || '∅' }}</div></div>`,
   }),
 }
 // `from` → показывает длительность рядом.
@@ -27,7 +27,7 @@ export const WithDuration: Story = {
     setup() { return { from: ref('09:00'), to: ref('10:30') } },
     template: `<div style="display:flex; gap:8px; width:400px">
       <TimePicker v-model="from" />
-      <span style="color:#6b7089">–</span>
+      <span style="color:#8b91a8">–</span>
       <TimePicker v-model="to" :from="from" />
     </div>`,
   }),

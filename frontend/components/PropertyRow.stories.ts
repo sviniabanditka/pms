@@ -26,8 +26,8 @@ export const Stacked: Story = {
     components: { PropertyRow },
     template: `<div style="width:340px; display:grid; gap:4px">
       <PropertyRow label="Priority"><template #icon><span style="color:#ff9e64">▆</span></template><span style="flex:1;color:#c8d0e0">High</span></PropertyRow>
-      <PropertyRow label="Assignee"><template #icon><span style="color:#6b7089">◔</span></template><span style="flex:1;color:#c8d0e0">Ada Lovelace</span></PropertyRow>
-      <PropertyRow label="Due date"><template #icon><span style="color:#6b7089">▤</span></template><span style="flex:1;color:#c8d0e0">Aug 1</span></PropertyRow>
+      <PropertyRow label="Assignee"><template #icon><span style="color:#8b91a8">◔</span></template><span style="flex:1;color:#c8d0e0">Ada Lovelace</span></PropertyRow>
+      <PropertyRow label="Due date"><template #icon><span style="color:#8b91a8">▤</span></template><span style="flex:1;color:#c8d0e0">Aug 1</span></PropertyRow>
     </div>`,
   }),
 }
