@@ -7,7 +7,7 @@ const config: StorybookConfig = {
     '../stories/**/*.stories.@(js|ts)',
     '../components/**/*.stories.@(js|ts)',
   ],
-  addons: ['@storybook/addon-docs'],
+  addons: ['@storybook/addon-docs', '@storybook/addon-a11y'],
   framework: { name: '@storybook-vue/nuxt', options: {} },
   async viteFinal(cfg) {
     // Подменяем connect-клиенты на in-memory мок (ноль сети в сторях).
