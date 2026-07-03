@@ -21,7 +21,6 @@ const store = useAppStore()
 const time = useTimeStore()
 const aiStore = useAiStore()
 const { err, wrap } = useActionWrap()
-const { statusColor, statusGlyph, prioColor, prioGlyph } = useColors()
 const detailPanel = useResizable('detail', 384)
 const selectedIssue = computed(() => store.issues[props.issueId])
 const newSub = ref('')
@@ -92,8 +91,6 @@ const onCommentPaste = (e: ClipboardEvent) => {
   const items = e.clipboardData?.items; if (!items) return
   for (const it of Array.from(items)) if (it.type.startsWith('image/')) { e.preventDefault(); const f = it.getAsFile(); if (f) commentPending.value = [...commentPending.value, f] }
 }
-const editCommentId = ref('')
-const editCommentDraft = ref('')
 const addComment = () => wrap(async () => {
   const b = commentDraft.value.trim()
   if ((!b && !commentPending.value.length) || !selectedIssue.value) return
@@ -101,8 +98,6 @@ const addComment = () => wrap(async () => {
   commentDraft.value = ''; commentPending.value = []
   await store.addCommentAttached(selectedIssue.value.id, b, files)
 })
-function startEditComment(c: any) { editCommentId.value = c.id; editCommentDraft.value = c.body }
-const saveComment = () => wrap(async () => { if (editCommentDraft.value.trim()) await store.editComment(editCommentId.value, selectedIssue.value.id, editCommentDraft.value); editCommentId.value = '' })
 const addSub = () => wrap(async () => { if (newSub.value.trim()) { await store.createSubIssue(props.issueId, newSub.value); newSub.value = '' } })
 function cfMultiToggle(fieldId: string, opt: string) {
   const cur = (store.cfValue(props.issueId, fieldId) as string[]) || []
@@ -163,18 +158,6 @@ function onDescKeydown(e: KeyboardEvent) {
   if (descMention.onKeydown(e)) return
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') saveDesc()
 }
-// reactions (комменты задачи)
-const EMOJIS = ['👍', '❤️', '😄', '🎉', '👀', '🚀', '✅', '🔥']
-function reactionGroups(m: any) {
-  const g: Record<string, { emoji: string; count: number; mine: boolean }> = {}
-  for (const r of m.reactions || []) {
-    ;(g[r.emoji] ||= { emoji: r.emoji, count: 0, mine: false }).count++
-    if (r.userId === store.currentUserId) g[r.emoji].mine = true
-  }
-  return Object.values(g)
-}
-const cReactPickerId = ref('')
-const commentReact = (c: any, emoji: string) => { cReactPickerId.value = ''; if (selectedIssue.value) wrap(() => store.toggleCommentReaction(c.id, selectedIssue.value!.id, emoji)) }
 </script>
 
 <template>
@@ -182,7 +165,7 @@ const commentReact = (c: any, emoji: string) => { cReactPickerId.value = ''; if 
   <aside v-if="selectedIssue" :style="{ width: detailPanel.w.value + 'px' }" class="flex shrink-0 flex-col overflow-y-auto rounded-xl border border-subtle bg-surface text-sm">
     <!-- top bar -->
     <div class="flex items-center gap-2 border-b border-subtle px-4 py-2.5">
-      <span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(store.states[selectedIssue.stateId]?.category) }">{{ statusGlyph(store.states[selectedIssue.stateId]?.category) }}</span>
+      <StatusGlyph :category="store.states[selectedIssue.stateId]?.category" />
       <span class="text-xs text-accent2">{{ selectedIssue.identifier }}</span>
       <UButton class="ml-auto" :icon="linkCopied ? 'i-heroicons-check' : 'i-heroicons-link'" color="gray" variant="ghost" size="xs" square :title="linkCopied ? 'Copied!' : 'Copy link'" @click="emit('copy-link')" />
       <UDropdown :items="issueActions" :popper="{ placement: 'bottom-end' }">
@@ -239,54 +222,54 @@ const commentReact = (c: any, emoji: string) => { cReactPickerId.value = ''; if 
       <!-- Properties (guest = read-only: inert отключает все контролы, значения видны) -->
       <div class="mb-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Properties</div>
       <div class="mb-6 space-y-1" :inert="!store.canWrite" :class="{ 'opacity-70': !store.canWrite }">
-        <div class="flex min-h-8 items-center gap-3">
-          <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(store.states[selectedIssue.stateId]?.category) }">{{ statusGlyph(store.states[selectedIssue.stateId]?.category) }}</span> Status</span>
+        <PropertyRow label="Status">
+          <template #icon><StatusGlyph :category="store.states[selectedIssue.stateId]?.category" /></template>
           <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" :model-value="selectedIssue.stateId" value-attribute="value" option-attribute="label"
             :options="store.teamStates(selectedIssue.teamId).map((s2) => ({ label: s2.name, value: s2.id }))"
             @update:model-value="store.setIssueState(selectedIssue.id, $event)" />
-        </div>
-        <div class="flex min-h-8 items-center gap-3">
-          <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: prioColor(selectedIssue.priority ?? 0) }">{{ prioGlyph(selectedIssue.priority ?? 0) }}</span> Priority</span>
+        </PropertyRow>
+        <PropertyRow label="Priority">
+          <template #icon><PriorityGlyph :priority="selectedIssue.priority ?? 0" /></template>
           <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" :model-value="selectedIssue.priority" value-attribute="value" option-attribute="label"
             :options="PRIO.map((p, idx) => ({ label: p, value: idx }))"
             @update:model-value="store.setIssuePriority(selectedIssue.id, Number($event))" />
-        </div>
-        <div class="flex min-h-8 items-center gap-3">
-          <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-user-circle" /> Assignee</span>
+        </PropertyRow>
+        <PropertyRow label="Assignee">
+          <template #icon><UIcon name="i-heroicons-user-circle" /></template>
           <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="unassigned" :model-value="selectedIssue.assigneeId || undefined" value-attribute="value" option-attribute="label"
             :options="[{ label: 'unassigned', value: '' }, ...store.wsUsers.map((u) => ({ label: u.name || u.email, value: u.id })), ...(store.users[store.currentUserId] ? [{ label: (store.users[store.currentUserId].name || store.users[store.currentUserId].email) + ' (me)', value: store.currentUserId }] : [])]"
             @update:model-value="store.setIssueAssignee(selectedIssue.id, $event)" />
-        </div>
-        <div class="flex min-h-8 items-center gap-3">
-          <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-arrow-path-rounded-square" /> Cycle</span>
+        </PropertyRow>
+        <PropertyRow label="Cycle">
+          <template #icon><UIcon name="i-heroicons-arrow-path-rounded-square" /></template>
           <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="no cycle" :model-value="selectedIssue.cycleId || undefined" value-attribute="value" option-attribute="label"
             :options="[{ label: 'no cycle', value: '' }, ...store.teamCycles(selectedIssue.teamId).map((c) => ({ label: `Cycle ${c.number} (${c.status})`, value: c.id }))]"
             @update:model-value="store.setIssueCycle(selectedIssue.id, $event)" />
-        </div>
-        <div class="flex min-h-8 items-center gap-3">
-          <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-flag" /> Milestone</span>
+        </PropertyRow>
+        <PropertyRow label="Milestone">
+          <template #icon><UIcon name="i-heroicons-flag" /></template>
           <USelectMenu class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" placeholder="no milestone" :model-value="selectedIssue.milestoneId || undefined" value-attribute="value" option-attribute="label"
             :options="[{ label: 'no milestone', value: '' }, ...store.teamMilestones(selectedIssue.teamId).map((m) => ({ label: m.name, value: m.id }))]"
             @update:model-value="store.setIssueMilestone(selectedIssue.id, $event)" />
-        </div>
-        <div class="flex min-h-8 items-center gap-3">
-          <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-calendar" /> Due date</span>
+        </PropertyRow>
+        <PropertyRow label="Due date">
+          <template #icon><UIcon name="i-heroicons-calendar" /></template>
           <DatePicker class="flex-1" placeholder="No due date" :model-value="selectedIssue.scheduledDate ? String(selectedIssue.scheduledDate).slice(0,10) : ''"
             @update:model-value="(v:any) => store.setIssueSchedule(selectedIssue.id, v)" />
-        </div>
-        <div class="flex min-h-8 items-center gap-3">
-          <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-scale" /> Estimate</span>
+        </PropertyRow>
+        <PropertyRow label="Estimate">
+          <template #icon><UIcon name="i-heroicons-scale" /></template>
           <UInput class="flex-1 rounded-md transition-colors hover:bg-elevated" variant="none" :ui="propSelUi" type="number" min="0" :model-value="selectedIssue.estimate ?? ''" placeholder="no estimate"
             @change="(v:any) => store.setIssueEstimate(selectedIssue.id, Number(v))" />
-        </div>
+        </PropertyRow>
         <!-- Time tracking -->
-        <div class="flex min-h-8 items-center gap-3">
-          <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-clock" /> Time</span>
+        <PropertyRow label="Time">
+          <template #icon><UIcon name="i-heroicons-clock" /></template>
           <span class="flex-1 text-sm" :class="store.issueTrackedMin(selectedIssue.id) ? 'text-white' : 'text-tertiary'">{{ store.issueTrackedMin(selectedIssue.id) ? fmtMin(store.issueTrackedMin(selectedIssue.id)) : 'Not tracked' }}</span>
           <UButton v-if="store.runningTimer?.issueId === selectedIssue.id" color="red" size="2xs" @click="wrap(() => time.stopTimer())">Stop</UButton>
           <UButton v-else color="gray" size="2xs" @click="wrap(() => time.startTimer(selectedIssue.id))">Start</UButton>
           <UButton color="gray" variant="ghost" size="2xs" square icon="i-heroicons-plus" title="Add time manually" @click="emit('log-time', selectedIssue.id)" />
-        </div>
+        </PropertyRow>
         <!-- записи времени -->
         <div v-for="te in store.timeEntriesForIssue(selectedIssue.id)" :key="te.id" class="group ml-24 flex items-center gap-2 pl-3 text-xs text-tertiary">
           <UIcon :name="te.endedAt ? 'i-heroicons-check-circle' : 'i-heroicons-play-circle'" :class="te.endedAt ? '' : 'text-ok'" class="shrink-0" />
@@ -346,7 +329,7 @@ const commentReact = (c: any, emoji: string) => { cReactPickerId.value = ''; if 
         </div>
         <div v-for="c in store.subIssuesOf(selectedIssue.id)" :key="c.id"
           class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover" @click="emit('open-issue', c.id)">
-          <span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(store.states[c.stateId]?.category) }">{{ statusGlyph(store.states[c.stateId]?.category) }}</span>
+          <StatusGlyph :category="store.states[c.stateId]?.category" />
           <span class="text-xs text-accent2">{{ c.identifier }}</span>
           <span class="truncate" :class="{ 'text-tertiary line-through': c.completedAt }">{{ c.title }}</span>
         </div>
@@ -412,39 +395,7 @@ const commentReact = (c: any, emoji: string) => { cReactPickerId.value = ''; if 
         <div class="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-tertiary">
           <span class="text-ok"># </span>Comments <span class="text-tertiary">{{ store.issueComments(selectedIssue.id).length }}</span>
         </div>
-        <div v-for="c in store.issueComments(selectedIssue.id)" :key="c.id" class="group mb-2 flex gap-2">
-          <Avatar class="mt-0.5" :name="store.userName(c.authorId)" :avatar-key="store.users[c.authorId]?.avatarKey" :size="28" />
-          <div class="min-w-0 flex-1">
-            <div class="flex items-baseline gap-2">
-              <span class="text-sm font-medium">{{ store.userName(c.authorId) }}</span>
-              <span class="text-xs text-tertiary">{{ notifTime(c.createdAt) }}</span>
-              <span v-if="c.editedAt" class="text-xs text-tertiary/60">(edited)</span>
-              <div class="relative ml-auto" :class="c.authorId === store.currentUserId ? '' : 'ml-auto'">
-                <UButton v-if="!c.deletedAt" class="opacity-0 group-hover:opacity-100" icon="i-heroicons-face-smile" color="gray" variant="ghost" size="2xs" square @click="cReactPickerId = cReactPickerId === c.id ? '' : c.id" />
-                <div v-if="cReactPickerId === c.id" class="absolute right-0 z-20 mt-1 flex gap-0.5 rounded-md border border-subtle bg-elevated p-1 shadow-lg">
-                  <button v-for="e in EMOJIS" :key="e" class="rounded p-1 text-base hover:bg-hover" @click="commentReact(c, e)">{{ e }}</button>
-                </div>
-              </div>
-              <template v-if="c.authorId === store.currentUserId && !c.deletedAt && editCommentId !== c.id">
-                <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square @click="startEditComment(c)" />
-                <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square @click="store.deleteComment(c.id, selectedIssue.id)" />
-              </template>
-            </div>
-            <div v-if="editCommentId === c.id" class="mt-1">
-              <textarea v-model="editCommentDraft" rows="2" class="w-full rounded-md border border-subtle bg-elevated px-2 py-1 text-sm outline-none" @keydown.enter.exact.prevent="saveComment" @keydown.esc="editCommentId = ''" />
-              <div class="mt-1 flex gap-2"><UButton size="2xs" @click="saveComment">[ save ]</UButton><UButton size="2xs" color="gray" variant="ghost" @click="editCommentId = ''">[ cancel ]</UButton></div>
-            </div>
-            <div v-else-if="c.deletedAt" class="text-sm italic text-tertiary">(deleted)</div>
-            <div v-else class="prose-chat text-sm leading-relaxed" v-html="renderMarkdown(c.body)" />
-            <Attachments v-if="store.attachmentsFor('comment', c.id).length" class="mt-1.5" entity-type="comment" :entity-id="c.id" readonly />
-            <div v-if="reactionGroups(c).length" class="mt-1 flex flex-wrap gap-1">
-              <button v-for="g in reactionGroups(c)" :key="g.emoji"
-                class="rounded border px-1.5 py-0.5 text-xs"
-                :class="g.mine ? 'border-accent bg-accent/15 text-accent' : 'border-subtle text-secondary hover:bg-hover'"
-                @click="commentReact(c, g.emoji)">{{ g.emoji }} {{ g.count }}</button>
-            </div>
-          </div>
-        </div>
+        <CommentItem v-for="c in store.issueComments(selectedIssue.id)" :key="c.id" :comment="c" :issue-id="selectedIssue.id" />
         <PendingAttachments v-if="store.canWrite && commentPending.length" class="mt-2" :files="commentPending" @remove="(i) => commentPending = commentPending.filter((_, j) => j !== i)" />
         <div v-if="store.canWrite" class="mt-2 flex items-end gap-2">
           <div class="relative flex flex-1 gap-2 rounded-md border border-subtle bg-elevated px-2.5 py-1.5">

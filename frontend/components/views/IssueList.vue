@@ -78,24 +78,11 @@ onMounted(() => nextTick(measureScrollMargin))
         </template>
       </div>
       <!-- issue row -->
-      <div v-else-if="listRows[vRow.index]"
-        class="group flex cursor-pointer items-center gap-3 border-b border-subtle/40 px-4 py-2.5 hover:bg-hover"
-        :class="{ 'bg-active': selectedIssueId === listRows[vRow.index].i.id || selectedIds.has(listRows[vRow.index].i.id) }"
-        @click="emit('open-issue', listRows[vRow.index].i.id)">
-        <TermCheck v-if="store.canWrite" :model-value="selectedIds.has(listRows[vRow.index].i.id)" class="shrink-0 transition-opacity" :class="selCount || selectedIds.has(listRows[vRow.index].i.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'" @click.stop @update:model-value="emit('toggle-sel', listRows[vRow.index].i.id)" />
-        <PriorityGlyph v-if="listRows[vRow.index].i.priority" :priority="listRows[vRow.index].i.priority" />
-        <UIcon v-else name="i-heroicons-minus" class="shrink-0 text-tertiary/50" />
-        <span class="min-w-14 shrink-0 whitespace-nowrap text-sm text-accent2">{{ listRows[vRow.index].i.identifier }}</span>
-        <StatusGlyph :category="store.states[listRows[vRow.index].i.stateId]?.category" />
-        <span class="truncate">{{ listRows[vRow.index].i.title }}</span>
-        <span class="flex flex-1 flex-wrap items-center gap-1">
-          <LabelChips :labels="store.labelsForIssue(listRows[vRow.index].i.id)" />
-        </span>
-        <span v-if="listRows[vRow.index].i.dueDate || listRows[vRow.index].i.scheduledDate" class="shrink-0 text-sm tabular-nums text-tertiary">{{ String(listRows[vRow.index].i.scheduledDate || listRows[vRow.index].i.dueDate).slice(5, 10) }}</span>
-        <span v-if="listRows[vRow.index].i.assigneeId" class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-elevated text-[10px]" :title="store.userName(listRows[vRow.index].i.assigneeId)">{{ (store.userName(listRows[vRow.index].i.assigneeId) || '?')[0].toUpperCase() }}</span>
-        <UButton v-if="store.canWrite" icon="i-heroicons-trash" color="gray" variant="ghost" size="xs" square
-          class="shrink-0 opacity-0 hover:opacity-100" title="Archive" @click.stop="store.archiveIssue(listRows[vRow.index].i.id)" />
-      </div>
+      <IssueRow v-else-if="listRows[vRow.index]" :issue="listRows[vRow.index].i"
+        :selected="selectedIds.has(listRows[vRow.index].i.id)"
+        :selection-active="!!selCount"
+        :active="selectedIssueId === listRows[vRow.index].i.id"
+        @open="emit('open-issue', $event)" @toggle="emit('toggle-sel', $event)" />
     </div>
   </div>
 </template>
