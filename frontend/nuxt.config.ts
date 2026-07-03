@@ -1,13 +1,15 @@
 export default defineNuxtConfig({
-  modules: ['@nuxt/ui', '@pinia/nuxt', '@nuxtjs/storybook'],
-  storybook: { port: 6006 },
+  modules: ['@nuxt/ui', '@pinia/nuxt'],
+  // Storybook запускается автономно (.storybook/main.ts, framework @storybook-vue/nuxt).
+  // Модуль @nuxtjs/storybook НЕ подключаем — он ломает `nuxt build`/`dev` на холодном
+  // старте (падение в storybook core-server resetQueue). Storybook сам поднимает nuxt.
   // local-first логика — клиентская (guarded import.meta.client); SSR оставляем дефолтным.
   devtools: { enabled: false },
   colorMode: { preference: 'dark', fallback: 'dark', storageKey: 'pms-theme' },
   app: {
     head: {
       titleTemplate: '%s · stdtask', // лендинг переопределяет на '%s' (полный маркетинг-тайтл)
-      htmlAttrs: { class: 'dark' },
+      htmlAttrs: { class: 'dark', lang: 'en' },
       link: [
         { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
         { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
