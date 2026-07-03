@@ -86,13 +86,49 @@ export const chatMessage = {
   createdAt: '2026-07-03T10:00:00Z', reactions: [{ emoji: '🚀', userId: 'user_1' }, { emoji: '🚀', userId: 'user_2' }], replyCount: 2,
 }
 
+export const channelId = 'ch_1'
+export const channels = {
+  [channelId]: { id: channelId, kind: 'channel', name: 'general', private: false },
+  ch_2: { id: 'ch_2', kind: 'channel', name: 'incidents', private: false },
+}
+export const channelMembers = {
+  cm1: { id: 'cm1', channelId, userId: 'user_1' },
+  cm2: { id: 'cm2', channelId, userId: 'user_2' },
+}
+
+export const dashboardId = 'dash_1'
+export const dashboards = { [dashboardId]: { id: dashboardId, name: 'Team overview' } }
+export const dashboardWidgets = {
+  w1: { id: 'w1', dashboardId, type: 'note', title: 'Note', config: { text: 'Sprint goal: ship v2' }, x: 0, y: 0 },
+  w2: { id: 'w2', dashboardId, type: 'stat', title: 'Open issues', config: {}, x: 1, y: 0 },
+}
+
+export const notifications = {
+  n1: { id: 'n1', type: 'assigned', actorId: 'user_2', entityId: 'i1', title: 'ENG-1', createdAt: '2026-07-03T09:00:00Z', readAt: null, userId },
+  n2: { id: 'n2', type: 'comment', actorId: 'user_2', entityId: 'i3', title: 'ENG-3', createdAt: '2026-07-03T08:00:00Z', readAt: null, userId },
+}
+
+export const meetings = {
+  mt1: { id: 'mt1', kind: 'scheduled', status: 'scheduled', title: 'Sprint planning', channelId: null, scheduledAt: '2026-07-06T14:00:00Z' },
+}
+
+// chatSeed — не-бакетный стейт chat-стора (messages/activeChannelId/threads).
+export function chatSeed() {
+  return {
+    activeChannelId: channelId,
+    messages: { [channelId]: [chatMessage, { ...chatMessage, id: 'msg_0', authorId: 'user_1', body: 'On it.', reactions: [], replyCount: 0 }] },
+    threadParentId: '',
+    threadMessages: [] as any[],
+  }
+}
+
 // Снапшот для seeded-store: ключ бакета → записи. Декоратор $patch'ит его в app-стор
 // + ставит activeWorkspaceId/currentUserId/loaded.
 export function seedSnapshot() {
   return {
     workspaces: { [wsId]: workspace },
     teams, states, issues, issueLabels, users, members, labels, cycles, cycleSnapshots, attachments,
-    documents, milestones, views,
+    documents, milestones, views, channels, channelMembers, dashboards, dashboardWidgets, notifications, meetings,
     activeWorkspaceId: wsId,
     currentUserId: userId,
     loaded: true,

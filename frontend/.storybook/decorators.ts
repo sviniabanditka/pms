@@ -1,5 +1,6 @@
 import { useAppStore } from '~/stores/app'
-import { seedSnapshot } from '~/stories/fixtures'
+import { useChatStore } from '~/stores/chat'
+import { seedSnapshot, chatSeed } from '~/stories/fixtures'
 
 // withStore — сид app-стора из фикстур на каждую story. Nuxt-Storybook поднимает
 // Pinia (через @pinia/nuxt), поэтому useAppStore() работает как в приложении.
@@ -13,6 +14,20 @@ export function withStore(override: Record<string, any> = {}) {
       const app = useAppStore()
       app.$reset()
       app.$patch({ ...seedSnapshot(), ...override })
+      return {}
+    },
+    template: '<div class="dark storybook-surface"><story /></div>',
+  })
+}
+
+// withChat — как withStore, но ещё сидит chat-стор (activeChannelId/messages/
+// threads) для ChatSection/ThreadPanel. chatOverride точечно переопределяет.
+export function withChat(chatOverride: Record<string, any> = {}, appOverride: Record<string, any> = {}) {
+  return (story: any) => ({
+    components: { story },
+    setup() {
+      const app = useAppStore(); app.$reset(); app.$patch({ ...seedSnapshot(), ...appOverride })
+      const chat = useChatStore(); chat.$reset(); chat.$patch({ ...chatSeed(), ...chatOverride })
       return {}
     },
     template: '<div class="dark storybook-surface"><story /></div>',
