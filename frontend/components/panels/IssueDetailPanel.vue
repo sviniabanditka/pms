@@ -327,24 +327,14 @@ function onDescKeydown(e: KeyboardEvent) {
           <span class="text-ok"># </span>Sub-issues
           <span v-if="store.childProgress(selectedIssue.id).total" class="rounded bg-elevated px-1.5 text-tertiary">{{ store.childProgress(selectedIssue.id).done }}/{{ store.childProgress(selectedIssue.id).total }}</span>
         </div>
-        <div v-for="c in store.subIssuesOf(selectedIssue.id)" :key="c.id"
-          class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover" @click="emit('open-issue', c.id)">
-          <StatusGlyph :category="store.states[c.stateId]?.category" />
-          <span class="text-xs text-accent2">{{ c.identifier }}</span>
-          <span class="truncate" :class="{ 'text-tertiary line-through': c.completedAt }">{{ c.title }}</span>
-        </div>
+        <SubIssueRow v-for="c in store.subIssuesOf(selectedIssue.id)" :key="c.id" :issue="c" @open="emit('open-issue', $event)" />
         <UInput v-if="store.canWrite" v-model="newSub" placeholder="+ Add sub-issue" size="xs" variant="none" class="w-full" @keyup.enter="addSub" />
       </div>
 
       <!-- Relations -->
       <div class="mb-4">
         <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Relations</div>
-        <div v-for="r in store.relationsForIssue(selectedIssue.id)" :key="r.id"
-          class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
-          <span class="text-tertiary">{{ r.label }}</span>
-          <span class="cursor-pointer hover:text-accent" @click="emit('open-issue', r.otherId)">{{ store.issueById(r.otherId)?.identifier || '—' }}</span>
-          <UButton v-if="store.canWrite" class="ml-auto opacity-0 group-hover:opacity-100" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="store.removeRelation(r.id)" />
-        </div>
+        <RelationRow v-for="r in store.relationsForIssue(selectedIssue.id)" :key="r.id" :relation="r" @open="emit('open-issue', $event)" />
         <button v-if="store.canWrite" class="mt-1 flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-tertiary hover:bg-hover hover:text-secondary" @click="emit('add-relation')">
           <UIcon name="i-heroicons-plus" /> Add relation
         </button>
