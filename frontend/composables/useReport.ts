@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import { useAppStore } from '~/stores/app'
+import { useAiStore } from '~/stores/ai'
 import { fmtD, fmtMin } from '~/lib/ui'
 
 // Time-report стейт — модульный синглтон: им пользуются и сайдбар страницы
@@ -31,6 +32,7 @@ const moodPct = computed(() => aiMood.value?.n ? Math.round((aiMood.value.avg + 
 
 export function useReport() {
   const store = useAppStore()
+  const ai = useAiStore()
   const { err } = useActionWrap()
   if (!repFrom.value) setRange('month')
   async function loadReport() {
@@ -62,9 +64,9 @@ export function useReport() {
   function loadAiOnce() {
     if (aiLoaded.value) return
     aiLoaded.value = true
-    store.themes().then((t) => { aiThemes.value = t })
-    store.anomalies().then((o) => { aiOutliers.value = o })
-    store.mood().then((m) => { aiMood.value = m })
+    ai.themes().then((t) => { aiThemes.value = t })
+    ai.anomalies().then((o) => { aiOutliers.value = o })
+    ai.mood().then((m) => { aiMood.value = m })
   }
   return {
     repGroup, repUser, repPreset, repFrom, repTo, setRange,

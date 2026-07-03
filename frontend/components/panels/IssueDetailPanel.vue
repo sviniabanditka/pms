@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useAppStore } from '~/stores/app'
+import { useAiStore } from '~/stores/ai'
 import { PRIO, propSelUi, notifTime, fmtMin } from '~/lib/ui'
 
 // Панель деталей задачи (M4): свойства, лейблы, сабтаски, связи, вложения, AI, комменты, активность.
@@ -16,6 +17,7 @@ const emit = defineEmits<{
 }>()
 
 const store = useAppStore()
+const aiStore = useAiStore()
 const { err, wrap } = useActionWrap()
 const { statusColor, statusGlyph, prioColor, prioGlyph } = useColors()
 const detailPanel = useResizable('detail', 384)
@@ -38,7 +40,7 @@ const descSummary = ref(''); const descSummaryLoading = ref(false)
 async function summarizeDesc() {
   if (!selectedIssue.value) return
   descSummaryLoading.value = true
-  descSummary.value = await store.summarizeIssue(selectedIssue.value.id)
+  descSummary.value = await aiStore.summarizeIssue(selectedIssue.value.id)
   descSummaryLoading.value = false
 }
 const aiSuggest = ref<any>(null)
@@ -46,7 +48,7 @@ const aiSuggest = ref<any>(null)
 watch(() => props.issueId, (id) => {
   descSummary.value = ''; descEditing.value = false
   aiSuggest.value = null
-  if (id && store.issues[id]) store.suggestForIssue(store.issues[id]).then((r) => { if (props.issueId === id) aiSuggest.value = r })
+  if (id && store.issues[id]) aiStore.suggestForIssue(store.issues[id]).then((r) => { if (props.issueId === id) aiSuggest.value = r })
 }, { immediate: true })
 const simIssues = computed(() => (aiSuggest.value?.similar || []).filter((s: any) => s.id !== props.issueId))
 // подсказки, которых у issue ещё нет
@@ -380,19 +382,19 @@ const commentReact = (c: any, emoji: string) => { cReactPickerId.value = ''; if 
         <!-- подсказки в один клик -->
         <div v-if="suggestLabels.length || suggestAssignee || suggestPriority !== null || suggestEstimate !== null" class="mb-2 flex flex-wrap gap-1.5">
           <button v-if="suggestPriority !== null" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs text-secondary hover:border-warn hover:text-warn"
-            @click="store.setIssuePriority(selectedIssue.id, suggestPriority); store.aiFeedback('priority','applied',selectedIssue.id,String(suggestPriority))">
+            @click="store.setIssuePriority(selectedIssue.id, suggestPriority); aiStore.aiFeedback('priority','applied',selectedIssue.id,String(suggestPriority))">
             ⚑ priority {{ PRI_LABELS[suggestPriority] }}
           </button>
           <button v-if="suggestEstimate !== null" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs text-secondary hover:border-accent hover:text-accent"
-            @click="store.setIssueEstimate(selectedIssue.id, suggestEstimate); store.aiFeedback('estimate','applied',selectedIssue.id,String(suggestEstimate))">
+            @click="store.setIssueEstimate(selectedIssue.id, suggestEstimate); aiStore.aiFeedback('estimate','applied',selectedIssue.id,String(suggestEstimate))">
             ≈ est {{ suggestEstimate }} pts
           </button>
           <button v-if="suggestAssignee" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs text-secondary hover:border-accent hover:text-accent"
-            @click="store.setIssueAssignee(selectedIssue.id, suggestAssignee); store.aiFeedback('assignee','applied',selectedIssue.id,suggestAssignee)">
+            @click="store.setIssueAssignee(selectedIssue.id, suggestAssignee); aiStore.aiFeedback('assignee','applied',selectedIssue.id,suggestAssignee)">
             ＋ assign {{ store.userName(suggestAssignee) }}
           </button>
           <button v-for="lid in suggestLabels" :key="lid" class="flex items-center gap-1 rounded border border-subtle px-2 py-0.5 text-xs hover:border-accent"
-            :style="{ color: store.labels[lid]?.colorToken ? undefined : undefined }" @click="store.addLabel(selectedIssue.id, lid); store.aiFeedback('label','applied',selectedIssue.id,lid)">
+            :style="{ color: store.labels[lid]?.colorToken ? undefined : undefined }" @click="store.addLabel(selectedIssue.id, lid); aiStore.aiFeedback('label','applied',selectedIssue.id,lid)">
             ＋ {{ store.labels[lid]?.name }}
           </button>
         </div>

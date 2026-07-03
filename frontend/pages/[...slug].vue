@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { isAuthed, clearAuth } from '~/lib/token'
 import { useAppStore } from '~/stores/app'
+import { useAiStore } from '~/stores/ai'
 import { PRIO, labelOpts, fmtD, d10, localDate, localHM, colorForUser } from '~/lib/ui'
 
 const store = useAppStore()
+const aiStore = useAiStore()
 // Разделы левого рейла (расширяется: calendar, chats…)
 const SECTIONS = [
   { key: 'dashboard', label: 'Dashboard', icon: 'i-heroicons-squares-2x2' },
@@ -545,7 +547,7 @@ watch(paletteQ, (q) => {
   clearTimeout(srvSearchTimer)
   if (!q.trim()) { srvResults.value = []; return }
   srvSearchTimer = setTimeout(async () => {
-    try { srvResults.value = await store.serverSearch(q) } catch { srvResults.value = [] }
+    try { srvResults.value = await aiStore.serverSearch(q) } catch { srvResults.value = [] }
   }, 200)
 })
 // Клиентский searchAll — мгновенно по заголовкам/локальному стору; серверный добавляет
