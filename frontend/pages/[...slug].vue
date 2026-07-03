@@ -647,7 +647,7 @@ useHead({ title: () => pageTitle.value })
     <header class="flex h-14 shrink-0 items-center gap-3 bg-base px-3 text-sm">
       <!-- workspace switcher -->
       <div class="relative">
-        <UButton color="gray" variant="ghost" trailing-icon="i-heroicons-chevron-down" @click="wsMenu = !wsMenu" aria-label="Switch workspace">
+        <UButton color="gray" variant="ghost" trailing-icon="i-heroicons-chevron-down" @click="wsMenu = !wsMenu">
           <Avatar :name="store.activeWorkspace?.name" :avatar-key="(store.activeWorkspace as any)?.logoKey" :size="20" />
           <span class="font-medium"><span class="text-ok">~/</span>{{ store.activeWorkspace?.name || 'workspace' }}</span>
         </UButton>
