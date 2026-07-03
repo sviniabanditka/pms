@@ -13,7 +13,7 @@ export default <Partial<Config>>{
         active: '#232634', // выбранный пункт
         subtle: '#20222e', // тонкие бордеры
         secondary: '#aab0c7', // вторичный текст
-        tertiary: '#6b7089', // приглушённый текст/иконки
+        tertiary: '#8b91a8', // приглушённый текст/иконки
         accent: '#7aa2f7', // основной акцент (blue)
         accent2: '#bb9af7', // фиолетовый (KEY-N, keyword)
         ok: '#9ece6a', // success/string (green)

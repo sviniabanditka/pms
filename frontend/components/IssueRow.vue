@@ -22,7 +22,7 @@ const store = useAppStore()
       :class="selectionActive || selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
       @click.stop @update:model-value="emit('toggle', issue.id)" />
     <PriorityGlyph v-if="issue.priority" :priority="issue.priority" />
-    <UIcon v-else name="i-heroicons-minus" class="shrink-0 text-tertiary/50" />
+    <UIcon v-else name="i-heroicons-minus" class="shrink-0 text-tertiary" />
     <span class="min-w-14 shrink-0 whitespace-nowrap text-sm text-accent2">{{ issue.identifier }}</span>
     <StatusGlyph :category="store.states[issue.stateId]?.category" />
     <span class="truncate">{{ issue.title }}</span>

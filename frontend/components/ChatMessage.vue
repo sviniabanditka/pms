@@ -41,7 +41,7 @@ function notifTime(at: any) {
       <div class="flex items-baseline gap-2">
         <span class="text-sm font-medium" :class="mine ? 'text-accent2' : 'text-accent'">{{ store.userName(m.authorId) }}</span>
         <span class="text-xs text-tertiary">{{ notifTime(m.createdAt) }}</span>
-        <span v-if="m.editedAt" class="text-xs text-tertiary/60">(edited)</span>
+        <span v-if="m.editedAt" class="text-xs text-tertiary">(edited)</span>
       </div>
 
       <div v-if="editing" class="mt-1">

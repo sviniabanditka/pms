@@ -54,7 +54,7 @@ const meeting = useMeeting()
 
     <div v-if="store.pastMeetings.length" class="mb-2 mt-6 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Past</div>
     <div v-for="m in store.pastMeetings" :key="m.id" class="group mb-2 flex items-center gap-3 rounded-lg border border-subtle/60 bg-elevated/40 p-3">
-      <UIcon name="i-heroicons-clock" class="shrink-0 text-tertiary/60" />
+      <UIcon name="i-heroicons-clock" class="shrink-0 text-tertiary" />
       <div class="min-w-0 flex-1">
         <div class="truncate font-medium text-secondary">{{ m.title || 'Meeting' }}</div>
         <div class="text-xs text-tertiary">

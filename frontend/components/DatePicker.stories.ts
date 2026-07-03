@@ -18,7 +18,7 @@ export const Interactive: Story = {
     components: { DatePicker },
     setup() { const v = ref(args.modelValue); return { v, args } },
     template: `<div style="width:220px"><DatePicker v-model="v" :placeholder="args.placeholder" :block="args.block" />
-      <div style="margin-top:8px; color:#6b7089; font-size:12px">value: {{ v || '∅' }}</div></div>`,
+      <div style="margin-top:8px; color:#8b91a8; font-size:12px">value: {{ v || '∅' }}</div></div>`,
   }),
 }
 export const Empty: Story = {

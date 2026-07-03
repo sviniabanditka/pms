@@ -35,7 +35,7 @@ const save = () => wrap(async () => { if (draft.value.trim()) await store.editCo
       <div class="flex items-baseline gap-2">
         <span class="text-sm font-medium">{{ store.userName(comment.authorId) }}</span>
         <span class="text-xs text-tertiary">{{ notifTime(comment.createdAt) }}</span>
-        <span v-if="comment.editedAt" class="text-xs text-tertiary/60">(edited)</span>
+        <span v-if="comment.editedAt" class="text-xs text-tertiary">(edited)</span>
         <div class="relative ml-auto">
           <UButton v-if="!comment.deletedAt" class="opacity-0 group-hover:opacity-100" icon="i-heroicons-face-smile" color="gray" variant="ghost" size="2xs" square @click="pickerOpen = !pickerOpen" aria-label="Add reaction" />
           <div v-if="pickerOpen" class="absolute right-0 z-20 mt-1 flex gap-0.5 rounded-md border border-subtle bg-elevated p-1 shadow-lg">

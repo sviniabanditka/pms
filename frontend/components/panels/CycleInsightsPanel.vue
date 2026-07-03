@@ -217,6 +217,6 @@ const cycleBreakdown = computed(() => {
       </div>
       <div v-if="!cycleBreakdown.length" class="px-2 py-3 text-xs text-tertiary">No data for {{ insightTab }}</div>
     </div>
-    <p class="mt-1 px-2 text-[11px] text-tertiary/70">Click a row to filter the list · click again to clear.</p>
+    <p class="mt-1 px-2 text-[11px] text-tertiary">Click a row to filter the list · click again to clear.</p>
   </aside>
 </template>
