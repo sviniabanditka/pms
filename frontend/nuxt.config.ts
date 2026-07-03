@@ -10,6 +10,7 @@ export default defineNuxtConfig({
     head: {
       titleTemplate: '%s · stdtask', // лендинг переопределяет на '%s' (полный маркетинг-тайтл)
       htmlAttrs: { class: 'dark', lang: 'en' },
+      meta: [{ name: 'description', content: 'stdtask — local-first project & issue tracker (ClickUp × Linear).' }],
       link: [
         { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
         { rel: 'preconnect', href: 'https://fonts.googleapis.com' },

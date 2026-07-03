@@ -647,7 +647,7 @@ useHead({ title: () => pageTitle.value })
     <header class="flex h-14 shrink-0 items-center gap-3 bg-base px-3 text-sm">
       <!-- workspace switcher -->
       <div class="relative">
-        <UButton color="gray" variant="ghost" trailing-icon="i-heroicons-chevron-down" @click="wsMenu = !wsMenu">
+        <UButton color="gray" variant="ghost" trailing-icon="i-heroicons-chevron-down" @click="wsMenu = !wsMenu" aria-label="Switch workspace">
           <Avatar :name="store.activeWorkspace?.name" :avatar-key="(store.activeWorkspace as any)?.logoKey" :size="20" />
           <span class="font-medium"><span class="text-ok">~/</span>{{ store.activeWorkspace?.name || 'workspace' }}</span>
         </UButton>
@@ -677,7 +677,7 @@ useHead({ title: () => pageTitle.value })
 
       <!-- notifications -->
       <div class="relative">
-        <UButton icon="i-heroicons-bell" color="gray" variant="ghost" square @click="notifOpen = !notifOpen" />
+        <UButton icon="i-heroicons-bell" color="gray" variant="ghost" square @click="notifOpen = !notifOpen" aria-label="Notifications" />
         <UBadge v-if="store.unreadCount" color="primary" size="xs" class="pointer-events-none absolute -right-1 -top-1 rounded">{{ store.unreadCount }}</UBadge>
         <div v-if="notifOpen" class="absolute right-0 top-10 z-50 w-80 rounded-md border border-subtle bg-elevated shadow-lg">
           <div class="flex items-center justify-between border-b border-subtle px-3 py-2 text-xs uppercase text-tertiary">
@@ -734,7 +734,7 @@ useHead({ title: () => pageTitle.value })
       <template v-if="store.activeWorkspaceId && activeSection === 'dashboard'">
         <div class="mb-1 flex items-center px-2 text-xs font-medium uppercase tracking-wider text-tertiary">
           <span><span class="text-ok">#</span> Dashboards</span>
-          <UButton v-if="store.canWrite" class="ml-auto" icon="i-heroicons-plus" color="gray" variant="ghost" size="2xs" square @click="openCreate('dashboard')" />
+          <UButton v-if="store.canWrite" class="ml-auto" icon="i-heroicons-plus" color="gray" variant="ghost" size="2xs" square @click="openCreate('dashboard')" aria-label="Create" />
         </div>
         <div v-for="d in store.workspaceDashboards" :key="d.id"
           class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 hover:bg-hover"
@@ -801,7 +801,7 @@ useHead({ title: () => pageTitle.value })
       <template v-if="store.activeWorkspaceId && activeSection === 'chats'">
         <div class="mb-1 flex items-center px-2 text-xs font-medium uppercase tracking-wider text-tertiary">
           <span><span class="text-ok">#</span> Channels</span>
-          <UButton v-if="store.canWrite" class="ml-auto" icon="i-heroicons-plus" color="gray" variant="ghost" size="2xs" square @click="openCreate('channel')" />
+          <UButton v-if="store.canWrite" class="ml-auto" icon="i-heroicons-plus" color="gray" variant="ghost" size="2xs" square @click="openCreate('channel')" aria-label="Create" />
         </div>
         <div v-for="c in store.channelList" :key="c.id"
           class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 hover:bg-hover"
@@ -1018,11 +1018,11 @@ useHead({ title: () => pageTitle.value })
             <div class="ml-auto flex items-center gap-1">
               <USelectMenu v-if="store.layout === 'list'" v-model="store.groupBy" :options="labelOpts(['status', 'priority', 'assignee', 'milestone'])" value-attribute="value" option-attribute="label" size="xs" class="w-32" />
               <UButton size="xs" color="gray" variant="ghost" icon="i-heroicons-adjustments-horizontal" title="Manage statuses" @click="showStates = true" />
-              <UButton size="xs" :color="showFilters || store.activeFilter ? 'primary' : 'gray'" variant="ghost" icon="i-heroicons-funnel" @click="showFilters = !showFilters" />
+              <UButton size="xs" :color="showFilters || store.activeFilter ? 'primary' : 'gray'" variant="ghost" icon="i-heroicons-funnel" @click="showFilters = !showFilters" aria-label="Filters" />
               <span class="mx-1 h-4 w-px bg-subtle" />
-              <UButton size="xs" square icon="i-heroicons-list-bullet" :color="store.layout==='list' ? 'primary' : 'gray'" variant="ghost" @click="store.layout='list'" />
-              <UButton size="xs" square icon="i-heroicons-view-columns" :color="store.layout==='board' ? 'primary' : 'gray'" variant="ghost" @click="store.layout='board'" />
-              <UButton size="xs" square icon="i-heroicons-calendar-days" :color="store.layout==='calendar' ? 'primary' : 'gray'" variant="ghost" @click="store.layout='calendar'" />
+              <UButton size="xs" square icon="i-heroicons-list-bullet" :color="store.layout==='list' ? 'primary' : 'gray'" variant="ghost" @click="store.layout='list'" aria-label="List view" />
+              <UButton size="xs" square icon="i-heroicons-view-columns" :color="store.layout==='board' ? 'primary' : 'gray'" variant="ghost" @click="store.layout='board'" aria-label="Board view" />
+              <UButton size="xs" square icon="i-heroicons-calendar-days" :color="store.layout==='calendar' ? 'primary' : 'gray'" variant="ghost" @click="store.layout='calendar'" aria-label="Calendar view" />
             </div>
           </div>
           <!-- FilterBar (скрыт по умолчанию) -->
@@ -1097,7 +1097,7 @@ useHead({ title: () => pageTitle.value })
       <USelectMenu v-if="store.teamLabels(selectedTeamId).length" placeholder="+ Label" size="xs" class="w-28" value-attribute="value" option-attribute="label"
         :options="store.teamLabels(selectedTeamId).map((l) => ({ label: l.name, value: l.id }))" @update:model-value="bulkLabel" />
       <UButton size="xs" color="gray" variant="ghost" @click="bulkArchive">[ archive ]</UButton>
-      <UButton size="xs" color="gray" variant="ghost" icon="i-heroicons-x-mark" square @click="clearSel" />
+      <UButton size="xs" color="gray" variant="ghost" icon="i-heroicons-x-mark" square @click="clearSel" aria-label="Clear selection" />
     </div>
 
     <!-- Create-модалка (поля под выбранную сущность) -->
