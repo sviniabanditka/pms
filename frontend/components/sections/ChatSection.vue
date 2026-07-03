@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useAppStore } from '~/stores/app'
+import { useChatStore } from '~/stores/chat'
 
 // Чат: шапка канала + сообщения + композер. Открытие каналов (openChannel/openDM)
 // живёт на странице (зовётся из сайдбара/палитры/роутера); скролл — через expose.
@@ -10,13 +11,14 @@ defineProps<{
 defineEmits<{ (e: 'copy-link'): void }>()
 
 const store = useAppStore()
+const chat = useChatStore()
 const { wrap } = useActionWrap()
 const meeting = useMeeting()
 
 const msgDraft = ref('')
 const composerEl = ref<HTMLTextAreaElement | null>(null)
 const showPreview = ref(false)
-const currentChannel = computed(() => store.channels[store.activeChannelId])
+const currentChannel = computed(() => store.channels[chat.activeChannelId])
 const membersOpen = ref(false)
 // управлять списком можно только в приватном канале (в публичном участники = весь воркспейс)
 const canManageMembers = computed(() => !!currentChannel.value && currentChannel.value.kind === 'channel' && currentChannel.value.private && store.isChannelMember(currentChannel.value.id))
@@ -24,8 +26,8 @@ const channelActions = computed(() => {
   const c = currentChannel.value
   if (!c || c.kind === 'dm') return []
   const items: any[] = []
-  if (c.private && store.isChannelMember(c.id)) items.push({ label: 'Leave channel', icon: 'i-heroicons-arrow-right-on-rectangle', click: () => wrap(() => store.leaveChannel(c.id)) })
-  if (store.isChannelMember(c.id) || c.createdBy === store.currentUserId) items.push({ label: 'Archive channel', icon: 'i-heroicons-archive-box', click: () => wrap(() => store.archiveChannel(c.id)) })
+  if (c.private && store.isChannelMember(c.id)) items.push({ label: 'Leave channel', icon: 'i-heroicons-arrow-right-on-rectangle', click: () => wrap(() => chat.leaveChannel(c.id)) })
+  if (store.isChannelMember(c.id) || c.createdBy === store.currentUserId) items.push({ label: 'Archive channel', icon: 'i-heroicons-archive-box', click: () => wrap(() => chat.archiveChannel(c.id)) })
   return items.length ? [items] : []
 })
 const channelAddable = computed(() => {
@@ -33,8 +35,8 @@ const channelAddable = computed(() => {
   const inCh = new Set(store.channelMembersOf(currentChannel.value.id))
   return Object.values(store.users).filter((u: any) => !inCh.has(u.id)).map((u: any) => ({ label: store.userName(u.id), value: u.id }))
 })
-const addMember = (uid: string) => { if (uid && currentChannel.value) wrap(() => store.addChannelMember(currentChannel.value!.id, uid)) }
-watch(() => store.activeChannelId, () => { membersOpen.value = false })
+const addMember = (uid: string) => { if (uid && currentChannel.value) wrap(() => chat.addChannelMember(currentChannel.value!.id, uid)) }
+watch(() => chat.activeChannelId, () => { membersOpen.value = false })
 function channelTitle(c: any) {
   if (!c) return ''
   return c.kind === 'dm' ? store.userName(store.dmOtherId(c.id) || '') : c.name
@@ -63,10 +65,10 @@ defineExpose({ scrollBottom: scrollMessagesBottom, scrollToUnread })
 const pendingFiles = ref<File[]>([])
 const sendMsg = () => wrap(async () => {
   const b = msgDraft.value.trim()
-  if ((!b && !pendingFiles.value.length) || !store.activeChannelId) return
+  if ((!b && !pendingFiles.value.length) || !chat.activeChannelId) return
   const files = pendingFiles.value.slice()
   msgDraft.value = ''; pendingFiles.value = []; showPreview.value = false
-  await store.sendMessageAttached(store.activeChannelId, b, files)
+  await chat.sendMessageAttached(chat.activeChannelId, b, files)
   scrollMessagesBottom()
 })
 const onChatPaste = (e: ClipboardEvent) => {
@@ -97,13 +99,13 @@ const mentionItems = computed(() => [[...store.wsUsers, store.users[store.curren
 let typingTs = 0
 function onComposerInput() {
   const now = Date.now()
-  if (store.activeChannelId && now - typingTs > 2500) { typingTs = now; store.sendTyping(store.activeChannelId) }
+  if (chat.activeChannelId && now - typingTs > 2500) { typingTs = now; chat.sendTyping(chat.activeChannelId) }
 }
 function onMessagesScroll(e: Event) {
   const el = e.target as HTMLElement
   if (el.scrollTop < 40 && currentChannel.value) {
     const prevH = el.scrollHeight
-    store.loadOlder(currentChannel.value.id).then(() => nextTick(() => { el.scrollTop = el.scrollHeight - prevH }))
+    chat.loadOlder(currentChannel.value.id).then(() => nextTick(() => { el.scrollTop = el.scrollHeight - prevH }))
   }
 }
 const startOrJoinHuddle = (channelId: string) => wrap(async () => {
@@ -131,7 +133,7 @@ const startOrJoinHuddle = (channelId: string) => wrap(async () => {
             <div v-for="uid in store.channelParticipants(currentChannel.id)" :key="uid" class="group flex items-center gap-2 rounded px-1.5 py-1 hover:bg-hover">
               <Avatar :name="store.userName(uid)" :avatar-key="store.users[uid]?.avatarKey" :size="22" />
               <span class="min-w-0 flex-1 truncate text-sm">{{ store.userName(uid) }}{{ uid === store.currentUserId ? ' (you)' : '' }}</span>
-              <UButton v-if="canManageMembers && uid !== store.currentUserId" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square title="Remove" @click="store.removeChannelMember(currentChannel.id, uid)" />
+              <UButton v-if="canManageMembers && uid !== store.currentUserId" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square title="Remove" @click="chat.removeChannelMember(currentChannel.id, uid)" />
             </div>
           </div>
           <template v-if="canManageMembers">
@@ -156,21 +158,21 @@ const startOrJoinHuddle = (channelId: string) => wrap(async () => {
     </div>
     <!-- messages -->
     <div ref="msgScrollEl" class="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-3" @scroll="onMessagesScroll">
-      <div v-if="store.hasMoreMessages[currentChannel.id]" class="py-1 text-center text-xs text-tertiary">loading older…</div>
-      <template v-for="m in store.channelMessages(currentChannel.id)" :key="m.id">
+      <div v-if="chat.hasMoreMessages[currentChannel.id]" class="py-1 text-center text-xs text-tertiary">loading older…</div>
+      <template v-for="m in chat.channelMessages(currentChannel.id)" :key="m.id">
       <div v-if="m.id === firstUnreadMsgId" data-unread-divider class="my-1 flex items-center gap-2 px-2 text-xs font-medium text-danger">
         <span class="h-px flex-1 bg-danger/40" /> New messages <span class="h-px flex-1 bg-danger/40" />
       </div>
       <ChatMessage :m="m" />
       </template>
-      <div v-if="store.messages[currentChannel.id] === undefined" class="space-y-3 py-2">
+      <div v-if="chat.messages[currentChannel.id] === undefined" class="space-y-3 py-2">
         <div v-for="n in 6" :key="n" class="flex gap-3"><div class="skeleton h-8 w-8 rounded-full" /><div class="flex-1 space-y-1"><div class="skeleton h-3 w-24" /><div class="skeleton h-3" :style="{ width: 30 + (n * 13) % 55 + '%' }" /></div></div>
       </div>
-      <div v-else-if="!store.channelMessages(currentChannel.id).length" class="py-16 text-center text-sm text-tertiary">No messages yet — say hi 👋</div>
+      <div v-else-if="!chat.channelMessages(currentChannel.id).length" class="py-16 text-center text-sm text-tertiary">No messages yet — say hi 👋</div>
     </div>
     <!-- typing -->
     <div class="h-5 px-4 text-xs text-tertiary">
-      <span v-if="store.typingNames(currentChannel.id).length">{{ store.typingNames(currentChannel.id).join(', ') }} typing…</span>
+      <span v-if="chat.typingNames(currentChannel.id).length">{{ chat.typingNames(currentChannel.id).join(', ') }} typing…</span>
     </div>
     <!-- composer -->
     <div v-if="!store.canWrite" class="shrink-0 px-3 pb-3 text-center text-xs text-tertiary">// read-only — guests can't post</div>

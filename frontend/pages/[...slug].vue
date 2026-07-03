@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { isAuthed, clearAuth } from '~/lib/token'
 import { useAppStore } from '~/stores/app'
+import { useChatStore } from '~/stores/chat'
 import { useTimeStore } from '~/stores/time'
 import { useAiStore } from '~/stores/ai'
 import { PRIO, labelOpts, fmtD, d10, localDate, localHM, colorForUser } from '~/lib/ui'
 
 const store = useAppStore()
+const chat = useChatStore()
 const timeStore = useTimeStore()
 const aiStore = useAiStore()
 // Разделы левого рейла (расширяется: calendar, chats…)
@@ -238,7 +240,7 @@ function applyRoute(path: string) {
 
 function currentPath(): string {
   if (activeSection.value === 'inbox') return '/inbox'
-  if (activeSection.value === 'chats') return store.activeChannelId ? `/chat/${store.activeChannelId}` : '/chats'
+  if (activeSection.value === 'chats') return chat.activeChannelId ? `/chat/${chat.activeChannelId}` : '/chats'
   if (activeSection.value === 'meetings') return '/meetings'
   if (activeSection.value === 'calendar') return `/calendar/${calAnchor.value}`
   if (activeSection.value === 'reports') return '/reports'
@@ -297,7 +299,7 @@ const createMenu = [
 function onCreated(p: { type: string; id?: string; teamId?: string }) {
   if (p.type === 'doc') { selectedTeamId.value = p.teamId || ''; openDoc(p.id!) }
   else if (p.type === 'dashboard') { activeSection.value = 'dashboard'; selectedDashboardId.value = p.id! }
-  else if (p.type === 'channel') { activeSection.value = 'chats'; store.loadMessages(p.id!) }
+  else if (p.type === 'channel') { activeSection.value = 'chats'; chat.loadMessages(p.id!) }
   else if (p.type === 'meeting') { activeSection.value = 'meetings' }
 }
 function selectTeamIssues(t: any) {
@@ -473,7 +475,7 @@ const joinScheduled = (mid: string) => wrap(() => meeting.join(mid))
 // --- Chats ---
 // композер/шапка/скролл/хадлы живут в SectionsChatSection, тред — в SectionsThreadPanel.
 // Здесь — открытие каналов (зовётся из сайдбара/палитры/роутера/уведомлений) + unread-разделитель.
-const currentChannel = computed(() => store.channels[store.activeChannelId])
+const currentChannel = computed(() => store.channels[chat.activeChannelId])
 const chatSection = ref<{ scrollBottom: () => void; scrollToUnread: () => void } | null>(null)
 // inline @/# пикеры дока — в ViewsDocEditor; desc/comment-пикеры — в PanelsIssueDetailPanel
 const lightbox = useLightbox()
@@ -494,19 +496,19 @@ function onRefClick(e: MouseEvent) {
 const unreadDividerTs = ref('')
 const firstUnreadMsgId = computed(() => {
   if (!unreadDividerTs.value || !currentChannel.value) return ''
-  const m = store.channelMessages(currentChannel.value.id).find((x: any) => x.authorId !== store.currentUserId && String(x.createdAt) > unreadDividerTs.value)
+  const m = chat.channelMessages(currentChannel.value.id).find((x: any) => x.authorId !== store.currentUserId && String(x.createdAt) > unreadDividerTs.value)
   return m?.id || ''
 })
 async function openChannel(id: string) {
-  activeSection.value = 'chats'; store.closeThread()
+  activeSection.value = 'chats'; chat.closeThread()
   unreadDividerTs.value = store.channelUnreadCount(id) > 0 ? (store.channelLastReadAt(id) || '1970-01-01') : ''
-  await store.loadMessages(id)
+  await chat.loadMessages(id)
   await nextTick()
   if (firstUnreadMsgId.value) chatSection.value?.scrollToUnread()
   else chatSection.value?.scrollBottom()
-  store.markChannelRead(id)
+  chat.markChannelRead(id)
 }
-const openDM = (userId: string) => wrap(async () => { activeSection.value = 'chats'; store.closeThread(); await store.createDM(userId); chatSection.value?.scrollBottom() })
+const openDM = (userId: string) => wrap(async () => { activeSection.value = 'chats'; chat.closeThread(); await chat.createDM(userId); chatSection.value?.scrollBottom() })
 // reactions на комменты задачи — в PanelsIssueDetailPanel; чат-сообщения рендерит ChatMessage
 // members
 const showMembers = ref(false)
@@ -612,7 +614,7 @@ const depth = (p?: string) => Math.max(0, String(p || '').split('.').length - 1)
 
 // роут-синк (в конце — после объявления всех ref, иначе TDZ)
 // состояние → URL (history.replace, без перерендера и без эха в applyRoute)
-watch(() => [activeSection.value, selectedTeamId.value, selectedIssueId.value, selectedDocId.value, selectedCycleId.value, teamSection.value, personalView.value, store.activeChannelId, selectedDashboardId.value, calAnchor.value],
+watch(() => [activeSection.value, selectedTeamId.value, selectedIssueId.value, selectedDocId.value, selectedCycleId.value, teamSection.value, personalView.value, chat.activeChannelId, selectedDashboardId.value, calAnchor.value],
   () => { if (routeSyncing) return; const p = currentPath(); if (import.meta.client && p !== location.pathname) history.replaceState(history.state, '', p) })
 // URL → состояние только на back/forward (popstate) и при старте; наш replaceState popstate не вызывает
 function onPop() { if (store.activeWorkspaceId) applyRoute(location.pathname) }
@@ -802,9 +804,9 @@ useHead({ title: () => pageTitle.value })
         </div>
         <div v-for="c in store.channelList" :key="c.id"
           class="flex h-8 cursor-pointer items-center gap-2 rounded px-2 hover:bg-hover"
-          :class="store.activeChannelId === c.id ? 'bg-active text-white' : store.channelUnreadCount(c.id) ? 'font-semibold text-white' : 'text-secondary'"
+          :class="chat.activeChannelId === c.id ? 'bg-active text-white' : store.channelUnreadCount(c.id) ? 'font-semibold text-white' : 'text-secondary'"
           @click="openChannel(c.id)"><UIcon :name="c.private ? 'i-heroicons-lock-closed' : 'i-heroicons-hashtag'" class="text-tertiary" /> <span class="truncate">{{ c.name }}</span>
-          <span v-if="store.channelUnreadCount(c.id) && store.activeChannelId !== c.id" class="ml-auto rounded bg-accent px-1.5 text-[11px] font-medium text-white">{{ store.channelUnreadCount(c.id) }}</span></div>
+          <span v-if="store.channelUnreadCount(c.id) && chat.activeChannelId !== c.id" class="ml-auto rounded bg-accent px-1.5 text-[11px] font-medium text-white">{{ store.channelUnreadCount(c.id) }}</span></div>
         <div v-if="!store.channelList.length" class="px-2 py-1 text-xs text-tertiary/60">// no channels</div>
 
         <div class="mb-1 mt-4 px-2 text-xs font-medium uppercase tracking-wider text-tertiary"><span class="text-ok"># </span>Direct messages</div>
@@ -1079,7 +1081,7 @@ useHead({ title: () => pageTitle.value })
       @add-label="showLabelModal = true" @add-relation="showRelModal = true" @log-time="openTimeEntry" />
 
     <!-- Thread panel (плавающая) -->
-    <SectionsThreadPanel v-if="store.threadParentId && activeSection === 'chats'" />
+    <SectionsThreadPanel v-if="chat.threadParentId && activeSection === 'chats'" />
     </div><!-- /content panel -->
     </div><!-- /flex flex-1 -->
 

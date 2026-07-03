@@ -7,6 +7,7 @@ import { uploadFile } from '~/lib/upload'
 import { getUser, handleUnauthorized } from '~/lib/token'
 import { match, type FilterNode } from '~/lib/filter'
 import { applyChunk as applyChunkCore, emptyBuckets } from '~/lib/sync'
+import { useChatStore } from '~/stores/chat'
 import type { Entity } from '~/types/entities'
 
 // Метки направления связи (прямое / зеркальное).
@@ -23,12 +24,6 @@ export const useAppStore = defineStore('app', {
   state: () => ({
     // 31 сущностный бакет (Record<id, T>), типизированы через Entities — см. types/entities.ts и lib/sync.ts
     ...emptyBuckets(),
-    messages: {} as Record<string, any[]>, // channelId -> messages (DTO)
-    hasMoreMessages: {} as Record<string, boolean>,
-    activeChannelId: '' as string,
-    threadParentId: '' as string,
-    threadMessages: [] as any[],
-    typing: {} as Record<string, Record<string, number>>, // channelId -> userId -> ts
     comments: {} as Record<string, any[]>, // issueId -> comments
     activity: {} as Record<string, any[]>, // issueId -> change_log rows
     labelFilter: [] as string[], // активный фильтр по лейблам (issuesFor)
@@ -320,7 +315,6 @@ export const useAppStore = defineStore('app', {
       const hit = Object.values(s.channelMembers).find((m) => m.userId === userId && mine.has(m.channelId))
       return hit?.channelId || ''
     },
-    channelMessages: (s) => (channelId: string) => s.messages[channelId] || [],
     issueComments: (s) => (issueId: string) => s.comments[issueId] || [],
     teamLabels: (s) => (teamId: string) => Object.values(s.labels).filter((l) => !l.teamId || l.teamId === teamId),
     issuesByCategory: (s) => {
@@ -409,12 +403,6 @@ export const useAppStore = defineStore('app', {
     attachmentsFor: (s) => (entityType: string, entityId: string) =>
       Object.values(s.attachments).filter((a) => a.entityType === entityType && a.entityId === entityId && !a.deletedAt)
         .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))),
-    typingNames: (s) => (channelId: string) => {
-      const t = s.typing[channelId] || {}
-      return Object.keys(t)
-        .filter((uid) => t[uid] && uid !== s.currentUserId)
-        .map((uid) => s.users[uid]?.name || s.users[uid]?.email || 'Someone')
-    },
 
     teamDocs: (s) => (teamId: string) =>
       Object.values(s.documents).filter((d) => d.teamId === teamId && !d.deletedAt && !d.archivedAt),
@@ -483,10 +471,11 @@ export const useAppStore = defineStore('app', {
           this.teams = {}; this.states = {}; this.issues = {}; this.views = {}; this.relations = {}
           this.cycles = {}; this.customFields = {}; this.customFieldValues = {}
           this.dashboards = {}; this.dashboardWidgets = {}; this.members = {}; this.teamMembers = {}; this.notifications = {}; this.documents = {}
-          this.channels = {}; this.channelMembers = {}; this.users = {}; this.messages = {}; this.activeChannelId = ''
-          this.hasMoreMessages = {}; this.threadParentId = ''; this.threadMessages = []; this.typing = {}; this.comments = {}
+          this.channels = {}; this.channelMembers = {}; this.users = {}; this.comments = {}
           this.labels = {}; this.issueLabels = {}; this.invitations = {}; this.milestones = {}; this.activity = {}; this.labelFilter = []; this.channelUnread = {}; this.cycleSnapshots = {}
           this.activeFilter = null
+          const chat = useChatStore()
+          chat.messages = {}; chat.activeChannelId = ''; chat.hasMoreMessages = {}; chat.threadParentId = ''; chat.threadMessages = []; chat.typing = {}
         }
         // подписка ДО стрима: мутации, случившиеся во время снапшота, копятся
         // в pendingTypes и догоняются catchUp'ом сразу после (см. flush ниже).
@@ -801,87 +790,8 @@ export const useAppStore = defineStore('app', {
       if (this.issues[id]) this.issues[id].title = title
       await issues.updateIssue({ workspaceId: this.activeWorkspaceId, id, title })
     },
-    // --- Чаты ---
-    _decode(bytes: Uint8Array) { return JSON.parse(new TextDecoder().decode(bytes) || '[]') },
-    async loadMessages(channelId: string) {
-      const { chats } = useClients()
-      this.activeChannelId = channelId
-      const res = await chats.getMessages({ workspaceId: this.activeWorkspaceId, channelId, limit: 50 })
-      this.messages[channelId] = this._decode(res.messages)
-      this.hasMoreMessages[channelId] = res.hasMore
-    },
-    // подгрузка истории вверх (бесконечный скролл)
-    async loadOlder(channelId: string) {
-      const cur = this.messages[channelId] || []
-      if (!cur.length || !this.hasMoreMessages[channelId]) return
-      const { chats } = useClients()
-      const res = await chats.getMessages({ workspaceId: this.activeWorkspaceId, channelId, before: cur[0].id, limit: 50 })
-      const older = this._decode(res.messages)
-      this.messages[channelId] = [...older, ...cur]
-      this.hasMoreMessages[channelId] = res.hasMore
-    },
-    // фоновый рефетч активного канала (по WS-дельте) без сброса скролла
-    async refetchActive() {
-      if (!this.activeChannelId) return
-      const { chats } = useClients()
-      const n = (this.messages[this.activeChannelId] || []).length || 50
-      const res = await chats.getMessages({ workspaceId: this.activeWorkspaceId, channelId: this.activeChannelId, limit: Math.min(100, Math.max(50, n)) })
-      this.messages[this.activeChannelId] = this._decode(res.messages)
-      this.hasMoreMessages[this.activeChannelId] = res.hasMore
-      if (this.threadParentId) this.loadThread(this.threadParentId)
-    },
-    async sendMessage(channelId: string, body: string, parentId = '') {
-      const { chats } = useClients()
-      const res = await chats.sendMessage({ workspaceId: this.activeWorkspaceId, channelId, body, parentId })
-      if (parentId) { await this.loadThread(parentId); await this.refetchActive() }
-      else await this.refetchActive()
-      return res.entityId
-    },
-    async sendMessageAttached(channelId: string, body: string, files: File[], parentId = '') {
-      const { chats, attachments } = useClients()
-      const ups = [] as { key: string; filename: string; contentType: string; size: number }[]
-      for (const f of files) ups.push(await this.uploadAndGetKey(f))
-      const res = await chats.sendMessage({ workspaceId: this.activeWorkspaceId, channelId, body, parentId })
-      for (const up of ups) {
-        await attachments.createAttachment({
-          workspaceId: this.activeWorkspaceId, entityType: 'message', entityId: res.entityId,
-          filename: up.filename, contentType: up.contentType, size: BigInt(up.size), s3Key: up.key,
-        })
-      }
-      if (ups.length) await this.catchUp(this.activeWorkspaceId, ['attachment'])
-      if (parentId) await this.loadThread(parentId)
-      await this.refetchActive()
-    },
-    async editMessage(id: string, body: string) {
-      const { chats } = useClients()
-      await chats.editMessage({ workspaceId: this.activeWorkspaceId, id, body })
-      await this.refetchActive()
-      if (this.threadParentId) await this.loadThread(this.threadParentId)
-    },
-    async deleteMessage(id: string) {
-      const { chats } = useClients()
-      await chats.deleteMessage({ workspaceId: this.activeWorkspaceId, id })
-      await this.refetchActive()
-      if (this.threadParentId) await this.loadThread(this.threadParentId)
-    },
-    async toggleReaction(messageId: string, emoji: string) {
-      const { chats } = useClients()
-      await chats.toggleReaction({ workspaceId: this.activeWorkspaceId, messageId, emoji })
-      await this.refetchActive()
-      if (this.threadParentId) await this.loadThread(this.threadParentId)
-    },
-    async sendTyping(channelId: string) {
-      const { chats } = useClients()
-      try { await chats.sendTyping({ workspaceId: this.activeWorkspaceId, channelId }) } catch {}
-    },
-    async loadThread(parentId: string) {
-      this.threadParentId = parentId
-      const { chats } = useClients()
-      const res = await chats.getMessages({ workspaceId: this.activeWorkspaceId, channelId: this.activeChannelId, parentId, limit: 100 })
-      this.threadMessages = this._decode(res.messages)
-    },
-    closeThread() { this.threadParentId = ''; this.threadMessages = [] },
     // --- Комментарии к задачам ---
+    _decode(bytes: Uint8Array) { return JSON.parse(new TextDecoder().decode(bytes) || '[]') },
     // Серверный поиск (FTS): тело задач/доков + ранжирование + опечатки (trgm) + сообщения.
     // Возвращает в форме палитры; клиентский searchAll покрывает только заголовки/локальный стор.
     async loadComments(issueId: string) {
@@ -923,47 +833,6 @@ export const useAppStore = defineStore('app', {
       await comments.toggleReaction({ workspaceId: this.activeWorkspaceId, commentId: id, emoji })
       await this.loadComments(issueId)
     },
-    markTyping(channelId: string, userId: string) {
-      ;(this.typing[channelId] ||= {})[userId] = Date.now()
-      setTimeout(() => { if (this.typing[channelId]) { delete this.typing[channelId][userId] } }, 4000)
-    },
-    async createChannel(name: string, isPrivate = false): Promise<string> {
-      const { chats } = useClients()
-      const res = await chats.createChannel({ workspaceId: this.activeWorkspaceId, name, private: isPrivate })
-      this.channels[res.entityId] = { id: res.entityId, kind: 'channel', name, private: isPrivate }
-      await this.catchUp(this.activeWorkspaceId, ['channel', 'channel_member']) // подтянуть channel_member (себя)
-      return res.entityId
-    },
-    async addChannelMember(channelId: string, userId: string) {
-      const { chats } = useClients()
-      await chats.addChannelMember({ workspaceId: this.activeWorkspaceId, channelId, userId })
-      await this.catchUp(this.activeWorkspaceId, ['channel', 'channel_member'])
-    },
-    async removeChannelMember(channelId: string, userId: string) {
-      const { chats } = useClients()
-      await chats.removeChannelMember({ workspaceId: this.activeWorkspaceId, channelId, userId })
-      await this.catchUp(this.activeWorkspaceId, ['channel', 'channel_member'])
-    },
-    async leaveChannel(channelId: string) {
-      const { chats } = useClients()
-      await chats.removeChannelMember({ workspaceId: this.activeWorkspaceId, channelId, userId: this.currentUserId })
-      if (this.activeChannelId === channelId) this.activeChannelId = ''
-      await this.catchUp(this.activeWorkspaceId, ['channel', 'channel_member'])
-    },
-    async archiveChannel(channelId: string) {
-      const { chats } = useClients()
-      await chats.archiveChannel({ workspaceId: this.activeWorkspaceId, id: channelId })
-      if (this.activeChannelId === channelId) this.activeChannelId = ''
-      if (this.channels[channelId]) this.channels[channelId].archivedAt = new Date().toISOString()
-    },
-    async createDM(userId: string): Promise<string> {
-      const { chats } = useClients()
-      const res = await chats.createDM({ workspaceId: this.activeWorkspaceId, otherUserId: userId })
-      if (!this.channels[res.entityId]) this.channels[res.entityId] = { id: res.entityId, kind: 'dm' }
-      await this.loadMessages(res.entityId)
-      return res.entityId
-    },
-
     // --- Cycles (M4 ч.2) ---
     async createCycle(teamId: string, startsOn: string, endsOn: string, name = '') {
       const { cycles } = useClients()
@@ -1191,17 +1060,6 @@ export const useAppStore = defineStore('app', {
     },
     async uploadAndGetKey(file: File) { return uploadFile(this.activeWorkspaceId, file) },
 
-    // --- Chat unread ---
-    async markChannelRead(channelId: string) {
-      if (this.channelUnread[channelId]) this.channelUnread[channelId] = { ...this.channelUnread[channelId], count: 0, lastReadAt: new Date().toISOString() }
-      else this.channelUnread[channelId] = { channelId, count: 0, lastReadAt: new Date().toISOString() }
-      const { chats } = useClients()
-      try { await chats.markChannelRead({ workspaceId: this.activeWorkspaceId, channelId }) } catch {}
-    },
-    bumpUnread(channelId: string) {
-      const cur = this.channelUnread[channelId]
-      this.channelUnread[channelId] = { channelId, lastReadAt: cur?.lastReadAt || null, count: Number(cur?.count || 0) + 1 }
-    },
     async setAvatar(s3Key: string) {
       const { attachments } = useClients()
       if (this.users[this.currentUserId]) this.users[this.currentUserId].avatarKey = s3Key || null
@@ -1278,15 +1136,16 @@ export const useAppStore = defineStore('app', {
       ws = connectWs(wsId, (d: any) => {
         const type = d?.entity_type || d?.entityType
         const eid = d?.entity_id || d?.entityId
+        const chat = useChatStore()
         // typing: op = channelId, actor = userId
         if (type === 'typing') {
-          if (d.op && d.actor) this.markTyping(d.op, d.actor)
+          if (d.op && d.actor) chat.markTyping(d.op, d.actor)
           return
         }
         // сообщение в активном канале — точечный рефетч + mark read; в фоновом — bump непрочитанных
         if (type === 'message') {
-          if (eid === this.activeChannelId) { this.refetchActive(); this.markChannelRead(eid) }
-          else if (d.actor !== this.currentUserId) this.bumpUnread(eid)
+          if (eid === chat.activeChannelId) { chat.refetchActive(); chat.markChannelRead(eid) }
+          else if (d.actor !== this.currentUserId) chat.bumpUnread(eid)
           return
         }
         // комментарий — рефетч если эта задача открыта/загружена

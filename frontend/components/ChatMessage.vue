@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useAppStore } from '~/stores/app'
+import { useChatStore } from '~/stores/chat'
 
 // Одно сообщение чата: тело + вложения + реакции + edit/delete + reply-в-тред.
 // Используется и в основном списке, и в панели треда → одинаковый функционал.
 const props = withDefaults(defineProps<{ m: any; canReply?: boolean }>(), { canReply: true })
 const store = useAppStore()
+const chat = useChatStore()
 
 const EMOJIS = ['👍', '❤️', '😄', '🎉', '👀', '🚀', '✅', '🔥']
 const editing = ref(false)
@@ -20,9 +22,9 @@ function reactionGroups(m: any) {
   }
   return Object.values(g)
 }
-const react = (emoji: string) => { pickerOpen.value = false; store.toggleReaction(props.m.id, emoji) }
+const react = (emoji: string) => { pickerOpen.value = false; chat.toggleReaction(props.m.id, emoji) }
 function startEdit() { editing.value = true; editDraft.value = props.m.body }
-async function saveEdit() { if (editDraft.value.trim()) await store.editMessage(props.m.id, editDraft.value); editing.value = false }
+async function saveEdit() { if (editDraft.value.trim()) await chat.editMessage(props.m.id, editDraft.value); editing.value = false }
 const mine = computed(() => props.m.authorId === store.currentUserId)
 
 function notifTime(at: any) {
@@ -56,7 +58,7 @@ function notifTime(at: any) {
             :class="g.mine ? 'border-accent bg-accent/15 text-white' : 'border-subtle hover:bg-hover'"
             @click="react(g.emoji)">{{ g.emoji }} {{ g.count }}</button>
         </div>
-        <button v-if="canReply && m.replyCount && !m.parentId" class="mt-1 flex items-center gap-1 text-xs text-accent hover:underline" @click="store.loadThread(m.id)">
+        <button v-if="canReply && m.replyCount && !m.parentId" class="mt-1 flex items-center gap-1 text-xs text-accent hover:underline" @click="chat.loadThread(m.id)">
           <UIcon name="i-heroicons-chat-bubble-left-right" /> {{ m.replyCount }} {{ m.replyCount === 1 ? 'reply' : 'replies' }}
         </button>
       </template>
@@ -69,9 +71,9 @@ function notifTime(at: any) {
           <button v-for="e in EMOJIS" :key="e" class="rounded p-1 text-base hover:bg-hover" @click="react(e)">{{ e }}</button>
         </div>
       </div>
-      <UButton v-if="canReply && !m.parentId" icon="i-heroicons-chat-bubble-oval-left" color="gray" variant="ghost" size="2xs" square title="Reply in thread" @click="store.loadThread(m.id)" />
+      <UButton v-if="canReply && !m.parentId" icon="i-heroicons-chat-bubble-oval-left" color="gray" variant="ghost" size="2xs" square title="Reply in thread" @click="chat.loadThread(m.id)" />
       <UButton v-if="mine" icon="i-heroicons-pencil" color="gray" variant="ghost" size="2xs" square title="Edit" @click="startEdit" />
-      <UButton v-if="mine" icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square title="Delete" @click="store.deleteMessage(m.id)" />
+      <UButton v-if="mine" icon="i-heroicons-trash" color="gray" variant="ghost" size="2xs" square title="Delete" @click="chat.deleteMessage(m.id)" />
     </div>
   </div>
 </template>

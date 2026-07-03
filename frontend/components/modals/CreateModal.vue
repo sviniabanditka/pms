@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useAppStore } from '~/stores/app'
+import { useChatStore } from '~/stores/chat'
 import { modalUi } from '~/lib/ui'
 
 // Глобальная create-модалка (Linear-стиль): поля под выбранную сущность.
@@ -9,6 +10,7 @@ const emit = defineEmits<{ (e: 'created', payload: { type: string; id?: string; 
 const open = defineModel<boolean>()
 
 const store = useAppStore()
+const chat = useChatStore()
 const { wrap } = useActionWrap()
 
 const CREATE_TYPES = [
@@ -34,7 +36,7 @@ const submitCreate = () => wrap(async () => {
   if (t === 'issue' && cTeam.value && cTitle.value.trim()) await store.createIssue(cTeam.value, cTitle.value)
   else if (t === 'doc' && cTeam.value && cTitle.value.trim()) { const id = await store.createDoc(cTeam.value, cTitle.value); emit('created', { type: 'doc', id, teamId: cTeam.value }) }
   else if (t === 'dashboard' && cTitle.value.trim()) { const id = await store.createDashboard(cTitle.value); emit('created', { type: 'dashboard', id }) }
-  else if (t === 'channel' && cTitle.value.trim()) { const id = await store.createChannel(cTitle.value, cPrivate.value); cPrivate.value = false; emit('created', { type: 'channel', id }) }
+  else if (t === 'channel' && cTitle.value.trim()) { const id = await chat.createChannel(cTitle.value, cPrivate.value); cPrivate.value = false; emit('created', { type: 'channel', id }) }
   else if (t === 'cycle' && cTeam.value && cStart.value && cEnd.value) await store.createCycle(cTeam.value, cStart.value, cEnd.value)
   else if (t === 'milestone' && cTeam.value && cTitle.value.trim()) await store.createMilestone(cTeam.value, cTitle.value, cMsDate.value)
   else if (t === 'meeting' && cTitle.value.trim()) {
