@@ -11,7 +11,6 @@ const emit = defineEmits<{
 
 const store = useAppStore()
 const { wrap } = useActionWrap()
-const { statusColor, statusGlyph, prioColor, prioGlyph } = useColors()
 const draggedId = ref('')
 
 // DnD: вставить перетащенную карточку перед targetId в колонке stateId.
@@ -65,7 +64,7 @@ function onDropOnColumn(stateId: string) {
       @dragover.prevent @drop="onDropOnColumn(st.id)">
       <!-- column header -->
       <div class="mb-2 flex items-center gap-2 px-1.5 py-1 text-sm">
-        <span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(st.category) }">{{ statusGlyph(st.category) }}</span>
+        <StatusGlyph :category="st.category" />
         <span class="font-medium">{{ st.name }}</span>
         <span class="text-tertiary">{{ store.issuesFor(teamId, st.id).length }}</span>
         <UButton v-if="store.canWrite" class="ml-auto opacity-0 group-hover/col:opacity-100" icon="i-heroicons-plus" color="gray" variant="ghost" size="2xs" square @click="emit('create-issue')" />
@@ -83,12 +82,10 @@ function onDropOnColumn(stateId: string) {
           <div class="mb-1.5 text-xs text-accent2">{{ i.identifier }}</div>
           <div class="line-clamp-3 text-sm font-medium leading-snug">{{ i.title }}</div>
           <div v-if="store.labelsForIssue(i.id).length" class="mt-1.5 flex flex-wrap gap-1">
-            <span v-for="l in store.labelsForIssue(i.id)" :key="l.id" class="flex items-center gap-1 rounded border border-subtle px-1.5 py-0.5 text-xs text-tertiary">
-              <span :style="{ color: l.colorToken }">#{{ l.name }}</span>
-            </span>
+            <LabelChips :labels="store.labelsForIssue(i.id)" />
           </div>
           <div class="mt-2.5 flex items-center gap-2 text-xs text-tertiary">
-            <span v-if="i.priority" class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: prioColor(i.priority) }">{{ prioGlyph(i.priority) }}</span>
+            <PriorityGlyph v-if="i.priority" :priority="i.priority" />
             <span v-if="store.childProgress(i.id).total" class="flex items-center gap-1"><UIcon name="i-heroicons-queue-list" /> {{ store.childProgress(i.id).done }}/{{ store.childProgress(i.id).total }}</span>
             <span v-if="i.assigneeId" class="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-surface text-[10px]" :title="store.userName(i.assigneeId)">{{ (store.userName(i.assigneeId) || '?')[0].toUpperCase() }}</span>
             <span v-if="i.createdAt" :class="i.assigneeId ? '' : 'ml-auto'">{{ new Date(i.createdAt).toLocaleDateString('en', { month: 'short', day: 'numeric' }) }}</span>

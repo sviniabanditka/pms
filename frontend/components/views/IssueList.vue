@@ -19,7 +19,6 @@ const emit = defineEmits<{
 }>()
 
 const store = useAppStore()
-const { statusColor, statusGlyph, prioColor, prioGlyph } = useColors()
 const selCount = computed(() => props.selectedIds.size)
 const collapsedStatus = reactive<Record<string, boolean>>({}) // свёрнутые группы статусов в списке
 
@@ -70,8 +69,8 @@ onMounted(() => nextTick(measureScrollMargin))
         @click="collapsedStatus[listRows[vRow.index].g.key] = !collapsedStatus[listRows[vRow.index].g.key]">
         <template v-if="listRows[vRow.index]" >
           <UIcon :name="collapsedStatus[listRows[vRow.index].g.key] ? 'i-heroicons-chevron-right' : 'i-heroicons-chevron-down'" class="text-tertiary" />
-          <span v-if="listRows[vRow.index].g.kind === 'status'" class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(listRows[vRow.index].g.category) }">{{ statusGlyph(listRows[vRow.index].g.category) }}</span>
-          <span v-else-if="listRows[vRow.index].g.kind === 'priority'" class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: prioColor(listRows[vRow.index].g.prio) }">{{ prioGlyph(listRows[vRow.index].g.prio) }}</span>
+          <StatusGlyph v-if="listRows[vRow.index].g.kind === 'status'" :category="listRows[vRow.index].g.category" />
+          <PriorityGlyph v-else-if="listRows[vRow.index].g.kind === 'priority'" :priority="listRows[vRow.index].g.prio" />
           <UIcon v-else-if="listRows[vRow.index].g.kind === 'milestone'" name="i-heroicons-flag" class="text-tertiary" />
           <span v-else class="flex h-4 w-4 items-center justify-center rounded-full bg-elevated text-[9px]">{{ (listRows[vRow.index].g.label || '?')[0].toUpperCase() }}</span>
           <span>{{ listRows[vRow.index].g.label }}</span>
@@ -84,15 +83,13 @@ onMounted(() => nextTick(measureScrollMargin))
         :class="{ 'bg-active': selectedIssueId === listRows[vRow.index].i.id || selectedIds.has(listRows[vRow.index].i.id) }"
         @click="emit('open-issue', listRows[vRow.index].i.id)">
         <TermCheck v-if="store.canWrite" :model-value="selectedIds.has(listRows[vRow.index].i.id)" class="shrink-0 transition-opacity" :class="selCount || selectedIds.has(listRows[vRow.index].i.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'" @click.stop @update:model-value="emit('toggle-sel', listRows[vRow.index].i.id)" />
-        <span v-if="listRows[vRow.index].i.priority" class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: prioColor(listRows[vRow.index].i.priority) }">{{ prioGlyph(listRows[vRow.index].i.priority) }}</span>
+        <PriorityGlyph v-if="listRows[vRow.index].i.priority" :priority="listRows[vRow.index].i.priority" />
         <UIcon v-else name="i-heroicons-minus" class="shrink-0 text-tertiary/50" />
         <span class="min-w-14 shrink-0 whitespace-nowrap text-sm text-accent2">{{ listRows[vRow.index].i.identifier }}</span>
-        <span class="inline-block shrink-0 w-4 text-center leading-none" :style="{ color: statusColor(store.states[listRows[vRow.index].i.stateId]?.category) }">{{ statusGlyph(store.states[listRows[vRow.index].i.stateId]?.category) }}</span>
+        <StatusGlyph :category="store.states[listRows[vRow.index].i.stateId]?.category" />
         <span class="truncate">{{ listRows[vRow.index].i.title }}</span>
         <span class="flex flex-1 flex-wrap items-center gap-1">
-          <span v-for="l in store.labelsForIssue(listRows[vRow.index].i.id)" :key="l.id" class="flex items-center gap-1 rounded border border-subtle px-1.5 py-0.5 text-xs text-tertiary">
-            <span :style="{ color: l.colorToken }">#{{ l.name }}</span>
-          </span>
+          <LabelChips :labels="store.labelsForIssue(listRows[vRow.index].i.id)" />
         </span>
         <span v-if="listRows[vRow.index].i.dueDate || listRows[vRow.index].i.scheduledDate" class="shrink-0 text-sm tabular-nums text-tertiary">{{ String(listRows[vRow.index].i.scheduledDate || listRows[vRow.index].i.dueDate).slice(5, 10) }}</span>
         <span v-if="listRows[vRow.index].i.assigneeId" class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-elevated text-[10px]" :title="store.userName(listRows[vRow.index].i.assigneeId)">{{ (store.userName(listRows[vRow.index].i.assigneeId) || '?')[0].toUpperCase() }}</span>

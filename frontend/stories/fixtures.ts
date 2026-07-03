@@ -39,12 +39,35 @@ export const issues: Record<string, Issue> = {
   i3: { id: 'i3', teamId, identifier: 'ENG-3', number: 3, title: 'Ship v2 release notes', stateId: 's_done', priority: 2, assigneeId: 'user_2', boardPosition: 'c' },
 }
 
+export const cycleId = 'cy_1'
+export const cycles = {
+  [cycleId]: { id: cycleId, teamId, number: 4, name: 'Cycle 4', startsOn: '2026-06-22', endsOn: '2026-07-06' },
+}
+// burndown-слепки: остаток падает 8→2 за неделю
+export const cycleSnapshots = Object.fromEntries(
+  [8, 7, 7, 5, 4, 2].map((remainingCount, i) => {
+    const day = `2026-06-2${2 + i}`
+    return [`${cycleId}:${day}`, { cycleId, day, remainingCount, remainingPoints: 0, totalPoints: 0 }]
+  }),
+)
+
+export const attachments = {
+  a1: { id: 'a1', entityType: 'issue', entityId: 'i1', filename: 'trace.log', s3Key: 'k1', contentType: 'text/plain', size: 24000, createdAt: '2026-07-01' },
+  a2: { id: 'a2', entityType: 'issue', entityId: 'i1', filename: 'screenshot.png', s3Key: 'k2', contentType: 'image/png', size: 180000, createdAt: '2026-07-02' },
+}
+
+// Сообщение чата (DTO-форма как из GetMessages): для ChatMessage.
+export const chatMessage = {
+  id: 'msg_1', channelId: 'ch_1', authorId: 'user_2', body: 'Deployed **v2** to staging — please smoke-test the sync path.',
+  createdAt: '2026-07-03T10:00:00Z', reactions: [{ emoji: '🚀', userId: 'user_1' }, { emoji: '🚀', userId: 'user_2' }], replyCount: 2,
+}
+
 // Снапшот для seeded-store: ключ бакета → записи. Декоратор $patch'ит его в app-стор
 // + ставит activeWorkspaceId/currentUserId/loaded.
 export function seedSnapshot() {
   return {
     workspaces: { [wsId]: workspace },
-    teams, states, issues, users, members, labels,
+    teams, states, issues, users, members, labels, cycles, cycleSnapshots, attachments,
     activeWorkspaceId: wsId,
     currentUserId: userId,
     loaded: true,
