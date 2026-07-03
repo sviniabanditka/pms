@@ -1117,28 +1117,6 @@ export const useAppStore = defineStore('app', {
       await calendar.deleteEvent({ workspaceId: this.activeWorkspaceId, id })
     },
     // --- Time tracking ---
-    async startTimer(issueId = '', description = '') {
-      const { time } = useClients()
-      await time.startTimer({ workspaceId: this.activeWorkspaceId, issueId, description })
-    },
-    async stopTimer() {
-      const { time } = useClients()
-      await time.stopTimer({ workspaceId: this.activeWorkspaceId })
-      await this.catchUp(this.activeWorkspaceId, ['time_entry']) // ended_at проставлен на нескольких — перечитать
-    },
-    async addTimeEntry(issueId: string, description: string, startedAt: string, endedAt: string) {
-      const { time } = useClients()
-      await time.addEntry({ workspaceId: this.activeWorkspaceId, issueId, description, startedAt, endedAt })
-    },
-    async deleteTimeEntry(id: string) {
-      const { time } = useClients()
-      await time.deleteEntry({ workspaceId: this.activeWorkspaceId, id })
-    },
-    async timeReport(p: { from: string; to: string; groupBy: string; issueId?: string; userId?: string }) {
-      const { time } = useClients()
-      const r = await time.report({ workspaceId: this.activeWorkspaceId, from: p.from, to: p.to, groupBy: p.groupBy, issueId: p.issueId || '', userId: p.userId || '' })
-      return { rows: r.rows.map((x: any) => ({ key: x.key, minutes: Number(x.minutes), count: Number(x.count) })), total: Number(r.totalMinutes) }
-    },
     // --- Automations ---
     async createAutomation(p: { teamId?: string; name: string; enabled: boolean; trigger: any; actions: any }) {
       const { automations } = useClients()

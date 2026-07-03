@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { isAuthed, clearAuth } from '~/lib/token'
 import { useAppStore } from '~/stores/app'
+import { useTimeStore } from '~/stores/time'
 import { useAiStore } from '~/stores/ai'
 import { PRIO, labelOpts, fmtD, d10, localDate, localHM, colorForUser } from '~/lib/ui'
 
 const store = useAppStore()
+const timeStore = useTimeStore()
 const aiStore = useAiStore()
 // Разделы левого рейла (расширяется: calendar, chats…)
 const SECTIONS = [
@@ -412,7 +414,7 @@ const saveTimeEntry = () => wrap(async () => {
   const s = new Date(`${teForm.date}T${teForm.start}:00`).toISOString()
   const e = new Date(`${teForm.date}T${teForm.end}:00`).toISOString()
   if (new Date(e) <= new Date(s)) { err.value = 'End must be after start'; return }
-  await store.addTimeEntry(teForm.issueId, teForm.description, s, e)
+  await timeStore.addTimeEntry(teForm.issueId, teForm.description, s, e)
   showTimeEntry.value = false
 })
 

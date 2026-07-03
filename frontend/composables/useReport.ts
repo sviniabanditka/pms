@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import { useAppStore } from '~/stores/app'
+import { useTimeStore } from '~/stores/time'
 import { useAiStore } from '~/stores/ai'
 import { fmtD, fmtMin } from '~/lib/ui'
 
@@ -32,6 +33,7 @@ const moodPct = computed(() => aiMood.value?.n ? Math.round((aiMood.value.avg + 
 
 export function useReport() {
   const store = useAppStore()
+  const time = useTimeStore()
   const ai = useAiStore()
   const { err } = useActionWrap()
   if (!repFrom.value) setRange('month')
@@ -43,9 +45,9 @@ export function useReport() {
       const toD = new Date(`${repTo.value}T00:00:00`); toD.setDate(toD.getDate() + 1) // конец дня включительно
       const toIso = toD.toISOString()
       const uid = repUser.value || undefined
-      const grouped = await store.timeReport({ from: fromIso, to: toIso, groupBy: repGroup.value, userId: uid })
+      const grouped = await time.timeReport({ from: fromIso, to: toIso, groupBy: repGroup.value, userId: uid })
       repRows.value = grouped.rows; repTotal.value = grouped.total
-      const daily = repGroup.value === 'day' ? grouped : await store.timeReport({ from: fromIso, to: toIso, groupBy: 'day', userId: uid })
+      const daily = repGroup.value === 'day' ? grouped : await time.timeReport({ from: fromIso, to: toIso, groupBy: 'day', userId: uid })
       repDaily.value = [...daily.rows].sort((a, b) => String(a.key).localeCompare(String(b.key)))
     } catch (e: any) { err.value = e?.message || String(e) } finally { repLoading.value = false }
   }

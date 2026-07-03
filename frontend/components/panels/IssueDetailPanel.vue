@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useAppStore } from '~/stores/app'
+import { useTimeStore } from '~/stores/time'
 import { useAiStore } from '~/stores/ai'
 import { PRIO, propSelUi, notifTime, fmtMin } from '~/lib/ui'
 
@@ -17,6 +18,7 @@ const emit = defineEmits<{
 }>()
 
 const store = useAppStore()
+const time = useTimeStore()
 const aiStore = useAiStore()
 const { err, wrap } = useActionWrap()
 const { statusColor, statusGlyph, prioColor, prioGlyph } = useColors()
@@ -281,8 +283,8 @@ const commentReact = (c: any, emoji: string) => { cReactPickerId.value = ''; if 
         <div class="flex min-h-8 items-center gap-3">
           <span class="flex w-24 shrink-0 items-center gap-2 text-tertiary"><UIcon name="i-heroicons-clock" /> Time</span>
           <span class="flex-1 text-sm" :class="store.issueTrackedMin(selectedIssue.id) ? 'text-white' : 'text-tertiary'">{{ store.issueTrackedMin(selectedIssue.id) ? fmtMin(store.issueTrackedMin(selectedIssue.id)) : 'Not tracked' }}</span>
-          <UButton v-if="store.runningTimer?.issueId === selectedIssue.id" color="red" size="2xs" @click="wrap(() => store.stopTimer())">Stop</UButton>
-          <UButton v-else color="gray" size="2xs" @click="wrap(() => store.startTimer(selectedIssue.id))">Start</UButton>
+          <UButton v-if="store.runningTimer?.issueId === selectedIssue.id" color="red" size="2xs" @click="wrap(() => time.stopTimer())">Stop</UButton>
+          <UButton v-else color="gray" size="2xs" @click="wrap(() => time.startTimer(selectedIssue.id))">Start</UButton>
           <UButton color="gray" variant="ghost" size="2xs" square icon="i-heroicons-plus" title="Add time manually" @click="emit('log-time', selectedIssue.id)" />
         </div>
         <!-- записи времени -->
@@ -292,7 +294,7 @@ const commentReact = (c: any, emoji: string) => { cReactPickerId.value = ''; if 
           <span class="flex-1 truncate">{{ te.description }}</span>
           <span v-if="te.endedAt" class="tabular-nums">{{ fmtMin(Math.max(0, Math.round((new Date(te.endedAt).getTime() - new Date(te.startedAt).getTime()) / 60000))) }}</span>
           <span v-else class="text-ok">running</span>
-          <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="wrap(() => store.deleteTimeEntry(te.id))" />
+          <UButton class="opacity-0 group-hover:opacity-100" icon="i-heroicons-x-mark" color="gray" variant="ghost" size="2xs" square @click="wrap(() => time.deleteTimeEntry(te.id))" />
         </div>
         <!-- Custom fields -->
         <div v-for="f in store.fieldsForTeam(selectedIssue.teamId)" :key="f.id" class="flex min-h-8 items-center gap-3">
