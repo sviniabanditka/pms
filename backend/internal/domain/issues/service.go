@@ -404,28 +404,6 @@ func (s *Service) SetCustomFieldValue(ctx context.Context, actor, wsID, issueID,
 	return 0, nil
 }
 
-// SetScheduledDate: "" → снять; иначе YYYY-MM-DD.
-func (s *Service) SetScheduledDate(ctx context.Context, actor, wsID, id uuid.UUID, date string) (int64, error) {
-	return 0, s.simpleUpdate(ctx, actor, wsID, id, func(q *bun.UpdateQuery) {
-		if date == "" {
-			q.Set("scheduled_date = NULL")
-		} else {
-			q.Set("scheduled_date = ?::date", date)
-		}
-	})
-}
-
-// SetDueDate: "" → снять; иначе YYYY-MM-DD.
-func (s *Service) SetDueDate(ctx context.Context, actor, wsID, id uuid.UUID, date string) (int64, error) {
-	return 0, s.simpleUpdate(ctx, actor, wsID, id, func(q *bun.UpdateQuery) {
-		if date == "" {
-			q.Set("due_date = NULL")
-		} else {
-			q.Set("due_date = ?::date", date)
-		}
-	})
-}
-
 // SetCycle: cycle=nil → снять.
 func (s *Service) SetCycle(ctx context.Context, actor, wsID, id uuid.UUID, cycle *uuid.UUID) (int64, error) {
 	return 0, s.simpleUpdate(ctx, actor, wsID, id, func(q *bun.UpdateQuery) {
@@ -437,17 +415,6 @@ func (s *Service) SetCycle(ctx context.Context, actor, wsID, id uuid.UUID, cycle
 	})
 }
 
-// SetTitle.
-func (s *Service) SetTitle(ctx context.Context, actor, wsID, id uuid.UUID, title string) (int64, error) {
-	if strings.TrimSpace(title) == "" {
-		return 0, ErrTitleRequired
-	}
-	err := s.simpleUpdate(ctx, actor, wsID, id, func(q *bun.UpdateQuery) {
-		q.Set("title = ?", strings.TrimSpace(title))
-	})
-	return 0, err
-}
-
 // SetDescription: markdown → хранится как jsonb {"md": ...}.
 func (s *Service) SetDescription(ctx context.Context, actor, wsID, id uuid.UUID, md string) (int64, error) {
 	body, _ := json.Marshal(map[string]string{"md": md})
@@ -455,6 +422,93 @@ func (s *Service) SetDescription(ctx context.Context, actor, wsID, id uuid.UUID,
 		q.Set("description = ?", json.RawMessage(body))
 	})
 	return 0, err
+}
+
+// IssuePatch — набор присутствующих полей для атомарного UpdateFields.
+// nil-поле = не трогать. Assignee: AssigneeSet=true + Assignee=nil → снять.
+type IssuePatch struct {
+	Title         *string
+	Priority      *int
+	Assignee      *uuid.UUID
+	AssigneeSet   bool
+	ScheduledDate *string // "" → снять
+	DueDate       *string // "" → снять
+	Description   *string // markdown
+}
+
+// UpdateFields применяет все присутствующие поля patch'а ОДНОЙ транзакцией:
+// один version-бамп, одна changelog-строка, одна дельта. Раньше UpdateIssue-хендлер
+// дёргал до 6 отдельных сервис-вызовов (не атомарно, 6 changelog-строк, 6 дельт).
+func (s *Service) UpdateFields(ctx context.Context, actor, wsID, id uuid.UUID, p IssuePatch) error {
+	if p.Title != nil && strings.TrimSpace(*p.Title) == "" {
+		return ErrTitleRequired
+	}
+	var assigneeChanged, priorityChanged bool
+	err := db.WithWorkspace(ctx, s.db, wsID, func(ctx context.Context, tx bun.Tx) error {
+		if err := requireIssueTeam(ctx, tx, actor, id); err != nil {
+			return err
+		}
+		q := tx.NewUpdate().Model((*models.Issue)(nil)).Where("id = ?", id).
+			Set("updated_at = now()").Set("version = version + 1")
+		if p.Title != nil {
+			q.Set("title = ?", strings.TrimSpace(*p.Title))
+		}
+		if p.Priority != nil {
+			q.Set("priority = ?", int16(*p.Priority))
+			priorityChanged = true
+		}
+		var notifyAssignee *uuid.UUID
+		if p.AssigneeSet {
+			if p.Assignee == nil {
+				q.Set("assignee_id = NULL")
+			} else {
+				q.Set("assignee_id = ?", *p.Assignee)
+				if *p.Assignee != actor {
+					notifyAssignee = p.Assignee
+				}
+			}
+			assigneeChanged = true
+		}
+		if p.ScheduledDate != nil {
+			if *p.ScheduledDate == "" {
+				q.Set("scheduled_date = NULL")
+			} else {
+				q.Set("scheduled_date = ?::date", *p.ScheduledDate)
+			}
+		}
+		if p.DueDate != nil {
+			if *p.DueDate == "" {
+				q.Set("due_date = NULL")
+			} else {
+				q.Set("due_date = ?::date", *p.DueDate)
+			}
+		}
+		if p.Description != nil {
+			body, _ := json.Marshal(map[string]string{"md": *p.Description})
+			q.Set("description = ?", json.RawMessage(body))
+		}
+		if _, err := q.Exec(ctx); err != nil {
+			return err
+		}
+		if err := changelog.Record(ctx, tx, wsID, "issue", id, 0, "update", nil, actor); err != nil {
+			return err
+		}
+		if notifyAssignee != nil {
+			return notifications.Record(ctx, tx, wsID, *notifyAssignee, actor, "assigned", "issue", id, nil)
+		}
+		return nil
+	})
+	if err := s.afterMutate(ctx, wsID, id, err); err != nil {
+		return err
+	}
+	// автоматизации после коммита (как в отдельных сеттерах)
+	if assigneeChanged {
+		s.runAuto(ctx, wsID, id, "assignee_changed", actor)
+	}
+	if priorityChanged {
+		s.runAuto(ctx, wsID, id, "priority_changed", actor)
+	}
+	return nil
 }
 
 // ArchiveIssue.

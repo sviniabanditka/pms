@@ -818,3 +818,8 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] Панели: issue detail (описание+AI summary, свойства, CF, labels/relations/sub-issues, комменты+реакции, activity, time), cycle insights (burndown, breakdown-фильтры).
 - [ ] Вьюхи: board DnD, list (виртуализация, bulk-выбор переживает переключение layout), team calendar (due DnD), doc editor (автосейв, preview, mentions), cycles/milestones/docs/views страницы.
 - [ ] Гость: inert read-only в issue detail сохранился.
+
+## 103. Backend batch: atomic UpdateIssue + rpc.go split
+- [ ] UpdateIssue с несколькими полями сразу (title+priority+assignee+due+description) → одна транзакция: один version-бамп, одна changelog-строка, одна WS-дельта (раньше — по одной на каждое поле). Проверка: version растёт на 1, в change_log одна строка.
+- [ ] Assignee/priority через UpdateIssue по-прежнему триггерят автоматизации (assignee_changed/priority_changed) после коммита.
+- [ ] Все connect-RPC работают после разбивки rpc.go по доменным файлам (handlers_*.go) — smoke ключевых сервисов.
