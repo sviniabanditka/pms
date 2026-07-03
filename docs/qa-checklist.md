@@ -834,3 +834,9 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] `cd frontend && npm run typecheck` → 0 ошибок (nuxt prepare + vue-tsc --noEmit). Гейт для CI/pre-commit.
 - [ ] Свежий клон: npm install (postinstall=nuxt prepare генерит .nuxt/tsconfig) → typecheck резолвит tsconfig.
 - [ ] Все правки под гейт — type-only, рантайм не изменился: vitest 74/74, nuxt build проходит.
+
+## 106. Multi-store split (AI / Time / Chat)
+- [ ] AI: палитра-поиск (serverSearch), issue detail AI-подсказки (suggestForIssue/summarize/aiFeedback), Reports AI-инсайты (themes/anomalies/mood) работают через useAiStore.
+- [ ] Time: старт/стоп таймера + ручная запись + отчёт (useTimeStore) — IssueDetailPanel, time-entry модалка, Reports.
+- [ ] Chat (useChatStore): открыть канал/DM → сообщения грузятся; отправка/правка/удаление/реакции; тред; typing-индикатор; unread-бейдж (кросс-девайс + локальный bump); реконнект-догон. Delta по message/typing в активном канале обновляет UI без релоада.
+- [ ] Смена воркспейса чистит chat-стейт (messages/activeChannelId/typing).
