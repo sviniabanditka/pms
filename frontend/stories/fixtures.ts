@@ -33,6 +33,13 @@ export const labels: Record<string, Label> = {
   l_feat: { id: 'l_feat', teamId, name: 'feature', colorToken: '#60a5fa' },
 }
 
+// issue↔label связки (компаунд-ключ issueId:labelId, как в lib/sync.keyOf)
+export const issueLabels = {
+  'i1:l_bug': { issueId: 'i1', labelId: 'l_bug' },
+  'i1:l_feat': { issueId: 'i1', labelId: 'l_feat' },
+  'i2:l_feat': { issueId: 'i2', labelId: 'l_feat' },
+}
+
 export const issues: Record<string, Issue> = {
   i1: { id: 'i1', teamId, identifier: 'ENG-1', number: 1, title: 'Fix flaky sync test', stateId: 's_started', priority: 3, assigneeId: 'user_1', boardPosition: 'a' },
   i2: { id: 'i2', teamId, identifier: 'ENG-2', number: 2, title: 'Add dark-mode toggle', stateId: 's_backlog', priority: 1, boardPosition: 'b' },
@@ -56,6 +63,23 @@ export const attachments = {
   a2: { id: 'a2', entityType: 'issue', entityId: 'i1', filename: 'screenshot.png', s3Key: 'k2', contentType: 'image/png', size: 180000, createdAt: '2026-07-02' },
 }
 
+export const docId = 'doc_1'
+export const documents = {
+  [docId]: { id: docId, teamId, title: 'Onboarding', body: { md: '# Onboarding\n\nWelcome to **Engineering**.\n\n- read the runbook\n- set up your env' }, parentId: null },
+  doc_2: { id: 'doc_2', teamId, title: 'Runbook', body: { md: 'On-call runbook.' }, parentId: null },
+}
+
+export const msId = 'ms_1'
+export const milestones = {
+  [msId]: { id: msId, teamId, name: 'v2 launch', targetDate: '2026-08-01' },
+  ms_2: { id: 'ms_2', teamId, name: 'v3 planning', targetDate: '2026-10-01' },
+}
+
+export const views = {
+  v_1: { id: 'v_1', teamId, name: 'My open bugs', layout: 'list', filter: {} },
+  v_2: { id: 'v_2', teamId, name: 'This cycle', layout: 'board', filter: {} },
+}
+
 // Сообщение чата (DTO-форма как из GetMessages): для ChatMessage.
 export const chatMessage = {
   id: 'msg_1', channelId: 'ch_1', authorId: 'user_2', body: 'Deployed **v2** to staging — please smoke-test the sync path.',
@@ -67,7 +91,8 @@ export const chatMessage = {
 export function seedSnapshot() {
   return {
     workspaces: { [wsId]: workspace },
-    teams, states, issues, users, members, labels, cycles, cycleSnapshots, attachments,
+    teams, states, issues, issueLabels, users, members, labels, cycles, cycleSnapshots, attachments,
+    documents, milestones, views,
     activeWorkspaceId: wsId,
     currentUserId: userId,
     loaded: true,
