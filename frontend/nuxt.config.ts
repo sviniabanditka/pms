@@ -14,7 +14,12 @@ export default defineNuxtConfig({
         { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
         { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
         { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
-        { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap' },
+        // Не render-blocking: грузим как preload и переключаем в stylesheet по onload.
+        // display=swap + mono-фолбэк (Menlo/monospace) → текст виден сразу, без CLS (оба mono).
+        { rel: 'preload', as: 'style', href: 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap', onload: "this.onload=null;this.rel='stylesheet'" },
+      ],
+      noscript: [
+        { innerHTML: '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap">' },
       ],
     },
   },
