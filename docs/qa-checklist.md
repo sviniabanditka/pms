@@ -823,3 +823,9 @@ cd frontend && npm run dev                    # фронт :3000
 - [ ] UpdateIssue с несколькими полями сразу (title+priority+assignee+due+description) → одна транзакция: один version-бамп, одна changelog-строка, одна WS-дельта (раньше — по одной на каждое поле). Проверка: version растёт на 1, в change_log одна строка.
 - [ ] Assignee/priority через UpdateIssue по-прежнему триггерят автоматизации (assignee_changed/priority_changed) после коммита.
 - [ ] Все connect-RPC работают после разбивки rpc.go по доменным файлам (handlers_*.go) — smoke ключевых сервисов.
+
+## 104. Sync core extraction + typed entities (behavior-preserving)
+- [ ] Bootstrap/catchUp/delta льют данные как раньше (applyChunk делегирует в lib/sync); список/доска/чат наполняются, D7-merge не дёргает UI.
+- [ ] FULL_BUCKETS-prune: удалённая/архивная сущность исчезает после ре-bootstrap; notification (не full) не подчищается.
+- [ ] issue.description (ленивая загрузка) переживает bootstrap-чанк без описания.
+- [ ] Смена воркспейса чистит срез корректно (reset-блок не менялся).
